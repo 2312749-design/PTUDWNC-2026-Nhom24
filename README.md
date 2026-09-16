@@ -1,131 +1,73 @@
-Người làm	Khối lượng	Các chức năng và công việc chi tiết phải làm (Mã FR/NFR)
-
-
-Nguyễn Đức Thành
-
-(Backend Core & Kiến trúc)	10 Chức năng API
-
-+ Thiết lập nền tảng	1. Thiết lập kiến trúc Backend:
-
-• Xây dựng khung dự án .NET 10 Minimal APIs tuân thủ Clean Architecture (Domain, Application, Infrastructure, Presentation). 
-
-• Cài đặt CQRS + MediatR Pipeline (Logging, Validation, Caching). 
-
-2. Module Xác thực & Người dùng (FR-AUTH):
-
-• FR-AUTH-001: API Đăng ký tài khoản mới. 
-
-• FR-AUTH-002: API Đăng nhập bằng Email và Mật khẩu (Local Login). 
-
-• FR-AUTH-003: API Đăng nhập bằng Google OAuth 2.0. 
-
-• FR-AUTH-004: API Làm mới Access Token (Token Refresh). 
-
-• FR-AUTH-005: API Đăng xuất (Thu hồi Refresh Token). 
-
-• FR-AUTH-006: API Xem hồ sơ cá nhân. 
-
-• FR-AUTH-007: API Cập nhật hồ sơ cá nhân. 
-
-3. Module Quan sát Hệ thống (FR-OBS):
-
-• FR-OBS-001: Cấu hình Health Check Endpoints (Liveness/Readiness). 
-
-• FR-OBS-002: Thiết lập Structured Logging với Serilog. 
-
-• FR-OBS-003: Cấu hình Distributed Tracing & Metrics (OpenTelemetry). 
-
-
-
-Minh Long 
-
-
-
-(Backend Feature & Data)	24 Chức năng API
-
-+ Cấu hình Job	1. Module Quản lý Công thức (FR-RCP):
-
-• FR-RCP-001 & 002: API Xem danh sách phân trang và xem chi tiết công thức. 
-
-• FR-RCP-003 & 004: API Tạo mới và Cập nhật công thức nấu ăn. 
-
-• FR-RCP-005 & 006: API Xuất bản / Hủy xuất bản và Lưu trữ công thức. 
-
-• FR-RCP-007: API Xóa vĩnh viễn công thức. 
-
-• FR-RCP-008: API Quản lý ảnh (Upload, Set Primary, Delete). 
-
-• FR-RCP-009 & 010: API CRUD Quản lý nguyên liệu và Các bước thực hiện. 
-
-2. Module Danh mục (FR-CAT):
-
-• FR-CAT-001 đến 005: API Xem danh sách, Chi tiết, Tạo, Cập nhật và Xóa danh mục. 
-
-3. Module Tìm kiếm (FR-SRCH):
-
-• FR-SRCH-001 đến 004: Xử lý Full-Text Search PostgreSQL, Lọc, Sắp xếp và Phân trang. 
-
-4. Module File & Background Jobs (FR-FILE, FR-JOB):
-
-• FR-FILE-001 & 002: Upload và Xóa file trên MinIO. 
-
-• FR-JOB-001 đến 003: Cấu hình Hangfire cho Welcome Email, Image Resize và Generate Sitemap. 
-
-
-
-Oven
-
-
-
-
-
-(Frontend Public & Client)	7 Màn hình UI
-
-+ Tối ưu SEO	1. Phát triển các màn hình Public (Next.js):
-
-• Route /: Xây dựng Trang chủ hiển thị recipe nổi bật và categories (ISR). 
-
-• Route /recipes & /recipes/[slug]: Trang danh sách tất cả recipe và trang chi tiết công thức. 
-
-• Route /categories & /categories/[slug]: Trang danh sách danh mục và danh sách recipe theo danh mục. 
-
-2. Giao diện Xác thực (Auth UI):
-
-• Route /auth/login: Form đăng nhập (Email/Password và nút Google OAuth). 
-
-• Route /auth/register: Form đăng ký tài khoản mới. 
-
-3. Đảm bảo Yêu cầu Phi chức năng (NFR):
-
-• NFR-SEO-001 & 002: Tích hợp Structured Data JSON-LD Schema.org Recipe, Meta Tags và Open Graph. 
-
-• NFR-PERF-005: Tối ưu Core Web Vitals (LCP, CLS, INP) và Image Optimization. 
-
-
-
-
-Kina Niê
-
-
-
-(Frontend Dashboard)	7 Màn hình UI
-
-+ Xử lý Form	1. Phát triển khu vực nội bộ (Author/Admin Workspace):
-
-• Route /dashboard: Trang tổng quan của tác giả và admin. 
-
-• Route /dashboard/recipes: Giao diện bảng quản lý danh sách công thức cá nhân. 
-
-• Route /dashboard/recipes/new: Form đa bước (wizard) để tạo công thức mới, upload ảnh. 
-
-• Route /dashboard/recipes/[id]/edit: Form chỉnh sửa thông tin công thức hiện có. 
-
-• Route /dashboard/categories: Bảng quản lý danh mục dành riêng cho Admin. 
-
-• Route /profile: Giao diện xem và chỉnh sửa thông tin cá nhân. 
-
-2. Giao diện Phụ & Trải nghiệm (UX):
-
-• Route /search: Xây dựng trang hiển thị kết quả full-text search. 
-
-• NFR-USE-003 & 004: Xử lý hiển thị form validation nội tuyến, parse lỗi RFC 7807 từ server, cài đặt Toast notification và trạng thái Loading skeleton. 
+1. Bảng Phân Công Tóm Tắt (Theo Cụm Tính Năng)
+Thành viên	Trọng tâm công việc (Nhìn vào hiểu ngay)	Chi tiết (Gắn gọn)
+
+Nguyễn Đức Thành	Nền tảng Backend & Đăng nhập	Khởi tạo Clean Architecture, CRUD Công thức cốt lõi, JWT/Google OAuth. 
+Minh Long	Dữ liệu phụ & Tìm kiếm (Search)	API Nguyên liệu/Bước làm, PostgreSQL Full-Text Search, UI Trang tìm kiếm. 
+Oven	Nhập liệu & Chạy ngầm (Jobs)	Làm Form UI tạo công thức đa bước, cấu hình Hangfire Jobs (gửi mail). 
+Kina Niê	Hiển thị & File Upload (MinIO)	UI chi tiết công thức, API lưu ảnh lên MinIO, cấu hình SEO JSON-LD
+. 
+3. Phân Tích Chuyên Sâu: Cách Làm & Điểm Tối Ưu
+Việc chia nhiệm vụ theo cụm tính năng (Vertical Slicing) như trên đòi hỏi mỗi người phải nắm cả một luồng dữ liệu. Dưới đây là cách thức triển khai cụ thể cho từng người:
+Nguyễn Đức Thành: Nền tảng Backend & Đăng nhập (Khó - Đòi hỏi tư duy hệ thống)
+
+Chi tiết nhiệm vụ: Chịu trách nhiệm thiết lập bộ khung .NET 10 Minimal APIs, cấu trúc Clean Architecture và luồng xác thực (FR-AUTH). Đồng thời viết các API cốt lõi nhất như Tạo/Sửa/Xóa công thức (FR-RCP-003, 004, 007). 
+
+
+Cách thức triển khai:
+
+o
+Bắt đầu bằng việc dựng cấu trúc thư mục (Domain, Application, Infrastructure, Presentation). 
+o
+o
+Cài đặt CQRS + MediatR Pipeline để quản lý luồng dữ liệu. 
+o
+o
+Sử dụng ASP.NET Core Identity và cấu hình JWT Token (Access Token 15 phút, Refresh Token 7 ngày). 
+o
+
+
+Minh Long: Dữ liệu phụ & Tìm kiếm (Vừa - Trọng tâm xử lý Logic truy vấn)
+
+Chi tiết nhiệm vụ: Đảm nhận các mảnh ghép dữ liệu của công thức (API Thêm/Sửa/Xóa Nguyên liệu và Bước làm). Trọng tâm là xử lý logic tìm kiếm Full-Text Search tiếng Việt (FR-SRCH-001). 
+
+
+Cách thức triển khai:
+
+o
+Backend: Viết các API CRUD cho RecipeIngredient và RecipeStep. Tận dụng tsvector và tsquery kết hợp extension unaccent trong PostgreSQL để làm tính năng tìm kiếm bỏ dấu. 
+o
+o
+Frontend: Dựng giao diện /search để hứng kết quả tìm kiếm và phân trang. 
+o
+
+
+Oven: Nhập liệu & Chạy ngầm (Khó - Trọng tâm xử lý Bất đồng bộ & Validation)
+
+Chi tiết nhiệm vụ: Làm giao diện quan trọng nhất của hệ thống: Form tạo công thức (Route /dashboard/recipes/new). Ở backend, phụ trách tích hợp hệ thống chạy ngầm Hangfire và Health Check (FR-JOB, FR-OBS). 
+
+
+Cách thức triển khai:
+
+o
+Frontend: Sử dụng React Hook Form kết hợp Zod để xử lý form đa bước (wizard), đảm bảo validate dữ liệu nội tuyến trước khi gửi xuống API. Bắt các mã lỗi RFC 7807 từ server để hiển thị thông báo Toast. 
+o
+o
+Backend: Cài đặt Hangfire chạy in-process, viết các hàm gửi email chào mừng bất đồng bộ (fire-and-forget) và tự động tạo sitemap. 
+o
+
+
+Kina Niê: Hiển thị & File Upload (Vừa - Trọng tâm Trải nghiệm & Tối ưu hóa)
+
+Chi tiết nhiệm vụ: Chịu trách nhiệm hiển thị trang chi tiết công thức (/recipes/[slug]) ra ngoài cho người xem. Đảm nhận module upload ảnh lên server (FR-FILE, FR-RCP-008) và SEO. 
+
+
+Cách thức triển khai:
+
+o
+Backend: Tích hợp MinIO SDK để nhận file multipart/form-data, validate kích thước (5MB) và định dạng (JPEG/PNG/WebP), sau đó lưu trữ và trả về URL ảnh. 
+o
+o
+Frontend: Lấy dữ liệu API từ Long và Thành để render ra trang chi tiết. Cấu hình thẻ meta Open Graph và JSON-LD Schema.org để tối ưu Core Web Vitals (NFR-SEO). 
+o
+
+
