@@ -1,4 +1,6 @@
 Người làm	Khối lượng	Các chức năng và công việc chi tiết phải làm (Mã FR/NFR)
+
+
 Nguyễn Đức Thành
 
 (Backend Core & Kiến trúc)	10 Chức năng API
@@ -32,7 +34,13 @@ Nguyễn Đức Thành
 • FR-OBS-002: Thiết lập Structured Logging với Serilog. 
 
 • FR-OBS-003: Cấu hình Distributed Tracing & Metrics (OpenTelemetry). 
+
+
+
 Minh Long 
+
+
+
 (Backend Feature & Data)	24 Chức năng API
 
 + Cấu hình Job	1. Module Quản lý Công thức (FR-RCP):
