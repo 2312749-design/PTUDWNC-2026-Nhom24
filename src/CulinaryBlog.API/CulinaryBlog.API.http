@@ -1,0 +1,11 @@
+@CulinaryBlog.API_HostAddress = http://localhost:5152
+
+GET {{CulinaryBlog.API_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###
+
+GET {{CulinaryBlog.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
