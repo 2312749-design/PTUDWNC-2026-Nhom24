@@ -1,0 +1,23 @@
+# .NET
+**/bin/
+**/obj/
+
+# Next.js
+frontend/culinary-blog-web/node_modules/
+frontend/culinary-blog-web/.next/
+frontend/culinary-blog-web/out/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+**/appsettings.Development.json
+**/appsettings.json
