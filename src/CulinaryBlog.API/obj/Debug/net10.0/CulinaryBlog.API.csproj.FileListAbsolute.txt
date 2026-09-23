@@ -152,3 +152,10 @@ D:\CulinaryBlog\src\CulinaryBlog.API\bin\Debug\net10.0\runtimes\win\lib\net7.0\S
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Debug\net10.0\Bogus.dll
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Debug\net10.0\CulinaryBlog.API.runtimeconfig.dev.json
 D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\scopedcss\scopedcss.cache
+D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\CulinaryBlog.API.sourcelink.json
+D:\CulinaryBlog\src\CulinaryBlog.API\bin\Debug\net10.0\CulinaryBlog.API.staticwebassets.runtime.json
+D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\compressed\pdocblsm27-{0}-jc3hjh45qm-jc3hjh45qm.gz
+D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\compressed\h2ajjwp696-{0}-zan75f5ftm-zan75f5ftm.gz
+D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\compressed\v2bq61ho9g-{0}-cnjaz6pybe-cnjaz6pybe.gz
+D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\compressed\09cwexdzgb-{0}-7tkzoji5ms-7tkzoji5ms.gz
+D:\CulinaryBlog\src\CulinaryBlog.API\obj\Debug\net10.0\compressed\0f57pt8l5p-{0}-mgjogpuubg-mgjogpuubg.gz

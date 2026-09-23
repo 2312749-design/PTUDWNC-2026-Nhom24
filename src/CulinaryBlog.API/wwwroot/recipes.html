@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recipes | Culinary Blog</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1d2433;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 32px;
+      background: linear-gradient(135deg, #1b2a41, #2d4a78);
+      color: white;
+    }
+    .topbar .nav a {
+      color: white;
+      text-decoration: none;
+      margin-left: 18px;
+      font-weight: 600;
+    }
+    .container { max-width: 1280px; margin: 26px auto; padding: 0 20px 40px; }
+    .panel {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+    .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #e6ebf2;
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f3f7ff; }
+    .actions button {
+      margin-right: 8px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      color: white;
+      font-weight: 700;
+    }
+    .edit { background: #f59e0b; }
+    .delete { background: #ef4444; }
+    .form-group { margin-bottom: 14px; }
+    label {
+      display: block;
+      margin-bottom: 7px;
+      font-weight: 600;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #dfe6f3;
+      font-size: 14px;
+    }
+    textarea { min-height: 80px; }
+    button.submit-btn {
+      background: linear-gradient(135deg, #2d9cdb, #39c3ad);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .message {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      display: none;
+      font-size: 14px;
+    }
+    .message.error { display: block; background: #fff1f0; color: #b42318; }
+    .message.success { display: block; background: #ecfdf3; color: #027a48; }
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip {
+      background: #edf6ff;
+      color: #2a4d9b;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div><strong>CulinaryBlog</strong></div>
+    <div class="nav">
+      <a href="/home">Trang chủ</a>
+      <a href="/categories">Categories</a>
+      <a href="/recipes">Recipes</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>Nhóm Recipes</h2>
+      <div class="chip-list">
+        <span class="chip">Công thức sáng</span>
+        <span class="chip">Công thức chính</span>
+        <span class="chip">Món ăn gia đình</span>
+        <span class="chip">Đồ uống</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Danh sách công thức nấu ăn</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>ID</th>
+              <th>Tiêu đề</th>
+              <th>Nguyên liệu</th>
+              <th>Các bước làm</th>
+              <th>Danh mục</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="recipeTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Thêm công thức mới</h2>
+        <div class="form-group">
+          <label for="recipeTitle">Tiêu đề</label>
+          <input id="recipeTitle" type="text" placeholder="Ví dụ: Bún chả Hà Nội" />
+        </div>
+        <div class="form-group">
+          <label for="recipeDescription">Mô tả</label>
+          <textarea id="recipeDescription" placeholder="Mô tả món ăn..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="recipeIngredients">Nguyên liệu</label>
+          <textarea id="recipeIngredients" placeholder="Một nguyên liệu trên mỗi dòng"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="recipeInstructions">Các bước làm</label>
+          <textarea id="recipeInstructions" placeholder="Một bước trên mỗi dòng"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="recipeCategoryId">Danh mục</label>
+          <select id="recipeCategoryId"></select>
+        </div>
+        <button class="submit-btn" id="createRecipeBtn">Thêm công thức</button>
+        <div id="recipeMessage" class="message"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:5152/api';
+    const token = localStorage.getItem('accessToken');
+
+    function showMessage(elementId, type, text) {
+      const el = document.getElementById(elementId);
+      el.className = `message ${type}`;
+      el.textContent = text;
+    }
+
+    async function loadCategoryOptions() {
+      const res = await fetch(`${API}/categories`);
+      const categories = await res.json();
+      const select = document.getElementById('recipeCategoryId');
+      select.innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    }
+
+    async function fetchRecipes() {
+      const res = await fetch(`${API}/recipes`);
+      const data = await res.json();
+      const body = document.getElementById('recipeTableBody');
+      body.innerHTML = '';
+
+      data.forEach((item, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${index + 1}</td>
+          <td>${item.id}</td>
+          <td>${item.title}</td>
+          <td>${(item.ingredients || []).join('<br>')}</td>
+          <td>${(item.instructions || []).join('<br>')}</td>
+          <td>${item.categoryName || item.categoryId}</td>
+          <td class="actions">
+            <button class="edit" data-id="${item.id}" data-title="${item.title}" data-description="${item.description || ''}" data-categoryid="${item.categoryId}">Sửa</button>
+            <button class="delete" data-id="${item.id}">Xóa</button>
+          </td>
+        `;
+        body.appendChild(row);
+      });
+
+      document.querySelectorAll('.delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await deleteRecipe(btn.getAttribute('data-id'));
+        });
+      });
+
+      document.querySelectorAll('.edit').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          document.getElementById('recipeTitle').value = btn.getAttribute('data-title');
+          document.getElementById('recipeDescription').value = btn.getAttribute('data-description');
+          document.getElementById('recipeCategoryId').value = btn.getAttribute('data-categoryid');
+          document.getElementById('createRecipeBtn').textContent = 'Cập nhật công thức';
+          document.getElementById('createRecipeBtn').dataset.editId = id;
+        });
+      });
+    }
+
+    async function createRecipe() {
+      const title = document.getElementById('recipeTitle').value.trim();
+      const description = document.getElementById('recipeDescription').value.trim();
+      const ingredients = document.getElementById('recipeIngredients').value.split('\n').map(x => x.trim()).filter(Boolean);
+      const instructions = document.getElementById('recipeInstructions').value.split('\n').map(x => x.trim()).filter(Boolean);
+      const categoryId = document.getElementById('recipeCategoryId').value;
+      const editId = document.getElementById('createRecipeBtn').dataset.editId;
+
+      if (!title || !categoryId) {
+        showMessage('recipeMessage', 'error', 'Tiêu đề và danh mục không được để trống.');
+        return;
+      }
+
+      const payload = {
+        title,
+        description,
+        ingredients,
+        instructions,
+        categoryId
+      };
+
+      const url = editId ? `${API}/recipes/${editId}` : `${API}/recipes`;
+      const method = editId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showMessage('recipeMessage', 'error', data.message || 'Thao tác thất bại.');
+        return;
+      }
+
+      showMessage('recipeMessage', 'success', data.message || 'Thành công');
+      document.getElementById('createRecipeBtn').textContent = 'Thêm công thức';
+      delete document.getElementById('createRecipeBtn').dataset.editId;
+      document.getElementById('recipeTitle').value = '';
+      document.getElementById('recipeDescription').value = '';
+      document.getElementById('recipeIngredients').value = '';
+      document.getElementById('recipeInstructions').value = '';
+      fetchRecipes();
+    }
+
+    async function deleteRecipe(id) {
+      const res = await fetch(`${API}/recipes/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showMessage('recipeMessage', 'error', data.message || 'Không thể xóa.');
+        return;
+      }
+
+      showMessage('recipeMessage', 'success', data.message || 'Đã xóa công thức.');
+      fetchRecipes();
+    }
+
+    document.getElementById('createRecipeBtn').addEventListener('click', createRecipe);
+    loadCategoryOptions();
+    fetchRecipes();
+  </script>
+</body>
+</html>

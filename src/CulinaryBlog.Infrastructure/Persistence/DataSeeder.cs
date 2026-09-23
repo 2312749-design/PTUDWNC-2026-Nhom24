@@ -1,5 +1,6 @@
 ﻿using Bogus;
 using CulinaryBlog.Domain.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
@@ -8,15 +9,27 @@ public static class DataSeeder
 {
     public static async Task SeedDataAsync(ApplicationDbContext context)
     {
-        if (!await context.Users.AnyAsync())
+        var passwordHasher = new PasswordHasher<ApplicationUser>();
+
+        var defaultUser = await context.Users.FirstOrDefaultAsync(u => u.Email == "admin@culinaryblog.com" || u.UserName == "chefdemo");
+        if (defaultUser == null)
         {
-            var user = ApplicationUser.Create("Chef Demo", "admin@culinaryblog.com", "chefdemo");
-            user.PasswordHash = "AQAAAAIAAYagAAAAEP2x...";
-            await context.Users.AddAsync(user);
+            defaultUser = ApplicationUser.Create("Chef Demo", "admin@culinaryblog.com", "chefdemo");
+            defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
+            await context.Users.AddAsync(defaultUser);
             await context.SaveChangesAsync();
         }
+        else if (!string.IsNullOrWhiteSpace(defaultUser.PasswordHash))
+        {
+            var passwordCheck = passwordHasher.VerifyHashedPassword(defaultUser, defaultUser.PasswordHash, "chefdemo");
+            if (passwordCheck == PasswordVerificationResult.Failed)
+            {
+                defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
+                await context.SaveChangesAsync();
+            }
+        }
 
-        var defaultUser = await context.Users.FirstAsync();
+        defaultUser = await context.Users.FirstAsync(u => u.Email == "admin@culinaryblog.com" || u.UserName == "chefdemo");
 
         if (await context.Categories.AnyAsync() || await context.Recipes.AnyAsync())
         {

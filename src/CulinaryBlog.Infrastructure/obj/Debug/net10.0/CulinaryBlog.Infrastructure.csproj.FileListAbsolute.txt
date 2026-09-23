@@ -18,3 +18,4 @@ D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\obj\Debug\net10.0\ref\CulinaryBl
 D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\bin\Debug\net10.0\CulinaryBlog.Infrastructure.runtimeconfig.json
 D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\obj\Debug\net10.0\CulinaryBlog.Infrastructure.genruntimeconfig.cache
 D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\bin\Debug\net10.0\CulinaryBlog.Infrastructure.runtimeconfig.dev.json
+D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\obj\Debug\net10.0\CulinaryBlog.Infrastructure.sourcelink.json

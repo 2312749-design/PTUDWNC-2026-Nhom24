@@ -44,14 +44,14 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-// 5. Cấu hình CORS
+// 5. Cấu hình CORS cho Frontend React chạy ở localhost:3000
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("FrontendPolicy", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
     });
 });
 
@@ -94,6 +94,12 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+static string GetWebFilePath(IWebHostEnvironment env, string fileName)
+{
+    var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
+    return Path.Combine(webRoot, fileName);
+}
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -102,13 +108,21 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 // 7. Kích hoạt CORS Middleware
-app.UseCors("AllowAll");
+app.UseCors("FrontendPolicy");
 
 // 8. Thêm Authentication & Authorization Middleware
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapGet("/", () => Results.Redirect("/login"));
+app.MapGet("/login", () => Results.File(GetWebFilePath(app.Environment, "login.html"), "text/html"));
+app.MapGet("/register", () => Results.File(GetWebFilePath(app.Environment, "register.html"), "text/html"));
+app.MapGet("/home", () => Results.File(GetWebFilePath(app.Environment, "home.html"), "text/html"));
+app.MapGet("/categories", () => Results.File(GetWebFilePath(app.Environment, "categories.html"), "text/html"));
+app.MapGet("/recipes", () => Results.File(GetWebFilePath(app.Environment, "recipes.html"), "text/html"));
 
 app.MapControllers();
 

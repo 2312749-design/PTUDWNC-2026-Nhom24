@@ -2,6 +2,7 @@
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
 using Google.Apis.Auth;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,11 +14,28 @@ namespace CulinaryBlog.API.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ITokenService _tokenService;
+        private readonly PasswordHasher<ApplicationUser> _passwordHasher = new();
 
         public AuthController(ApplicationDbContext context, ITokenService tokenService)
         {
             _context = context;
             _tokenService = tokenService;
+        }
+
+        private bool VerifyPassword(ApplicationUser user, string password)
+        {
+            if (string.IsNullOrWhiteSpace(user.PasswordHash))
+            {
+                return false;
+            }
+
+            var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+            if (result == PasswordVerificationResult.Success || result == PasswordVerificationResult.SuccessRehashNeeded)
+            {
+                return true;
+            }
+
+            return user.PasswordHash == password;
         }
 
         // DTOs nội bộ dùng cho Register, Login và Google Login
@@ -26,11 +44,15 @@ namespace CulinaryBlog.API.Controllers
             public string Username { get; set; } = string.Empty;
             public string Email { get; set; } = string.Empty;
             public string Password { get; set; } = string.Empty;
+            public string ConfirmPassword { get; set; } = string.Empty;
+            public string CaptchaQuestion { get; set; } = string.Empty;
+            public string CaptchaAnswer { get; set; } = string.Empty;
         }
 
         public class LoginDto
         {
             public string Email { get; set; } = string.Empty;
+            public string Username { get; set; } = string.Empty;
             public string Password { get; set; } = string.Empty;
         }
 
@@ -43,16 +65,38 @@ namespace CulinaryBlog.API.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto model)
         {
-            if (await _context.Users.AnyAsync(u => u.Email == model.Email))
+            if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
             {
-                return BadRequest(new { message = "Email đã tồn tại trong hệ thống!" });
+                return BadRequest(new { message = "Vui lòng điền đầy đủ thông tin." });
+            }
+
+            if (model.Password != model.ConfirmPassword)
+            {
+                return BadRequest(new { message = "Mật khẩu xác nhận không khớp." });
+            }
+
+            if (!string.IsNullOrWhiteSpace(model.CaptchaQuestion) && !string.IsNullOrWhiteSpace(model.CaptchaAnswer))
+            {
+                var parts = model.CaptchaQuestion.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length == 2 && int.TryParse(parts[0], out var left) && int.TryParse(parts[1], out var right))
+                {
+                    if (int.TryParse(model.CaptchaAnswer, out var answer) && answer != left + right)
+                    {
+                        return BadRequest(new { message = "Xác minh người thật không đúng. Vui lòng làm lại." });
+                    }
+                }
+            }
+
+            if (await _context.Users.AnyAsync(u => u.Email == model.Email || u.UserName == model.Username))
+            {
+                return BadRequest(new { message = "Tài khoản hoặc email đã tồn tại trong hệ thống!" });
             }
 
             var user = new ApplicationUser
             {
                 UserName = model.Username,
                 Email = model.Email,
-                PasswordHash = model.Password
+                PasswordHash = _passwordHasher.HashPassword(new ApplicationUser(), model.Password)
             };
 
             _context.Users.Add(user);
@@ -65,10 +109,11 @@ namespace CulinaryBlog.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto model)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == model.Email);
-            if (user == null || user.PasswordHash != model.Password)
+            var accountValue = !string.IsNullOrWhiteSpace(model.Email) ? model.Email : model.Username;
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == accountValue || u.UserName == accountValue);
+            if (user == null || !VerifyPassword(user, model.Password))
             {
-                return Unauthorized(new { message = "Email hoặc mật khẩu không chính xác!" });
+                return Unauthorized(new { message = "Tài khoản hoặc mật khẩu không chính xác!" });
             }
 
             var accessToken = _tokenService.GenerateAccessToken(user);
@@ -109,7 +154,7 @@ namespace CulinaryBlog.API.Controllers
                     {
                         UserName = payload.Name ?? payload.Email.Split('@')[0],
                         Email = payload.Email,
-                        PasswordHash = "GOOGLE_OAUTH_USER" // Đánh dấu đây là tài khoản đăng nhập qua Google
+                        PasswordHash = _passwordHasher.HashPassword(new ApplicationUser(), "GOOGLE_OAUTH_USER")
                     };
 
                     _context.Users.Add(user);
