@@ -21,8 +21,16 @@ public static class DataSeeder
         }
         else if (!string.IsNullOrWhiteSpace(defaultUser.PasswordHash))
         {
-            var passwordCheck = passwordHasher.VerifyHashedPassword(defaultUser, defaultUser.PasswordHash, "chefdemo");
-            if (passwordCheck == PasswordVerificationResult.Failed)
+            try
+            {
+                var passwordCheck = passwordHasher.VerifyHashedPassword(defaultUser, defaultUser.PasswordHash, "chefdemo");
+                if (passwordCheck == PasswordVerificationResult.Failed)
+                {
+                    defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
+                    await context.SaveChangesAsync();
+                }
+            }
+            catch (FormatException)
             {
                 defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
                 await context.SaveChangesAsync();
