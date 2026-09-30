@@ -22,7 +22,8 @@ public class GetCategoriesQueryHandler : IRequestHandler<GetCategoriesQuery, IEn
             {
                 Id = c.Id,
                 Name = c.Name,
-                Description = c.Description
+                Description = c.Description,
+                ImageUrl = c.ImageUrl
             })
             .ToListAsync(cancellationToken);
     }

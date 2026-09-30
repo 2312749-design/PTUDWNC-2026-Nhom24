@@ -31,6 +31,80 @@ namespace CulinaryBlog.API.Controllers
             return Ok(result);
         }
 
+        [HttpGet("{id}")]
+        [AllowAnonymous]
+        public async Task<ActionResult<RecipeDto>> GetRecipeById(Guid id)
+        {
+            var recipe = await _context.Recipes
+                .Include(r => r.Category)
+                .Include(r => r.Author)
+                .FirstOrDefaultAsync(r => r.Id == id);
+
+            if (recipe == null)
+            {
+                return NotFound(new { message = "Không tìm thấy công thức nấu ăn." });
+            }
+
+            var ingredients = await _context.RecipeIngredients
+                .Where(item => item.RecipeId == id)
+                .OrderBy(item => item.Order)
+                .Select(item => new RecipeIngredientDto
+                {
+                    Id = item.Id,
+                    RecipeId = item.RecipeId,
+                    Name = item.Name,
+                    Quantity = item.Quantity,
+                    Unit = item.Unit,
+                    Order = item.Order
+                })
+                .ToListAsync();
+            var steps = await _context.RecipeSteps
+                .Where(item => item.RecipeId == id)
+                .OrderBy(item => item.Order)
+                .Select(item => new RecipeStepDto
+                {
+                    Id = item.Id,
+                    RecipeId = item.RecipeId,
+                    Title = item.Title,
+                    Description = item.Description,
+                    Order = item.Order
+                })
+                .ToListAsync();
+
+            return Ok(new RecipeDto
+            {
+                Id = recipe.Id,
+                Title = recipe.Title,
+                Slug = recipe.Slug,
+                Description = recipe.Description,
+                ImageUrl = recipe.ImageUrl,
+                Ingredients = recipe.Ingredients,
+                Instructions = recipe.Instructions,
+                RecipeIngredients = ingredients,
+                RecipeSteps = steps,
+                CategoryId = recipe.CategoryId,
+                CategoryName = recipe.Category != null ? recipe.Category.Name : string.Empty,
+                AuthorId = recipe.AuthorId,
+                Status = recipe.Status,
+                CookingTimeMinutes = recipe.CookingTimeMinutes,
+                Difficulty = recipe.Difficulty,
+                IsVegetarian = recipe.IsVegetarian
+            });
+        }
+
+        [HttpPost("{id:guid}/view")]
+        [Authorize]
+        public async Task<IActionResult> RecordView(Guid id)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+            if (!await _context.Recipes.AnyAsync(recipe => recipe.Id == id)) return NotFound();
+            var view = await _context.RecipeViews.FindAsync(id, userId);
+            if (view == null) _context.RecipeViews.Add(new CulinaryBlog.Domain.Entities.RecipeView { RecipeId = id, UserId = userId });
+            else view.ViewedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { recorded = true });
+        }
+
         // 2. Tạo mới Recipe thông qua MediatR Command (Đã chuyển đổi chuẩn CQRS)
         [HttpPost]
         [Authorize]
@@ -46,10 +120,16 @@ namespace CulinaryBlog.API.Controllers
             {
                 Title = dto.Title,
                 Description = dto.Description,
+                ImageUrl = dto.ImageUrl,
                 Ingredients = dto.Ingredients,
                 Instructions = dto.Instructions,
+                RecipeIngredients = dto.RecipeIngredients,
+                RecipeSteps = dto.RecipeSteps,
                 CategoryId = dto.CategoryId,
-                AuthorId = userId
+                AuthorId = userId,
+                CookingTimeMinutes = dto.CookingTimeMinutes,
+                Difficulty = dto.Difficulty,
+                IsVegetarian = dto.IsVegetarian
             };
 
             try
@@ -69,8 +149,12 @@ namespace CulinaryBlog.API.Controllers
         public async Task<IActionResult> UpdateRecipe(Guid id, [FromBody] UpdateRecipeDto dto)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var recipe = await _context.Recipes.FindAsync(id);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Unauthorized(new { message = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
+            }
 
+            var recipe = await _context.Recipes.FindAsync(id);
             if (recipe == null)
             {
                 return NotFound(new { message = "Không tìm thấy công thức nấu ăn cần sửa!" });
@@ -87,7 +171,19 @@ namespace CulinaryBlog.API.Controllers
                 return BadRequest(new { message = "Danh mục (CategoryId) không tồn tại!" });
             }
 
-            recipe.Update(dto.Title, dto.Description, dto.Ingredients, dto.Instructions, dto.CategoryId, dto.Status);
+            recipe.Update(
+                dto.Title,
+                dto.Description,
+                dto.Ingredients,
+                dto.Instructions,
+                dto.CategoryId,
+                dto.Status,
+                dto.ImageUrl,
+                dto.CookingTimeMinutes,
+                dto.Difficulty,
+                dto.IsVegetarian
+            );
+
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Cập nhật công thức nấu ăn thành công!" });

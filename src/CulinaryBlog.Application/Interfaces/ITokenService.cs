@@ -5,6 +5,6 @@ namespace CulinaryBlog.Application.Interfaces
     public interface ITokenService
     {
         string GenerateAccessToken(ApplicationUser user);
-        RefreshToken GenerateRefreshToken(string ipAddress);
+        RefreshToken GenerateRefreshToken(string userId, string ipAddress);
     }
 }

@@ -44,7 +44,7 @@ namespace CulinaryBlog.Infrastructure.Services
             return tokenHandler.WriteToken(token);
         }
 
-        public RefreshToken GenerateRefreshToken(string ipAddress)
+        public RefreshToken GenerateRefreshToken(string userId, string ipAddress)
         {
             using var rng = RandomNumberGenerator.Create();
             var randomBytes = new byte[64];
@@ -52,7 +52,7 @@ namespace CulinaryBlog.Infrastructure.Services
             var tokenValue = Convert.ToBase64String(randomBytes);
 
             // Khởi tạo RefreshToken sử dụng đúng phương thức Create sẵn có trong Domain của bạn
-            return RefreshToken.Create(string.Empty, tokenValue, _jwtSettings.RefreshTokenExpiryDays);
+            return RefreshToken.Create(userId, tokenValue, _jwtSettings.RefreshTokenExpiryDays);
         }
     }
 }

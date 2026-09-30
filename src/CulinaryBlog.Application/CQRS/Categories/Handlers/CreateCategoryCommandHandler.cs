@@ -21,7 +21,8 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
         {
             Id = Guid.NewGuid(),
             Name = request.Name.Trim(),
-            Description = request.Description?.Trim() ?? string.Empty
+            Description = request.Description?.Trim() ?? string.Empty,
+            ImageUrl = request.ImageUrl
         };
 
         _context.Categories.Add(category);
@@ -31,7 +32,8 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
         {
             Id = category.Id,
             Name = category.Name,
-            Description = category.Description
+            Description = category.Description,
+            ImageUrl = category.ImageUrl
         };
     }
 }

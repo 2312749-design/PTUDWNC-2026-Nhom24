@@ -12,3 +12,6 @@ D:\CulinaryBlog\src\CulinaryBlog.Domain\obj\Debug\net10.0\CulinaryBlog.Domain.pd
 D:\CulinaryBlog\src\CulinaryBlog.Domain\obj\Debug\net10.0\ref\CulinaryBlog.Domain.dll
 D:\CulinaryBlog\src\CulinaryBlog.Domain\obj\Debug\net10.0\Culinary.E9A90C16.Up2Date
 D:\CulinaryBlog\src\CulinaryBlog.Domain\obj\Debug\net10.0\CulinaryBlog.Domain.sourcelink.json
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Domain.deps.json
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Domain.dll
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Domain.pdb

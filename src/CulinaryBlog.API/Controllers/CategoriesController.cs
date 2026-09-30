@@ -43,7 +43,8 @@ namespace CulinaryBlog.API.Controllers
             var command = new CreateCategoryCommand
             {
                 Name = dto.Name,
-                Description = dto.Description
+                Description = dto.Description,
+                ImageUrl = dto.ImageUrl
             };
 
             var result = await _mediator.Send(command);
@@ -64,6 +65,7 @@ namespace CulinaryBlog.API.Controllers
 
             existing.Name = dto.Name;
             existing.Description = dto.Description;
+            existing.ImageUrl = dto.ImageUrl;
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Cập nhật danh mục thành công!" });

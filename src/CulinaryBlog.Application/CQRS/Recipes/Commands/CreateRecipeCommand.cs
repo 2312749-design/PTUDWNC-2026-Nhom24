@@ -7,8 +7,14 @@ public class CreateRecipeCommand : IRequest<RecipeDto>
 {
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
+    public string? ImageUrl { get; set; }
     public List<string> Ingredients { get; set; } = new();
     public List<string> Instructions { get; set; } = new();
+    public List<CreateRecipeIngredientDto> RecipeIngredients { get; set; } = new();
+    public List<CreateRecipeStepDto> RecipeSteps { get; set; } = new();
     public Guid CategoryId { get; set; }
     public string AuthorId { get; set; } = string.Empty; // Nhận AuthorId từ Controller (lấy từ Token)
+    public int? CookingTimeMinutes { get; set; }
+    public string Difficulty { get; set; } = "Trung bình";
+    public bool IsVegetarian { get; set; }
 }

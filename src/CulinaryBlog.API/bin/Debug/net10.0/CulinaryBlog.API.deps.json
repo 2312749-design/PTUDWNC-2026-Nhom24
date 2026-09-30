@@ -10,6 +10,8 @@
         "dependencies": {
           "CulinaryBlog.Application": "1.0.0",
           "CulinaryBlog.Infrastructure": "1.0.0",
+          "Hangfire": "1.8.19",
+          "Hangfire.PostgreSql": "1.20.12",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "10.0.12",
           "Microsoft.EntityFrameworkCore.Design": "10.0.12",
           "Microsoft.OpenApi": "1.6.14",
@@ -26,6 +28,15 @@
             "assemblyVersion": "35.6.5.0",
             "fileVersion": "35.6.5.0",
             "localPath": "Bogus.dll"
+          }
+        }
+      },
+      "Dapper/2.0.123": {
+        "runtime": {
+          "lib/net5.0/Dapper.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.0.123.33578",
+            "localPath": "Dapper.dll"
           }
         }
       },
@@ -64,6 +75,133 @@
             "assemblyVersion": "1.76.0.0",
             "fileVersion": "1.76.0.0",
             "localPath": "Google.Apis.Core.dll"
+          }
+        }
+      },
+      "Hangfire/1.8.19": {
+        "dependencies": {
+          "Hangfire.AspNetCore": "1.8.19",
+          "Hangfire.Core": "1.8.19",
+          "Hangfire.SqlServer": "1.8.19"
+        }
+      },
+      "Hangfire.AspNetCore/1.8.19": {
+        "dependencies": {
+          "Hangfire.NetCore": "1.8.19"
+        },
+        "runtime": {
+          "lib/netcoreapp3.0/Hangfire.AspNetCore.dll": {
+            "assemblyVersion": "1.8.19.0",
+            "fileVersion": "1.8.19.0",
+            "localPath": "Hangfire.AspNetCore.dll"
+          }
+        }
+      },
+      "Hangfire.Core/1.8.19": {
+        "dependencies": {
+          "Newtonsoft.Json": "13.0.4"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Hangfire.Core.dll": {
+            "assemblyVersion": "1.8.19.0",
+            "fileVersion": "1.8.19.0",
+            "localPath": "Hangfire.Core.dll"
+          }
+        },
+        "resources": {
+          "lib/netstandard2.0/ca/Hangfire.Core.resources.dll": {
+            "locale": "ca",
+            "localPath": "ca/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/de/Hangfire.Core.resources.dll": {
+            "locale": "de",
+            "localPath": "de/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/es/Hangfire.Core.resources.dll": {
+            "locale": "es",
+            "localPath": "es/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/fa/Hangfire.Core.resources.dll": {
+            "locale": "fa",
+            "localPath": "fa/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/fr/Hangfire.Core.resources.dll": {
+            "locale": "fr",
+            "localPath": "fr/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/nb/Hangfire.Core.resources.dll": {
+            "locale": "nb",
+            "localPath": "nb/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/nl/Hangfire.Core.resources.dll": {
+            "locale": "nl",
+            "localPath": "nl/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/pt-BR/Hangfire.Core.resources.dll": {
+            "locale": "pt-BR",
+            "localPath": "pt-BR/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/pt-PT/Hangfire.Core.resources.dll": {
+            "locale": "pt-PT",
+            "localPath": "pt-PT/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/pt/Hangfire.Core.resources.dll": {
+            "locale": "pt",
+            "localPath": "pt/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/sv/Hangfire.Core.resources.dll": {
+            "locale": "sv",
+            "localPath": "sv/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/tr-TR/Hangfire.Core.resources.dll": {
+            "locale": "tr-TR",
+            "localPath": "tr-TR/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/zh-TW/Hangfire.Core.resources.dll": {
+            "locale": "zh-TW",
+            "localPath": "zh-TW/Hangfire.Core.resources.dll"
+          },
+          "lib/netstandard2.0/zh/Hangfire.Core.resources.dll": {
+            "locale": "zh",
+            "localPath": "zh/Hangfire.Core.resources.dll"
+          }
+        }
+      },
+      "Hangfire.NetCore/1.8.19": {
+        "dependencies": {
+          "Hangfire.Core": "1.8.19"
+        },
+        "runtime": {
+          "lib/netstandard2.1/Hangfire.NetCore.dll": {
+            "assemblyVersion": "1.8.19.0",
+            "fileVersion": "1.8.19.0",
+            "localPath": "Hangfire.NetCore.dll"
+          }
+        }
+      },
+      "Hangfire.PostgreSql/1.20.12": {
+        "dependencies": {
+          "Dapper": "2.0.123",
+          "Hangfire.Core": "1.8.19",
+          "Npgsql": "10.0.3"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Hangfire.PostgreSql.dll": {
+            "assemblyVersion": "1.20.12.0",
+            "fileVersion": "1.20.12.0",
+            "localPath": "Hangfire.PostgreSql.dll"
+          }
+        }
+      },
+      "Hangfire.SqlServer/1.8.19": {
+        "dependencies": {
+          "Hangfire.Core": "1.8.19"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Hangfire.SqlServer.dll": {
+            "assemblyVersion": "1.8.19.0",
+            "fileVersion": "1.8.19.0",
+            "localPath": "Hangfire.SqlServer.dll"
           }
         }
       },
@@ -923,6 +1061,13 @@
       "path": "bogus/35.6.5",
       "hashPath": "bogus.35.6.5.nupkg.sha512"
     },
+    "Dapper/2.0.123": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-RDFF4rBLLmbpi6pwkY7q/M6UXHRJEOerplDGE5jwEkP/JGJnBauAClYavNKJPW1yOTWRPIyfj4is3EaJxQXILQ==",
+      "path": "dapper/2.0.123",
+      "hashPath": "dapper.2.0.123.nupkg.sha512"
+    },
     "Google.Apis/1.76.0": {
       "type": "package",
       "serviceable": true,
@@ -943,6 +1088,48 @@
       "sha512": "sha512-P2nFbC0SsnUe8sGjhpCLs6CHIWFzURgUS2M9l9aUV1vJjVXpesRbegEYZS/dLKehcgx8twDP7xA5OMGygMD55g==",
       "path": "google.apis.core/1.76.0",
       "hashPath": "google.apis.core.1.76.0.nupkg.sha512"
+    },
+    "Hangfire/1.8.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-3yiEFZyT8THMGV98XyQ7ft1S9o1e3xxsY/C2HsZDd3vLr42hPhnMwed+f3ZrwSS3LMJuUvt3DKr3NNIysZzzSQ==",
+      "path": "hangfire/1.8.19",
+      "hashPath": "hangfire.1.8.19.nupkg.sha512"
+    },
+    "Hangfire.AspNetCore/1.8.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-pXByyeJG1d0bvAMS0PifigQ8wM2uahWgSdsnKCj21yEWuZdJ64rnCTRb6DweVxEDZCof45Kb6vxPZkajQXo7CA==",
+      "path": "hangfire.aspnetcore/1.8.19",
+      "hashPath": "hangfire.aspnetcore.1.8.19.nupkg.sha512"
+    },
+    "Hangfire.Core/1.8.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ydGC5lhNQuwqsqJ8cGJ6uwoTUdmxFQkPYgTSIfBxaXCw5WEVQKnephTl64GZdlRirw6E1s5xFcAhjp/iuJPg1Q==",
+      "path": "hangfire.core/1.8.19",
+      "hashPath": "hangfire.core.1.8.19.nupkg.sha512"
+    },
+    "Hangfire.NetCore/1.8.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-IlqcTEYHvKEDAIAn3IbkPmsIxx1KrZebkORuDzau1PSNdaoSlwM7xoKLE0CswUz+LGdlj21ecOTGG85t1Ik+KQ==",
+      "path": "hangfire.netcore/1.8.19",
+      "hashPath": "hangfire.netcore.1.8.19.nupkg.sha512"
+    },
+    "Hangfire.PostgreSql/1.20.12": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-KvozigeVgbYSinFmaj5qQWRaBG7ey/S73UP6VLIOPcP1UrZO0/6hSw4jN53TKpWP2UsiMuYONRmQbFDxGAi4ug==",
+      "path": "hangfire.postgresql/1.20.12",
+      "hashPath": "hangfire.postgresql.1.20.12.nupkg.sha512"
+    },
+    "Hangfire.SqlServer/1.8.19": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-0HgfIMv018AsQ0VIwiX3Z+2sEBx9hNS2/Uu3KxD25KafN/XstkrA5p48NNeDitMqtQyUk71TdC/qznV6MFOpAQ==",
+      "path": "hangfire.sqlserver/1.8.19",
+      "hashPath": "hangfire.sqlserver.1.8.19.nupkg.sha512"
     },
     "Humanizer.Core/2.14.1": {
       "type": "package",

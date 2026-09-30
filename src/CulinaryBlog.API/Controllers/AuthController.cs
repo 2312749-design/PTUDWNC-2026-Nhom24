@@ -1,7 +1,9 @@
 ﻿using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Infrastructure.Jobs;
 using CulinaryBlog.Infrastructure.Persistence;
 using Google.Apis.Auth;
+using Hangfire;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,12 +16,14 @@ namespace CulinaryBlog.API.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly ITokenService _tokenService;
+        private readonly IBackgroundJobClient _backgroundJobs;
         private readonly PasswordHasher<ApplicationUser> _passwordHasher = new();
 
-        public AuthController(ApplicationDbContext context, ITokenService tokenService)
+        public AuthController(ApplicationDbContext context, ITokenService tokenService, IBackgroundJobClient backgroundJobs)
         {
             _context = context;
             _tokenService = tokenService;
+            _backgroundJobs = backgroundJobs;
         }
 
         private bool VerifyPassword(ApplicationUser user, string password)
@@ -29,10 +33,17 @@ namespace CulinaryBlog.API.Controllers
                 return false;
             }
 
-            var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
-            if (result == PasswordVerificationResult.Success || result == PasswordVerificationResult.SuccessRehashNeeded)
+            try
             {
-                return true;
+                var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+                if (result == PasswordVerificationResult.Success || result == PasswordVerificationResult.SuccessRehashNeeded)
+                {
+                    return true;
+                }
+            }
+            catch (FormatException)
+            {
+                // Dữ liệu hash cũ có thể không đúng định dạng Identity; fallback so login vẫn hoạt động.
             }
 
             return user.PasswordHash == password;
@@ -41,6 +52,7 @@ namespace CulinaryBlog.API.Controllers
         // DTOs nội bộ dùng cho Register, Login và Google Login
         public class RegisterDto
         {
+            public string FullName { get; set; } = string.Empty;
             public string Username { get; set; } = string.Empty;
             public string Email { get; set; } = string.Empty;
             public string Password { get; set; } = string.Empty;
@@ -61,11 +73,16 @@ namespace CulinaryBlog.API.Controllers
             public string IdToken { get; set; } = string.Empty;
         }
 
+        public class RefreshTokenDto
+        {
+            public string RefreshToken { get; set; } = string.Empty;
+        }
+
         // POST: api/auth/register
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterDto model)
         {
-            if (string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
+            if (string.IsNullOrWhiteSpace(model.FullName) || string.IsNullOrWhiteSpace(model.Username) || string.IsNullOrWhiteSpace(model.Email) || string.IsNullOrWhiteSpace(model.Password))
             {
                 return BadRequest(new { message = "Vui lòng điền đầy đủ thông tin." });
             }
@@ -94,6 +111,7 @@ namespace CulinaryBlog.API.Controllers
 
             var user = new ApplicationUser
             {
+                FullName = model.FullName.Trim(),
                 UserName = model.Username,
                 Email = model.Email,
                 PasswordHash = _passwordHasher.HashPassword(new ApplicationUser(), model.Password)
@@ -101,6 +119,8 @@ namespace CulinaryBlog.API.Controllers
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+
+            _backgroundJobs.Enqueue<WelcomeEmailJob>(job => job.SendWelcomeEmail(model.Email));
 
             return Ok(new { message = "Đăng ký tài khoản thành công!" });
         }
@@ -118,7 +138,9 @@ namespace CulinaryBlog.API.Controllers
 
             var accessToken = _tokenService.GenerateAccessToken(user);
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-            var refreshToken = _tokenService.GenerateRefreshToken(ipAddress);
+            var refreshToken = _tokenService.GenerateRefreshToken(user.Id, ipAddress);
+            _context.RefreshTokens.Add(refreshToken);
+            await _context.SaveChangesAsync();
 
             return Ok(new
             {
@@ -126,6 +148,37 @@ namespace CulinaryBlog.API.Controllers
                 accessToken = accessToken,
                 refreshToken = refreshToken.Token,
                 refreshTokenExpires = refreshToken.ExpiresAt
+            });
+        }
+
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshTokenDto model)
+        {
+            if (string.IsNullOrWhiteSpace(model.RefreshToken))
+            {
+                return BadRequest(new { message = "Refresh token không được để trống." });
+            }
+
+            var storedToken = await _context.RefreshTokens
+                .Include(token => token.User)
+                .FirstOrDefaultAsync(token => token.Token == model.RefreshToken);
+
+            if (storedToken == null || !storedToken.IsValid() || storedToken.User == null)
+            {
+                return Unauthorized(new { message = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
+            }
+
+            storedToken.MarkUsed();
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+            var nextRefreshToken = _tokenService.GenerateRefreshToken(storedToken.UserId, ipAddress);
+            _context.RefreshTokens.Add(nextRefreshToken);
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                accessToken = _tokenService.GenerateAccessToken(storedToken.User),
+                refreshToken = nextRefreshToken.Token,
+                refreshTokenExpires = nextRefreshToken.ExpiresAt
             });
         }
 
@@ -164,7 +217,9 @@ namespace CulinaryBlog.API.Controllers
                 // 3. Cấp phát Access Token và Refresh Token của hệ thống
                 var accessToken = _tokenService.GenerateAccessToken(user);
                 var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-                var refreshToken = _tokenService.GenerateRefreshToken(ipAddress);
+                var refreshToken = _tokenService.GenerateRefreshToken(user.Id, ipAddress);
+                _context.RefreshTokens.Add(refreshToken);
+                await _context.SaveChangesAsync();
 
                 return Ok(new
                 {

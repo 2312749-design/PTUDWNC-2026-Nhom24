@@ -26,12 +26,16 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
                 Title = r.Title,
                 Slug = r.Slug,
                 Description = r.Description,
+                ImageUrl = r.ImageUrl,
                 Ingredients = r.Ingredients,
                 Instructions = r.Instructions,
                 CategoryId = r.CategoryId,
                 CategoryName = r.Category != null ? r.Category.Name : string.Empty,
                 AuthorId = r.AuthorId,
-                Status = r.Status
+                Status = r.Status,
+                CookingTimeMinutes = r.CookingTimeMinutes,
+                Difficulty = r.Difficulty,
+                IsVegetarian = r.IsVegetarian
             })
             .ToListAsync(cancellationToken);
     }

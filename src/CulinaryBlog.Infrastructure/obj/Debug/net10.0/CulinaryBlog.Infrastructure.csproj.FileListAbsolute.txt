@@ -19,3 +19,8 @@ D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\bin\Debug\net10.0\CulinaryBlog.I
 D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\obj\Debug\net10.0\CulinaryBlog.Infrastructure.genruntimeconfig.cache
 D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\bin\Debug\net10.0\CulinaryBlog.Infrastructure.runtimeconfig.dev.json
 D:\CulinaryBlog\src\CulinaryBlog.Infrastructure\obj\Debug\net10.0\CulinaryBlog.Infrastructure.sourcelink.json
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Infrastructure.deps.json
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Infrastructure.runtimeconfig.json
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Infrastructure.runtimeconfig.dev.json
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Infrastructure.dll
+C:\Users\ADMIN\AppData\Local\Temp\CulinaryBlogBuild\bin\Debug\net10.0\CulinaryBlog.Infrastructure.pdb

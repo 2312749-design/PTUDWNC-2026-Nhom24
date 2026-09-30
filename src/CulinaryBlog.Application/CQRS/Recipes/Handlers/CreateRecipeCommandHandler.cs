@@ -32,10 +32,35 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
             request.Ingredients,
             request.Instructions,
             request.CategoryId,
-            request.AuthorId
+            request.AuthorId,
+            request.ImageUrl,
+            request.CookingTimeMinutes,
+            request.Difficulty,
+            request.IsVegetarian
         );
 
-        // 3. Lưu vào Database thông qua IApplicationDbContext
+        var recipeIngredients = request.RecipeIngredients
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .Select((ingredient, index) => RecipeIngredient.Create(
+                recipe.Id,
+                ingredient.Name,
+                ingredient.Quantity,
+                ingredient.Unit,
+                ingredient.Order > 0 ? ingredient.Order : index + 1))
+            .ToList();
+        _context.RecipeIngredients.AddRange(recipeIngredients);
+
+        var recipeSteps = request.RecipeSteps
+            .Where(item => !string.IsNullOrWhiteSpace(item.Title) && !string.IsNullOrWhiteSpace(item.Description))
+            .Select((step, index) => RecipeStep.Create(
+                recipe.Id,
+                step.Title,
+                step.Description,
+                step.Order > 0 ? step.Order : index + 1))
+            .ToList();
+        _context.RecipeSteps.AddRange(recipeSteps);
+
+        // Persist the recipe and its structured children together.
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync(cancellationToken);
 
@@ -46,11 +71,32 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
             Title = recipe.Title,
             Slug = recipe.Slug,
             Description = recipe.Description,
+            ImageUrl = recipe.ImageUrl,
             Ingredients = recipe.Ingredients,
             Instructions = recipe.Instructions,
+            RecipeIngredients = recipeIngredients.Select(ingredient => new RecipeIngredientDto
+            {
+                Id = ingredient.Id,
+                RecipeId = recipe.Id,
+                Name = ingredient.Name,
+                Quantity = ingredient.Quantity,
+                Unit = ingredient.Unit,
+                Order = ingredient.Order
+            }).ToList(),
+            RecipeSteps = recipeSteps.Select(step => new RecipeStepDto
+            {
+                Id = step.Id,
+                RecipeId = recipe.Id,
+                Title = step.Title,
+                Description = step.Description,
+                Order = step.Order
+            }).ToList(),
             CategoryId = recipe.CategoryId,
             AuthorId = recipe.AuthorId,
-            Status = recipe.Status
+            Status = recipe.Status,
+            CookingTimeMinutes = recipe.CookingTimeMinutes,
+            Difficulty = recipe.Difficulty,
+            IsVegetarian = recipe.IsVegetarian
         };
     }
 }

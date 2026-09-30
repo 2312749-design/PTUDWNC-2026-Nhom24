@@ -1,7 +1,10 @@
+using CulinaryBlog.API.Middleware;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Application.Models;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Services;
+using Hangfire;
+using Hangfire.PostgreSql;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -17,6 +20,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // Đăng ký IApplicationDbContext ánh xạ vào ApplicationDbContext (Phục vụ Clean Architecture)
 builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // 2. Bind JwtSettings từ appsettings.json
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
@@ -49,7 +53,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("FrontendPolicy", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.SetIsOriginAllowed(origin =>
+                origin.StartsWith("http://localhost:") ||
+                origin.StartsWith("http://127.0.0.1:") ||
+                origin.StartsWith("https://localhost:") ||
+                origin.StartsWith("https://127.0.0.1:"))
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -59,7 +67,23 @@ builder.Services.AddCors(options =>
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.CategoryDto).Assembly));
 
 builder.Services.AddControllers();
+builder.Services.AddHttpClient("OpenAI", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddHangfire(config =>
+{
+    config.UseSimpleAssemblyNameTypeSerializer()
+          .UseRecommendedSerializerSettings()
+          .UsePostgreSqlStorage(options =>
+          {
+              options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
+          });
+});
+
+builder.Services.AddHangfireServer();
 
 // 6. Cấu hình Swagger kèm nút Authorize chuẩn
 builder.Services.AddSwaggerGen(c =>
@@ -107,8 +131,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+app.UseHangfireDashboard();
 
 // 7. Kích hoạt CORS Middleware
 app.UseCors("FrontendPolicy");
@@ -136,6 +162,8 @@ using (var scope = app.Services.CreateScope())
 
     // Nhồi 20 Category và 100 Recipe vào Database
     await DataSeeder.SeedDataAsync(dbContext);
+    var seedAuthor = await dbContext.Users.FirstAsync(user => user.Email == "admin@culinaryblog.com");
+    await RecipeCatalogSeeder.SeedDataAsync(dbContext, seedAuthor);
 }
 
 app.Run();  
