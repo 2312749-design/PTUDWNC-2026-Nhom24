@@ -1,4 +1,4 @@
-# 📋 CHI TIẾT NHIỆM VỤ DỰ ÁN CULINARY BLOG (SPRINT 1 & 2)
+# 📋 CHI TIẾT NHIỆM VỤ DỰ ÁN CULINARY BLOG 
 
 ## 👤 1. Nguyễn Đức Thành (Lead Backend & Auth)
 **Trọng tâm:** Xây dựng móng nhà (Clean Architecture) và hệ thống cửa bảo vệ (Identity + JWT).
