@@ -4,50 +4,54 @@
 
 ---
 
-## 1. Bảng Phân Công Tóm Tắt (Theo Cụm Tính Năng)
+## 1. Nguyễn Đức Thành: Nền tảng Backend & Luồng Xác thực
 
-| Thành viên | Trọng tâm công việc | Chi tiết công việc chính |
-| :--- | :--- | :--- |
-| **Nguyễn Đức Thành** | Nền tảng Backend & Đăng nhập[cite: 27, 28] | Khởi tạo Clean Architecture, CRUD Công thức cốt lõi, JWT & Google OAuth[cite: 4, 5, 27, 28]. |
-| **Minh Long** | Dữ liệu phụ & Tìm kiếm (Search)[cite: 26, 27, 28] | API Nguyên liệu/Bước làm, PostgreSQL Full-Text Search, UI Trang tìm kiếm[cite: 26, 27, 28]. |
-| **Oven** | Nhập liệu & Chạy ngầm (Jobs)[cite: 26, 27, 28] | Thiết kế Form UI tạo công thức đa bước, cấu hình Hangfire Jobs gửi email[cite: 26, 27, 28]. |
-| **Kina Niê** | Hiển thị & File Upload (MinIO)[cite: 26, 27, 28] | UI chi tiết công thức, API lưu ảnh lên MinIO, tối ưu SEO JSON-LD[cite: 26, 27, 28]. |
+**Mục tiêu:** Xây dựng bộ khung Backend theo Clean Architecture và hoàn thiện toàn bộ phân quyền bảo mật (FR-AUTH).
 
----
+| Mã Task | Nhiệm vụ chi tiết (Actionable Steps) | Tiêu chí hoàn thành / Nghiệm thu (Deliverables) | Tiến độ |
+| :--- | :--- | :--- | :--- |
+| **TH-01** | Khởi tạo cấu trúc dự án Clean Architecture | Tạo thành công 4 thư mục/project: Domain, Application, Infrastructure, Presentation (API) và cài đặt MediatR, Mapster. | [ ] 0% |
+| **TH-02** | Thiết lập Entity cốt lõi & Database | Viết code định nghĩa `ApplicationUser`, `Recipe`, `Category`. Cấu hình EF Core kết nối thành công với PostgreSQL. | [ ] 0% |
+| **TH-03** | Xây dựng API Đăng ký & Đăng nhập Email | API `/auth/register` mã hóa mật khẩu bằng PBKDF2 của ASP.NET Core Identity. API `/auth/login` cấp phát thành công JWT Access Token (15 phút). | [ ] 0% |
+| **TH-04** | Tích hợp Refresh Token Rotation | Viết logic lưu Refresh Token (7 ngày) vào DB. Khóa/xóa (revoke) session nếu phát hiện Token bị dùng lại (Reuse Detection). | [ ] 0% |
+| **TH-05** | Tích hợp Đăng nhập Google OAuth 2.0 | API `/auth/google/callback` nhận Google ID Token, tự động tạo ApplicationUser nếu email chưa tồn tại. | [ ] 0% |
+| **TH-06** | Cấu hình Phân quyền (Authorization) | Cài đặt `RecipeAuthorizationHandler` đảm bảo tác giả chỉ được sửa/xóa công thức của chính mình (Resource-Based Authorization). | [ ] 0% |
 
-## 2. Phân Tích Chuyên Sâu: Cách Làm & Hướng Triển Khai
 
-Mỗi thành viên trong nhóm sẽ đảm nhận một luồng tính năng dọc (Vertical Slicing), chịu trách nhiệm xuyên suốt từ Backend API cho đến Frontend UI[cite: 3].
+## 2. Minh Long: Dữ liệu chi tiết & Máy tìm kiếm (Search Engine)
 
-### 2.1. Nguyễn Đức Thành: Nền tảng Backend & Đăng nhập
+**Mục tiêu:** Xử lý dữ liệu con (Nguyên liệu, Bước làm) và xây dựng thuật toán Full-Text Search thông minh bằng PostgreSQL.
 
-* **Nhiệm vụ chi tiết:** Thiết lập bộ khung .NET Minimal APIs, cấu trúc Clean Architecture và luồng xác thực (FR-AUTH). Đồng thời viết các API cốt lõi quản lý công thức (FR-RCP-003, 004, 007)[cite: 3, 28].
-* **Cách thức triển khai:**
-  * Dựng cấu trúc thư mục chuẩn 4 tầng: Domain, Application, Infrastructure, Presentation[cite: 3].
-  * Cài đặt CQRS kết hợp MediatR Pipeline để xử lý các Commands và Queries[cite: 3].
-  * Sử dụng ASP.NET Core Identity kết hợp phát hành JWT Token (Access Token 15 phút, Refresh Token 7 ngày)[cite: 3].
+| Mã Task | Nhiệm vụ chi tiết (Actionable Steps) | Tiêu chí hoàn thành / Nghiệm thu (Deliverables) | Tiến độ |
+| :--- | :--- | :--- | :--- |
+| **ML-01** | Thiết kế Model Dữ liệu phụ | Hoàn thiện Fluent API thiết lập quan hệ 1-N giữa Recipe với `RecipeIngredient` (Nguyên liệu) và `RecipeStep` (Bước làm) có tính năng Cascade Delete. | [ ] 0% |
+| **ML-02** | Xây dựng API CRUD Dữ liệu phụ | Hoàn thành các API Endpoint: POST/PUT/DELETE tại route `/recipes/{id}/ingredients` và `/recipes/{id}/steps`. | [ ] 0% |
+| **ML-03** | Cấu hình PostgreSQL tsvector | Tạo Computed Column `SearchVector` dùng `to_tsvector` trong DB, kết hợp extension `unaccent` để loại bỏ dấu tiếng Việt. | [ ] 0% |
+| **ML-04** | Xây dựng API Full-Text Search | Viết Endpoint `/recipes/search` nhận query string, map thành `tsquery`, lọc theo Status (Published) và trả về danh sách phân trang (Pagination). | [ ] 0% |
+| **ML-05** | Xây dựng UI Trang Tìm kiếm | Code giao diện `/search` bằng Next.js, dùng `useQuery` (TanStack) gọi API và hiển thị kết quả xếp hạng độ liên quan theo hàm `ts_rank`. | [ ] 0% |
 
-### 2.2. Minh Long: Dữ liệu phụ & Tìm kiếm
 
-Trọng tâm xử lý logic truy vấn dữ liệu
-* **Nhiệm vụ chi tiết:** Xử lý các mảnh ghép dữ liệu con của công thức (API CRUD Nguyên liệu & Bước làm) và cốt lõi tính năng Full-Text Search tiếng Việt (FR-SRCH-001)[cite: 26, 27].
-* **Cách thức triển khai:**
-  * Viết các API quản lý chi tiết nguyên liệu (`RecipeIngredient`) và các bước thực hiện (`RecipeStep`)[cite: 26, 27].
-  * Tận dụng `tsvector`, `tsquery` và extension `unaccent` trong PostgreSQL để xây dựng tính năng tìm kiếm gần đúng (không dấu)[cite: 26, 27].
-  * Xây dựng giao diện trang `/search` ở phía Frontend để hiển thị kết quả và phân trang[cite: 26, 27].
+## 3. Oven: Nhập liệu phức tạp & Tác vụ ngầm (Background Jobs)
 
-### 2.3. Oven: Nhập liệu & Chạy ngầm
+**Mục tiêu:** Tối ưu hóa trải nghiệm điền Form tạo công thức ở Frontend và xử lý hàng đợi công việc ở Backend.
 
-Trọng tâm xử lý tính đồng bộ, Form phức tạp và tác vụ ngầm
-* **Nhiệm vụ chi tiết:** Xây dựng Form tạo công thức đa bước (Multi-step Wizard tại route `/dashboard/recipes/new`) và cấu hình hệ thống chạy ngầm Hangfire (FR-JOB, FR-OBS)[cite: 26, 27].
-* **Cách thức triển khai:**
-  * **Frontend:** Sử dụng React Hook Form kết hợp Zod để validate dữ liệu chặt chẽ ngay tại client, bắt các mã lỗi chuẩn RFC 7807 từ server để hiển thị thông báo Toast[cite: 26].
-  * **Backend:** Cấu hình Hangfire chạy in-process để thực thi bất đồng bộ các tác vụ như gửi email chào mừng (fire-and-forget) và tự động tạo file Sitemap[cite: 26].
+| Mã Task | Nhiệm vụ chi tiết (Actionable Steps) | Tiêu chí hoàn thành / Nghiệm thu (Deliverables) | Tiến độ |
+| :--- | :--- | :--- | :--- |
+| **OV-01** | Validate dữ liệu với Zod Schema | Viết `createRecipeSchema` chặt chẽ ép kiểu TypeScript: tiêu đề (5-200 ký tự), bắt buộc có ít nhất 1 nguyên liệu và 1 bước thực hiện. | [ ] 0% |
+| **OV-02** | Thiết kế UI Form Đa bước (Wizard) | Dùng React Hook Form và `useFieldArray` tạo giao diện `/recipes/new` chia 3 bước (Info -> Ingredients -> Steps) không bị re-render giật lag. | [ ] 0% |
+| **OV-03** | Bắt lỗi và hiển thị Toast | Xử lý mã lỗi chuẩn RFC 7807 trả về từ Backend (VD: 422 Unprocessable Entity, 409 Conflict) và render thành thông báo Toast đỏ trên UI. | [ ] 0% |
+| **OV-04** | Cài đặt và Dashboard Hangfire | Cấu hình thư viện Hangfire.Core, Hangfire.PostgreSql chạy in-process. Bật giao diện Dashboard theo dõi tại `/hangfire` (chỉ Admin). | [ ] 0% |
+| **OV-05** | Viết Job Gửi Email Chào mừng | Tạo `WelcomeEmailJob` (Fire-and-forget). Job này phải tự động nhận tham số và chạy ngầm (không block UI) ngay sau khi TH-03 đăng ký thành công. | [ ] 0% |
 
-### 2.4. Kina Niê: Hiển thị & File Upload
 
- (Trọng tâm trải nghiệm người dùng và tối ưu hóa tài nguyên
-* **Nhiệm vụ chi tiết:** Xây dựng giao diện trang chi tiết công thức (`/recipes/[slug]`), quản lý module upload file ảnh lên hệ thống lưu trữ MinIO (FR-FILE, FR-RCP-008) và tối ưu hóa SEO[cite: 26].
-* **Cách thức triển khai:**
-  * **Backend:** Tích hợp AWS SDK cho .NET để kết nối MinIO, kiểm tra định dạng Magic Bytes, giới hạn dung lượng file tối đa đến 5MB và trả về public URL[cite: 26].
-  * **Frontend:** Lấy dữ liệu từ API của Thành và Long để render trang chi tiết công thức, cấu hình thẻ Open Graph Meta Tags và JSON-LD Schema.org đạt chuẩn Core Web Vitals[cite: 26].
+## 4. Kina Niê: Lưu trữ đám mây, Hiển thị & Tối ưu SEO
+
+**Mục tiêu:** Quản lý luồng File Upload với MinIO, xây dựng giao diện hiển thị bài viết chuẩn UX/UI và tối ưu hóa SEO.
+
+| Mã Task | Nhiệm vụ chi tiết (Actionable Steps) | Tiêu chí hoàn thành / Nghiệm thu (Deliverables) | Tiến độ |
+| :--- | :--- | :--- | :--- |
+| **KN-01** | Tích hợp Server MinIO (AWS SDK) | Backend kết nối thành công với bucket MinIO. Xử lý logic đọc Magic Bytes để chặn file giả mạo định dạng, giới hạn kích thước tối đa 5MB. | [ ] 0% |
+| **KN-02** | Viết API Quản lý File Ảnh | API POST `/recipes/{id}/images` nhận multipart/form-data, upload thành công lên MinIO và trả về URL ảnh dạng Public-read. | [ ] 0% |
+| **KN-03** | Xóa file bất đồng bộ | Khi một Recipe bị xóa, gọi Hangfire Job để xóa vật lý ảnh trên MinIO (có policy retry 3 lần nếu MinIO bị mất kết nối). | [ ] 0% |
+| **KN-04** | Xây dựng UI Chi tiết Công thức | Viết Server Component tại route `/recipes/[slug]` (Next.js SSR). Hiển thị đầy đủ Banner ảnh, thẻ tác giả, danh sách bước làm và nguyên liệu. | [ ] 0% |
+| **KN-05** | Tối ưu hóa SEO & Web Vitals | Dùng `<Image>` component của Next.js để sinh ảnh WebP tự động. Chèn JSON-LD Schema.org dạng `@type: "Recipe"` vào thẻ Head của trang. | [ ] 0% |
