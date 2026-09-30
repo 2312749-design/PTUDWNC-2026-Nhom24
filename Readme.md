@@ -1,9 +1,3 @@
-# KẾ HOẠCH PHÂN CÔNG CÔNG VIỆC NHÓM (DỰ ÁN CULINARY BLOG)
-
-**Môn học:** Phát triển Ứng dụng Web Nâng cao | **Nhóm:** 4 Thành viên[cite: 28]
-
----
-
 # 📋 CHI TIẾT NHIỆM VỤ DỰ ÁN CULINARY BLOG (SPRINT 1 & 2)
 
 ## 👤 1. Nguyễn Đức Thành (Lead Backend & Auth)
@@ -98,5 +92,3 @@
   - [ ] Chuyển toàn bộ thẻ `<img>` thành `<Image>` của Next.js, cấu hình `remotePatterns` trong `next.config.ts` để đọc ảnh từ MinIO[cite: 20, 31].
   - [ ] Sinh thẻ `<meta>` Open Graph động (og:title, og:image) dựa trên bài viết[cite: 20, 31].
   - [ ] Nhúng đoạn script `JSON-LD Schema.org` loại `@type: "Recipe"` vào trang để lấy hiển thị Rich Snippets trên Google Search[cite: 20, 31].
-| **KN-04** | Xây dựng UI Chi tiết Công thức | Viết Server Component tại route `/recipes/[slug]` (Next.js SSR). Hiển thị đầy đủ Banner ảnh, thẻ tác giả, danh sách bước làm và nguyên liệu. | [ ] 0% |
-| **KN-05** | Tối ưu hóa SEO & Web Vitals | Dùng `<Image>` component của Next.js để sinh ảnh WebP tự động. Chèn JSON-LD Schema.org dạng `@type: "Recipe"` vào thẻ Head của trang. | [ ] 0% |
