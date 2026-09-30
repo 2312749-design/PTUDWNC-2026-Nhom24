@@ -28,6 +28,10 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
+                        .HasColumnType("tsvector")
+                        .HasComputedColumnSql("to_tsvector('simple'::regconfig, coalesce(\"Title\", '') || ' ' || coalesce(\"Description\", ''))", true);
+
                     b.Property<Guid>("AuthorId")
                         .HasColumnType("uuid");
 
@@ -70,6 +74,9 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SearchVector")
+                        .HasMethod("GIN");
 
                     b.ToTable("Recipes");
                 });

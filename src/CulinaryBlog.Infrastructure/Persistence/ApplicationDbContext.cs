@@ -39,7 +39,11 @@ public class ApplicationDbContext : DbContext
             // PostgreSQL Full-Text Search
             entity.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
                 .HasColumnName("SearchVector")
-                .HasColumnType("tsvector");
+                .HasColumnType("tsvector")
+                .HasComputedColumnSql(
+                    """to_tsvector('simple'::regconfig, coalesce("Title", '') || ' ' || coalesce("Description", ''))""",
+                    stored: true);
+            entity.HasIndex("SearchVector").HasMethod("GIN");
 
             entity.HasMany(x => x.Ingredients)
                 .WithOne(x => x.Recipe)
