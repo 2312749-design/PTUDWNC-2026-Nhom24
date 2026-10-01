@@ -754,11 +754,15 @@
           "dependencies": {
             "AWSSDK.S3": {
               "target": "Package",
-              "version": "[4.0.103.3, )"
+              "version": "[4.0.104, )"
             },
             "Bogus": {
               "target": "Package",
               "version": "[35.6.5, )"
+            },
+            "Hangfire.AspNetCore": {
+              "target": "Package",
+              "version": "[1.8.25, )"
             },
             "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
               "target": "Package",

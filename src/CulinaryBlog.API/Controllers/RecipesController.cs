@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using Hangfire;
+using CulinaryBlog.Infrastructure.Services;
 
 namespace CulinaryBlog.API.Controllers
 {
@@ -115,6 +117,22 @@ namespace CulinaryBlog.API.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "Xóa công thức nấu ăn thành công!" });
+        }
+        // [KN-03] Tích hợp Hangfire Xóa Ảnh Ngầm
+        [HttpDelete("{id}")]
+        public IActionResult DeleteRecipe(Guid id, [FromServices] IBackgroundJobClient backgroundJobClient)
+        {
+            string bucketName = "culinary-blog-images";
+            string imageUrlFromDb = $"recipes/{id}/hinhanh_cu.jpg"; // URL giả định trên DB
+
+            // (viết code xóa món ăn trong Database ở chỗ này)
+
+            // Kích hoạt Hangfire dọn rác ảnh
+            backgroundJobClient.Enqueue<IFileStorageService>(
+                service => service.DeleteFileAsync(imageUrlFromDb, bucketName)
+            );
+
+            return Ok(new { Message = "Đã xóa món ăn thành công và đang tự động dọn dẹp ảnh nền!" });
         }
     }
 }
