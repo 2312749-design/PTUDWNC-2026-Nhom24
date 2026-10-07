@@ -1,0 +1,34 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/recipes/layout,_N_T_/recipes/page,_N_T_/recipes"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/recipes/__PAGE__"
+  ],
+  "prefetchHints": {
+    "hints": 64,
+    "slots": {
+      "children": {
+        "hints": 96,
+        "slots": {
+          "children": {
+            "hints": 160,
+            "slots": null
+          }
+        }
+      }
+    }
+  },
+  "routeCache": {
+    "key": "/route-cache/APP_PAGE/b0e9a40bde78e838a7f57fb5f32d0c8b694b85ed595dc0b9175da7ea8fcc2afc/$/recipes",
+    "owner": {
+      "kind": "APP_PAGE",
+      "sourceRoute": "/recipes/page"
+    },
+    "isFallback": false
+  }
+}

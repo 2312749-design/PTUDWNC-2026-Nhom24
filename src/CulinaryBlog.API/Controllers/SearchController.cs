@@ -1,8 +1,10 @@
 using CulinaryBlog.Application.DTOs;
+using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NpgsqlTypes;
 
 namespace CulinaryBlog.API.Controllers;
 
@@ -30,25 +32,39 @@ public class SearchController : ControllerBase
         [FromQuery] int pageSize = 20)
     {
         var keyword = (q ?? string.Empty).Trim();
+        var searchText = string.Join(" ", new[] { keyword, ingredient }.Where(value => !string.IsNullOrWhiteSpace(value)));
         var query = _context.Recipes
             .AsNoTracking()
             .Include(r => r.Category)
-            .Include(r => r.Author).AsQueryable();
+            .Include(r => r.Author)
+            .AsQueryable();
 
-        if (!string.IsNullOrWhiteSpace(keyword))
-            query = query.Where(recipe => EF.Functions.ILike(recipe.Title, $"%{keyword}%") || EF.Functions.ILike(recipe.Description!, $"%{keyword}%"));
+        NpgsqlTsQuery? searchQuery = null;
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            searchQuery = EF.Functions.WebSearchToTsQuery("simple", searchText);
+            query = _context.Recipes
+                .FromSqlInterpolated<Recipe>($"SELECT * FROM \"Recipes\" WHERE \"SearchVector\" @@ {searchQuery}");
+        }
         if (categoryId.HasValue) query = query.Where(recipe => recipe.CategoryId == categoryId.Value);
         if (maxMinutes.HasValue) query = query.Where(recipe => recipe.CookingTimeMinutes != null && recipe.CookingTimeMinutes <= maxMinutes.Value);
         if (!string.IsNullOrWhiteSpace(difficulty)) query = query.Where(recipe => recipe.Difficulty == difficulty);
         if (vegetarian.HasValue) query = query.Where(recipe => recipe.IsVegetarian == vegetarian.Value);
-        if (!string.IsNullOrWhiteSpace(ingredient)) query = query.Where(recipe => recipe.Ingredients.Any(item => EF.Functions.ILike(item, $"%{ingredient.Trim()}%")));
 
         page = Math.Max(page, 1);
         pageSize = Math.Clamp(pageSize, 1, 50);
         var total = await query.CountAsync();
 
+        if (searchQuery != null)
+        {
+            query = query.OrderByDescending(recipe => recipe.SearchVector.Rank(searchQuery));
+        }
+        else
+        {
+            query = query.OrderBy(recipe => recipe.Title);
+        }
+
         var result = await query
-            .OrderBy(recipe => recipe.Title)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(r => new RecipeDto

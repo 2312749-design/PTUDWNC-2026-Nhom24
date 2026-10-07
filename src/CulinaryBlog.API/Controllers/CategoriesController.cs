@@ -1,6 +1,7 @@
 ﻿using CulinaryBlog.Application.CQRS.Categories.Commands;
 using CulinaryBlog.Application.CQRS.Categories.Queries;
 using CulinaryBlog.Application.DTOs;
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -15,11 +16,13 @@ namespace CulinaryBlog.API.Controllers
     {
         private readonly IMediator _mediator;
         private readonly ApplicationDbContext _context;
+        private readonly ICacheService _cache;
 
-        public CategoriesController(IMediator mediator, ApplicationDbContext context)
+        public CategoriesController(IMediator mediator, ApplicationDbContext context, ICacheService cache)
         {
             _mediator = mediator;
             _context = context;
+            _cache = cache;
         }
 
         // 1. Lấy danh sách tất cả Category (MediatR Query)
@@ -68,6 +71,7 @@ namespace CulinaryBlog.API.Controllers
             existing.ImageUrl = dto.ImageUrl;
             await _context.SaveChangesAsync();
 
+            await InvalidateCachesAsync(id);
             return Ok(new { message = "Cập nhật danh mục thành công!" });
         }
 
@@ -93,7 +97,15 @@ namespace CulinaryBlog.API.Controllers
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();
 
+            await InvalidateCachesAsync(id);
             return Ok(new { message = "Xóa danh mục và các món ăn liên quan thành công!" });
+        }
+
+        private async Task InvalidateCachesAsync(Guid categoryId)
+        {
+            await _cache.RemoveAsync(CacheKeys.Categories);
+            await _cache.RemoveAsync(CacheKeys.Category(categoryId));
+            await _cache.RemoveAsync(CacheKeys.Recipes);
         }
     }
 }

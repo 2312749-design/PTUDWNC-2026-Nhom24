@@ -10,10 +10,12 @@ namespace CulinaryBlog.Application.CQRS.Recipes.Handlers;
 public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, RecipeDto>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICacheService _cache;
 
-    public CreateRecipeCommandHandler(IApplicationDbContext context)
+    public CreateRecipeCommandHandler(IApplicationDbContext context, ICacheService cache)
     {
         _context = context;
+        _cache = cache;
     }
 
     public async Task<RecipeDto> Handle(CreateRecipeCommand request, CancellationToken cancellationToken)
@@ -63,6 +65,7 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
         // Persist the recipe and its structured children together.
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync(cancellationToken);
+        await _cache.RemoveAsync(CacheKeys.Recipes, cancellationToken);
 
         // 4. Trả về Response DTO
         return new RecipeDto

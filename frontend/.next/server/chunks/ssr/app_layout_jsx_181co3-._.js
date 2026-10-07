@@ -1,0 +1,3 @@
+module.exports=[98421,a=>{"use strict";var b=a.i(7997);let c={title:{default:"CulinaryBlog — Cộng đồng ẩm thực",template:"%s | CulinaryBlog"},description:"Khám phá công thức món ăn, chia sẻ kinh nghiệm nấu ăn và kết nối cộng đồng ẩm thực.",metadataBase:new URL(process.env.NEXT_PUBLIC_SITE_URL||"http://localhost:3000"),openGraph:{title:"CulinaryBlog — Cộng đồng ẩm thực",description:"Công thức, câu chuyện và cảm hứng từ cộng đồng nấu ăn.",type:"website"}};a.s(["default",0,function({children:a}){return(0,b.jsx)("html",{lang:"vi",children:(0,b.jsx)("body",{children:a})})},"metadata",0,c])},46122,function(a){a.n(a.i(98421))}];
+
+//# sourceMappingURL=app_layout_jsx_181co3-._.js.map

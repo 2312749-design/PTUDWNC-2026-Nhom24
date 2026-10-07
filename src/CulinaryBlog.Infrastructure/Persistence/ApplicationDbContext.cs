@@ -2,6 +2,7 @@
 using CulinaryBlog.Domain.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using NpgsqlTypes;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
 
@@ -196,6 +197,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<RefreshToken>(entity => {
             entity.ToTable(name: "RefreshTokens");
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.TokenFamilyId).IsRequired().HasMaxLength(64);
+            entity.HasIndex(e => e.TokenHash).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.IsRevoked, e.ExpiresAt });
             entity.HasOne(e => e.User)
                   .WithMany(u => u.RefreshTokens)
                   .HasForeignKey(e => e.UserId)
@@ -213,6 +218,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<Recipe>(entity => {
             entity.ToTable(name: "Recipes");
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.SearchVector)
+                .HasColumnType("tsvector")
+                .HasDefaultValueSql("''::tsvector")
+                .ValueGeneratedOnAddOrUpdate();
+            entity.HasIndex(e => e.SearchVector)
+                .HasMethod("GIN");
 
             entity.HasOne(e => e.Author)
                   .WithMany()

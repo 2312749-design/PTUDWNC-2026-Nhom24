@@ -9,15 +9,20 @@ namespace CulinaryBlog.Application.CQRS.Recipes.Handlers;
 public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerable<RecipeDto>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICacheService _cache;
 
-    public GetRecipesQueryHandler(IApplicationDbContext context)
+    public GetRecipesQueryHandler(IApplicationDbContext context, ICacheService cache)
     {
         _context = context;
+        _cache = cache;
     }
 
     public async Task<IEnumerable<RecipeDto>> Handle(GetRecipesQuery request, CancellationToken cancellationToken)
     {
-        return await _context.Recipes
+        var cached = await _cache.GetAsync<IEnumerable<RecipeDto>>(CacheKeys.Recipes, cancellationToken);
+        if (cached != null) return cached;
+
+        var recipes = await _context.Recipes
             .Include(r => r.Category)
             .Include(r => r.Author)
             .Select(r => new RecipeDto
@@ -38,5 +43,7 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
                 IsVegetarian = r.IsVegetarian
             })
             .ToListAsync(cancellationToken);
+        await _cache.SetAsync(CacheKeys.Recipes, recipes, TimeSpan.FromMinutes(5), cancellationToken);
+        return recipes;
     }
 }

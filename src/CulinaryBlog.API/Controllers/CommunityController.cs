@@ -1,10 +1,11 @@
 using System.Security.Claims;
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.AspNetCore.Hosting;
 
 namespace CulinaryBlog.API.Controllers;
 
@@ -13,11 +14,12 @@ namespace CulinaryBlog.API.Controllers;
 public class CommunityController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
-    private readonly IWebHostEnvironment _environment;
-    public CommunityController(ApplicationDbContext context, IWebHostEnvironment environment)
+    private readonly IFileStorageService _fileStorageService;
+
+    public CommunityController(ApplicationDbContext context, IFileStorageService fileStorageService)
     {
         _context = context;
-        _environment = environment;
+        _fileStorageService = fileStorageService;
     }
 
     [HttpGet("feed")]
@@ -207,16 +209,23 @@ public class CommunityController : ControllerBase
         var maxLength = isVideo ? 50L * 1024 * 1024 : 8L * 1024 * 1024;
         if (file.Length > maxLength) return BadRequest(new { message = isVideo ? "Video tối đa 50 MB." : "Ảnh tối đa 8 MB." });
 
-        var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
-        var uploadFolder = Path.Combine(webRoot, "uploads", "community");
-        Directory.CreateDirectory(uploadFolder);
-        var fileName = $"{Guid.NewGuid():N}{extension}";
-        await using (var stream = new FileStream(Path.Combine(uploadFolder, fileName), FileMode.CreateNew))
+        var fileName = $"community/{Guid.NewGuid():N}{extension}";
+        await using var stream = file.OpenReadStream();
+        var mediaUrl = await _fileStorageService.UploadAsync(stream, fileName, contentType);
+        if (isVideo)
         {
-            await file.CopyToAsync(stream);
+            return Ok(new { mediaUrl, mediaType = "video" });
         }
-        var mediaUrl = $"{Request.Scheme}://{Request.Host}/uploads/community/{fileName}";
-        return Ok(new { mediaUrl, mediaType = isVideo ? "video" : "image" });
+
+        stream.Position = 0;
+        var thumbnailBytes = await ImageThumbnailService.CreateAsync(stream);
+        var thumbnailFileName = $"community/{Guid.NewGuid():N}.webp";
+        await using var thumbnailStream = new MemoryStream(thumbnailBytes);
+        var thumbnailUrl = await _fileStorageService.UploadThumbnailAsync(
+            thumbnailStream,
+            thumbnailFileName,
+            "image/webp");
+        return Ok(new { mediaUrl, thumbnailUrl, mediaType = "image" });
     }
 
     [HttpPut("posts/{id:guid}")]
@@ -295,12 +304,13 @@ public class CommunityController : ControllerBase
         var mediaUrl = post.MediaUrl;
         _context.CommunityPosts.Remove(post);
         await _context.SaveChangesAsync();
-        if (Uri.TryCreate(mediaUrl, UriKind.Absolute, out var mediaUri) && mediaUri.AbsolutePath.StartsWith("/uploads/community/", StringComparison.Ordinal))
+        if (Uri.TryCreate(mediaUrl, UriKind.Absolute, out var mediaUri))
         {
-            var webRoot = _environment.WebRootPath ?? Path.Combine(_environment.ContentRootPath, "wwwroot");
-            var filePath = Path.Combine(webRoot, "uploads", "community", Path.GetFileName(mediaUri.LocalPath));
-            try { if (System.IO.File.Exists(filePath)) System.IO.File.Delete(filePath); }
-            catch (IOException) { }
+            var path = mediaUri.AbsolutePath.TrimStart('/');
+            var objectKey = path.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+                ? path["uploads/".Length..]
+                : string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries).Skip(1));
+            await _fileStorageService.DeleteAsync(objectKey);
         }
         return NoContent();
     }

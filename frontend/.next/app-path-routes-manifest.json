@@ -1,0 +1,12 @@
+{
+  "/[...slug]/page": "/[...slug]",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/categories/page": "/categories",
+  "/community/page": "/community",
+  "/login/page": "/login",
+  "/page": "/",
+  "/recipes/page": "/recipes",
+  "/register/page": "/register",
+  "/sitemap.xml/route": "/sitemap.xml"
+}

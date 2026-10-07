@@ -44,15 +44,13 @@ namespace CulinaryBlog.Infrastructure.Services
             return tokenHandler.WriteToken(token);
         }
 
-        public RefreshToken GenerateRefreshToken(string userId, string ipAddress)
+        public RefreshToken GenerateRefreshToken(string userId, string ipAddress, string? tokenFamilyId = null)
         {
             using var rng = RandomNumberGenerator.Create();
             var randomBytes = new byte[64];
             rng.GetBytes(randomBytes);
             var tokenValue = Convert.ToBase64String(randomBytes);
-
-            // Khởi tạo RefreshToken sử dụng đúng phương thức Create sẵn có trong Domain của bạn
-            return RefreshToken.Create(userId, tokenValue, _jwtSettings.RefreshTokenExpiryDays);
+            return RefreshToken.Create(userId, tokenValue, _jwtSettings.RefreshTokenExpiryDays, tokenFamilyId);
         }
     }
 }

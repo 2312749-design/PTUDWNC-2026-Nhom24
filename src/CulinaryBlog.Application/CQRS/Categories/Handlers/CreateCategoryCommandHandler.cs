@@ -9,10 +9,12 @@ namespace CulinaryBlog.Application.CQRS.Categories.Handlers;
 public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryCommand, CategoryDto>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICacheService _cache;
 
-    public CreateCategoryCommandHandler(IApplicationDbContext context)
+    public CreateCategoryCommandHandler(IApplicationDbContext context, ICacheService cache)
     {
         _context = context;
+        _cache = cache;
     }
 
     public async Task<CategoryDto> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
@@ -27,6 +29,7 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
 
         _context.Categories.Add(category);
         await _context.SaveChangesAsync(cancellationToken);
+        await _cache.RemoveAsync(CacheKeys.Categories, cancellationToken);
 
         return new CategoryDto
         {

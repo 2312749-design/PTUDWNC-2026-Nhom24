@@ -120,7 +120,19 @@ export function CommunityNav() {
     window.addEventListener('auth-session-refreshed', loadAccount)
     return () => window.removeEventListener('auth-session-refreshed', loadAccount)
   }, [])
-  const logout = () => {
+  const logout = async () => {
+    const refreshToken = localStorage.getItem('refreshToken')
+    try {
+      if (refreshToken) {
+        await fetch(`${API}/Auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
+          body: JSON.stringify({ refreshToken }),
+        })
+      }
+    } catch {
+      // The local session is always cleared; the backend may be unavailable.
+    }
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
     navigate('/community')

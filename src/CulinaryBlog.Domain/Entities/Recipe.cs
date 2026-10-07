@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using NpgsqlTypes;
 
 namespace CulinaryBlog.Domain.Entities;
 
@@ -10,6 +11,7 @@ public class Recipe
     public string? Description { get; private set; }
     public string? ImageUrl { get; private set; }
     public List<string> Ingredients { get; private set; } = new();
+    public NpgsqlTsVector SearchVector { get; private set; } = NpgsqlTsVector.Empty;
     public List<string> Instructions { get; private set; } = new();
     public int? CookingTimeMinutes { get; private set; }
     public string Difficulty { get; private set; } = "Trung bình";

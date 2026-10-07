@@ -1,6 +1,7 @@
 ﻿using CulinaryBlog.Application.CQRS.Recipes.Commands;
 using CulinaryBlog.Application.CQRS.Recipes.Queries;
 using CulinaryBlog.Application.DTOs;
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -15,12 +16,14 @@ namespace CulinaryBlog.API.Controllers
     public class RecipesController : ControllerBase
     {
         private readonly IMediator _mediator;
-        private readonly ApplicationDbContext _context; // Vẫn giữ lại tạm thời cho Update/Delete
+        private readonly ApplicationDbContext _context;
+        private readonly ICacheService _cache;
 
-        public RecipesController(IMediator mediator, ApplicationDbContext context)
+        public RecipesController(IMediator mediator, ApplicationDbContext context, ICacheService cache)
         {
             _mediator = mediator;
             _context = context;
+            _cache = cache;
         }
 
         // 1. Lấy danh sách tất cả Recipe thông qua MediatR CQRS Query
@@ -35,6 +38,9 @@ namespace CulinaryBlog.API.Controllers
         [AllowAnonymous]
         public async Task<ActionResult<RecipeDto>> GetRecipeById(Guid id)
         {
+            var cached = await _cache.GetAsync<RecipeDto>(CacheKeys.Recipe(id));
+            if (cached != null) return Ok(cached);
+
             var recipe = await _context.Recipes
                 .Include(r => r.Category)
                 .Include(r => r.Author)
@@ -71,7 +77,7 @@ namespace CulinaryBlog.API.Controllers
                 })
                 .ToListAsync();
 
-            return Ok(new RecipeDto
+            var result = new RecipeDto
             {
                 Id = recipe.Id,
                 Title = recipe.Title,
@@ -89,7 +95,10 @@ namespace CulinaryBlog.API.Controllers
                 CookingTimeMinutes = recipe.CookingTimeMinutes,
                 Difficulty = recipe.Difficulty,
                 IsVegetarian = recipe.IsVegetarian
-            });
+            };
+
+            await _cache.SetAsync(CacheKeys.Recipe(id), result, TimeSpan.FromMinutes(10));
+            return Ok(result);
         }
 
         [HttpPost("{id:guid}/view")]
@@ -185,6 +194,7 @@ namespace CulinaryBlog.API.Controllers
             );
 
             await _context.SaveChangesAsync();
+            await InvalidateCachesAsync(id);
 
             return Ok(new { message = "Cập nhật công thức nấu ăn thành công!" });
         }
@@ -209,8 +219,15 @@ namespace CulinaryBlog.API.Controllers
 
             _context.Recipes.Remove(recipe);
             await _context.SaveChangesAsync();
+            await InvalidateCachesAsync(id);
 
             return Ok(new { message = "Xóa công thức nấu ăn thành công!" });
+        }
+
+        private async Task InvalidateCachesAsync(Guid recipeId, CancellationToken cancellationToken = default)
+        {
+            await _cache.RemoveAsync(CacheKeys.Recipes, cancellationToken);
+            await _cache.RemoveAsync(CacheKeys.Recipe(recipeId), cancellationToken);
         }
     }
 }

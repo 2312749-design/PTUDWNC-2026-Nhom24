@@ -4,9 +4,11 @@ using CulinaryBlog.Infrastructure.Jobs;
 using CulinaryBlog.Infrastructure.Persistence;
 using Google.Apis.Auth;
 using Hangfire;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace CulinaryBlog.API.Controllers
 {
@@ -159,20 +161,47 @@ namespace CulinaryBlog.API.Controllers
                 return BadRequest(new { message = "Refresh token không được để trống." });
             }
 
+            var tokenHash = RefreshToken.Hash(model.RefreshToken);
             var storedToken = await _context.RefreshTokens
                 .Include(token => token.User)
-                .FirstOrDefaultAsync(token => token.Token == model.RefreshToken);
+                .FirstOrDefaultAsync(token => token.TokenHash == tokenHash);
 
-            if (storedToken == null || !storedToken.IsValid() || storedToken.User == null)
+            if (storedToken == null)
             {
                 return Unauthorized(new { message = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
             }
 
-            storedToken.MarkUsed();
+            if (storedToken.ExpiresAt <= DateTime.UtcNow || storedToken.User == null)
+            {
+                return Unauthorized(new { code = "AUTH_REFRESH_TOKEN_EXPIRED", message = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
+            }
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            var consumed = await _context.RefreshTokens
+                .Where(token => token.TokenHash == tokenHash
+                    && !token.IsRevoked
+                    && !token.IsUsed
+                    && token.ExpiresAt > DateTime.UtcNow)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(
+                    token => token.IsUsed,
+                    true));
+
+            if (consumed == 0)
+            {
+                var familyTokens = await _context.RefreshTokens
+                    .Where(token => token.UserId == storedToken.UserId && token.TokenFamilyId == storedToken.TokenFamilyId)
+                    .ToListAsync();
+                familyTokens.ForEach(token => token.Revoke());
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return Unauthorized(new { code = "AUTH_REFRESH_TOKEN_REPLAYED", message = "Phiên đăng nhập đã bị thu hồi do sử dụng lại token." });
+            }
+
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-            var nextRefreshToken = _tokenService.GenerateRefreshToken(storedToken.UserId, ipAddress);
+            var nextRefreshToken = _tokenService.GenerateRefreshToken(storedToken.UserId, ipAddress, storedToken.TokenFamilyId);
             _context.RefreshTokens.Add(nextRefreshToken);
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return Ok(new
             {
@@ -180,6 +209,40 @@ namespace CulinaryBlog.API.Controllers
                 refreshToken = nextRefreshToken.Token,
                 refreshTokenExpires = nextRefreshToken.ExpiresAt
             });
+        }
+
+        [HttpPost("logout")]
+        [Authorize]
+        public async Task<IActionResult> Logout([FromBody] RefreshTokenDto? model)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+
+            IQueryable<RefreshToken> tokens;
+            if (!string.IsNullOrWhiteSpace(model?.RefreshToken))
+            {
+                var tokenHash = RefreshToken.Hash(model.RefreshToken);
+                tokens = _context.RefreshTokens.Where(token =>
+                    token.TokenHash == tokenHash && token.UserId == userId);
+            }
+            else
+            {
+                tokens = _context.RefreshTokens.Where(token => token.UserId == userId);
+            }
+
+            var matchingTokens = await tokens.ToListAsync();
+            if (matchingTokens.Count == 0)
+            {
+                return NoContent();
+            }
+
+            var tokenFamilyIds = matchingTokens.Select(token => token.TokenFamilyId).Distinct().ToList();
+            var familyTokens = await _context.RefreshTokens
+                .Where(token => token.UserId == userId && tokenFamilyIds.Contains(token.TokenFamilyId))
+                .ToListAsync();
+            familyTokens.ForEach(token => token.Revoke());
+            await _context.SaveChangesAsync();
+            return NoContent();
         }
 
         // POST: api/auth/google-login
