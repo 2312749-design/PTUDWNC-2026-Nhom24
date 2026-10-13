@@ -55,6 +55,8 @@ Next.js server-side fetches and its `/api/*` rewrite.
 ## API security and documentation
 
 - API routes use URL-segment versioning, currently `/api/v1`.
+- Ingredient and recipe-step create/update/delete operations are handled by
+  application commands.
 - `POST /api/v1/auth/register` creates an author account; `POST
   /api/v1/auth/login` returns a short-lived JWT bearer token. Passwords are
   hashed with ASP.NET Core's versioned password hasher.

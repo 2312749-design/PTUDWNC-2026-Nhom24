@@ -6,6 +6,7 @@ using CulinaryBlog.Api.Middleware;
 using CulinaryBlog.Api.OpenApi;
 using CulinaryBlog.Application.Abstractions;
 using CulinaryBlog.Application.Abstractions.Repositories;
+using CulinaryBlog.Application.Commands;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Persistence.Repositories;
@@ -27,6 +28,7 @@ builder.Services.AddScoped<IRecipeIngredientRepository, RecipeIngredientReposito
 builder.Services.AddScoped<IRecipeStepRepository, RecipeStepRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IPasswordHasher<BlogUser>, PasswordHasher<BlogUser>>();
+builder.Services.AddScoped<RecipeContentCommandHandler>();
 
 var issuer = builder.Configuration["Jwt:Issuer"] ?? "CulinaryBlog.Api";
 var audience = builder.Configuration["Jwt:Audience"] ?? "CulinaryBlog.Web";

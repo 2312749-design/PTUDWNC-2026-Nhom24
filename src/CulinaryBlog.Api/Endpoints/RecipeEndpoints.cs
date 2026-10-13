@@ -1,5 +1,6 @@
 using CulinaryBlog.Api.Endpoints.Requests;
 using CulinaryBlog.Application.Abstractions;
+using CulinaryBlog.Application.Commands;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
 using System.Security.Claims;
@@ -96,24 +97,20 @@ public static class RecipeEndpoints
             Guid id,
             CreateIngredientRequest request,
             IUnitOfWork unitOfWork,
+            RecipeContentCommandHandler handler,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
-
-            var ingredient = new RecipeIngredient
-            {
-                Id = Guid.NewGuid(),
-                RecipeId = id,
-                Name = request.Name,
-                Quantity = request.Quantity,
-                Unit = request.Unit,
-                Notes = request.Notes,
-                OrderIndex = request.OrderIndex
-            };
-            unitOfWork.RecipeIngredients.Add(ingredient);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-
+            var ingredient = await handler.HandleAsync(
+                new AddRecipeIngredientCommand(
+                    id,
+                    request.Name,
+                    request.Quantity,
+                    request.Unit,
+                    request.Notes,
+                    request.OrderIndex),
+                cancellationToken);
             return Results.Created(
                 $"/api/v1/recipes/{id}/ingredients/{ingredient.Id}",
                 ingredient);
@@ -139,23 +136,21 @@ public static class RecipeEndpoints
             Guid ingredientId,
             UpdateIngredientRequest request,
             IUnitOfWork unitOfWork,
+            RecipeContentCommandHandler handler,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
-            var ingredient = await unitOfWork.RecipeIngredients.GetByIdAsync(
-                id,
-                ingredientId,
-                trackChanges: true,
-                cancellationToken) ?? throw new NotFoundException("Không tìm thấy nguyên liệu.");
-
-            ingredient.Name = request.Name;
-            ingredient.Quantity = request.Quantity;
-            ingredient.Unit = request.Unit;
-            ingredient.Notes = request.Notes;
-            ingredient.OrderIndex = request.OrderIndex;
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-
+            var ingredient = await handler.HandleAsync(
+                new UpdateRecipeIngredientCommand(
+                    id,
+                    ingredientId,
+                    request.Name,
+                    request.Quantity,
+                    request.Unit,
+                    request.Notes,
+                    request.OrderIndex),
+                cancellationToken);
             return Results.Ok(ingredient);
         }).RequireAuthorization("Author");
 
@@ -163,18 +158,14 @@ public static class RecipeEndpoints
             Guid id,
             Guid ingredientId,
             IUnitOfWork unitOfWork,
+            RecipeContentCommandHandler handler,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
-            var ingredient = await unitOfWork.RecipeIngredients.GetByIdAsync(
-                id,
-                ingredientId,
-                trackChanges: true,
-                cancellationToken) ?? throw new NotFoundException("Không tìm thấy nguyên liệu.");
-
-            unitOfWork.RecipeIngredients.Remove(ingredient);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+            await handler.HandleAsync(
+                new DeleteRecipeIngredientCommand(id, ingredientId),
+                cancellationToken);
 
             return Results.Ok(new { message = "Xóa nguyên liệu thành công." });
         }).RequireAuthorization("Author");
@@ -255,6 +246,7 @@ public static class RecipeEndpoints
             Guid recipeId,
             CreateStepRequest request,
             IUnitOfWork unitOfWork,
+            RecipeContentCommandHandler handler,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -264,21 +256,14 @@ public static class RecipeEndpoints
                 user,
                 cancellationToken);
 
-            var step = new RecipeStep
-            {
-                Id = Guid.NewGuid(),
-                RecipeId = recipeId,
-                StepNumber = await unitOfWork.RecipeSteps.GetNextStepNumberAsync(
+            var step = await handler.HandleAsync(
+                new AddRecipeStepCommand(
                     recipeId,
-                    cancellationToken),
-                Title = request.Title,
-                Description = request.Description,
-                TimerMinutes = request.TimerMinutes,
-                ImageUrl = request.ImageUrl
-            };
-            unitOfWork.RecipeSteps.Add(step);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-
+                    request.Title,
+                    request.Description,
+                    request.TimerMinutes,
+                    request.ImageUrl),
+                cancellationToken);
             return Results.Created($"/api/v1/recipes/{recipeId}/steps/{step.Id}", step);
         }).RequireAuthorization("Author");
 
@@ -302,6 +287,7 @@ public static class RecipeEndpoints
             Guid stepId,
             UpdateStepRequest request,
             IUnitOfWork unitOfWork,
+            RecipeContentCommandHandler handler,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -310,18 +296,15 @@ public static class RecipeEndpoints
                 recipeId,
                 user,
                 cancellationToken);
-            var step = await unitOfWork.RecipeSteps.GetByIdAsync(
-                recipeId,
-                stepId,
-                trackChanges: true,
-                cancellationToken) ?? throw new NotFoundException("Không tìm thấy bước làm.");
-
-            step.Title = request.Title;
-            step.Description = request.Description;
-            step.TimerMinutes = request.TimerMinutes;
-            step.ImageUrl = request.ImageUrl;
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-
+            var step = await handler.HandleAsync(
+                new UpdateRecipeStepCommand(
+                    recipeId,
+                    stepId,
+                    request.Title,
+                    request.Description,
+                    request.TimerMinutes,
+                    request.ImageUrl),
+                cancellationToken);
             return Results.Ok(step);
         }).RequireAuthorization("Author");
 
@@ -329,6 +312,7 @@ public static class RecipeEndpoints
             Guid recipeId,
             Guid stepId,
             IUnitOfWork unitOfWork,
+            RecipeContentCommandHandler handler,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
@@ -337,24 +321,9 @@ public static class RecipeEndpoints
                 recipeId,
                 user,
                 cancellationToken);
-            var step = await unitOfWork.RecipeSteps.GetByIdAsync(
-                recipeId,
-                stepId,
-                trackChanges: true,
-                cancellationToken) ?? throw new NotFoundException("Không tìm thấy bước làm.");
-            var remainingSteps = await unitOfWork.RecipeSteps.GetByRecipeAsync(
-                recipeId,
-                trackChanges: true,
+            await handler.HandleAsync(
+                new DeleteRecipeStepCommand(recipeId, stepId),
                 cancellationToken);
-
-            unitOfWork.RecipeSteps.Remove(step);
-            var stepNumber = 1;
-            foreach (var remainingStep in remainingSteps.Where(item => item.Id != stepId))
-            {
-                remainingStep.StepNumber = stepNumber++;
-            }
-
-            await unitOfWork.SaveChangesAsync(cancellationToken);
             return Results.NoContent();
         }).RequireAuthorization("Author");
 
