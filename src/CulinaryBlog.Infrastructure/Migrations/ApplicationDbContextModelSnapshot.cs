@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using NpgsqlTypes;
 
 #nullable disable
 
@@ -22,15 +23,47 @@ namespace CulinaryBlog.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("CulinaryBlog.Domain.Entities.Recipe", b =>
+            modelBuilder.Entity("CulinaryBlog.Domain.Entities.BlogUser", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
-                        .HasColumnType("tsvector")
-                        .HasComputedColumnSql("to_tsvector('simple'::regconfig, coalesce(\"Title\", '') || ' ' || coalesce(\"Description\", ''))", true);
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.ToTable("BlogUsers");
+                });
+
+            modelBuilder.Entity("CulinaryBlog.Domain.Entities.Recipe", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AuthorId")
                         .HasColumnType("uuid");
@@ -52,6 +85,12 @@ namespace CulinaryBlog.Infrastructure.Migrations
                     b.Property<string>("Difficulty")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<NpgsqlTsVector>("SearchVector")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tsvector")
+                        .HasColumnName("SearchVector")
+                        .HasComputedColumnSql("to_tsvector('simple'::regconfig, coalesce(\"Title\", '') || ' ' || coalesce(\"Description\", ''))", true);
 
                     b.Property<int>("Servings")
                         .HasColumnType("integer");
@@ -75,8 +114,9 @@ namespace CulinaryBlog.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SearchVector")
-                        .HasMethod("GIN");
+                    b.HasIndex("SearchVector");
+
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
 
                     b.ToTable("Recipes");
                 });

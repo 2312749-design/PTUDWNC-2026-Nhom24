@@ -23,12 +23,15 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
         CancellationToken cancellationToken = default)
     {
         var query = dbContext.Recipes.AsQueryable();
+
         if (!trackChanges)
         {
             query = query.AsNoTracking();
         }
 
-        return query.FirstOrDefaultAsync(recipe => recipe.Id == id, cancellationToken);
+        return query.FirstOrDefaultAsync(
+            recipe => recipe.Id == id,
+            cancellationToken);
     }
 
     public Task<Recipe?> GetPublishedBySlugAsync(
@@ -38,7 +41,8 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
         return dbContext.Recipes
             .AsNoTracking()
             .FirstOrDefaultAsync(
-                recipe => recipe.Slug == slug && recipe.Status == "Published",
+                recipe => recipe.Slug == slug &&
+                          recipe.Status == "Published",
                 cancellationToken);
     }
 
@@ -48,32 +52,39 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var terms = keyword
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(term => string.Concat(term.Where(char.IsLetterOrDigit)))
-            .Where(term => term.Length > 0)
-            .Select(term => $"{term}:*")
-            .ToArray();
-        if (terms.Length == 0)
+        if (string.IsNullOrWhiteSpace(keyword))
         {
-            throw new ValidationException("Từ khóa tìm kiếm không chứa ký tự hợp lệ.");
+            throw new ValidationException(
+                "Từ khóa tìm kiếm không được để trống.");
         }
 
-        var tsQuery = string.Join(" & ", terms);
+        if (page < 1)
+        {
+            throw new ValidationException(
+                "Trang phải lớn hơn hoặc bằng 1.");
+        }
+
+        if (pageSize < 1)
+        {
+            throw new ValidationException(
+                "Kích thước trang phải lớn hơn hoặc bằng 1.");
+        }
+
+        var tsQuery = EF.Functions.PlainToTsQuery(
+            "simple",
+            keyword.Trim());
 
         var query = dbContext.Recipes
-            .FromSqlInterpolated($@"
-                SELECT *
-                FROM ""Recipes""
-                WHERE ""Status"" = 'Published'
-                  AND ""SearchVector"" @@ to_tsquery(
-                        'simple',
-                        {tsQuery}
-                  )
-            ")
-            .AsNoTracking();
+            .AsNoTracking()
+            .Where(recipe =>
+                recipe.Status == "Published" &&
+                EF.Property<NpgsqlTypes.NpgsqlTsVector>(
+                    recipe,
+                    "SearchVector")
+                    .Matches(tsQuery));
 
         var total = await query.CountAsync(cancellationToken);
+
         var recipes = await query
             .OrderByDescending(recipe => recipe.CreatedAt)
             .Skip((page - 1) * pageSize)

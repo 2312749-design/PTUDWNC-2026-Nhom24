@@ -22,6 +22,10 @@ public sealed class GlobalExceptionHandlingMiddleware(
         {
             var (status, title, detail) = exception switch
             {
+                ForbiddenException => (
+                    StatusCodes.Status403Forbidden,
+                    "Forbidden",
+                    exception.Message),
                 NotFoundException => (
                     StatusCodes.Status404NotFound,
                     "Resource not found",

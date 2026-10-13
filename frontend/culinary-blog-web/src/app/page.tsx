@@ -2,17 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getRecipes, searchRecipes } from "@/lib/api";
-
-type Recipe = {
-id: string;
-title: string;
-slug: string;
-description: string;
-cookTimeMinutes: number;
-servings: number;
-difficulty: string;
-status: string;
-};
+import type { Recipe } from "@/types/recipe";
 
 export default function Home() {
 const [recipes, setRecipes] = useState<Recipe[]>([]);

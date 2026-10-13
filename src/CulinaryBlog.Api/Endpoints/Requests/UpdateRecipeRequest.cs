@@ -10,5 +10,4 @@ public class UpdateRecipeRequest
     public string Difficulty { get; set; } = string.Empty;
     public string Status { get; set; } = "Draft";
     public Guid CategoryId { get; set; }
-    public Guid AuthorId { get; set; }
 }

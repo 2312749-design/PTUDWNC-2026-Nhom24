@@ -9,5 +9,4 @@ public class CreateRecipeRequest
     public int Servings { get; set; }
     public string Difficulty { get; set; } = string.Empty;
     public Guid CategoryId { get; set; }
-    public Guid AuthorId { get; set; }
 }

@@ -1,56 +1,5 @@
-type Recipe = {
-  id: string;
-  title: string;
-  slug: string;
-  description: string;
-  cookTimeMinutes: number;
-  servings: number;
-  difficulty: string;
-  status: string;
-};
-
-type Ingredient = {
-  id: string;
-  name: string;
-  quantity: number | null;
-  unit: string | null;
-  notes: string | null;
-  orderIndex: number;
-};
-
-type Step = {
-  id: string;
-  stepNumber: number;
-  title: string;
-  description: string;
-  timerMinutes: number | null;
-  imageUrl: string | null;
-};
-
-type RecipeDetailResponse = {
-  data: {
-    recipe: Recipe;
-    ingredients: Ingredient[];
-    steps: Step[];
-  };
-};
-
-async function getRecipeBySlug(
-  slug: string
-): Promise<RecipeDetailResponse> {
-  const response = await fetch(
-    `http://localhost:5217/api/v1/recipes/slug/${slug}`,
-    {
-      cache: "no-store",
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error("Không tìm thấy công thức");
-  }
-
-  return response.json();
-}
+import { getRecipeBySlug } from "@/lib/api";
+import Link from "next/link";
 
 export default async function RecipeDetailPage({
   params,
@@ -59,26 +8,26 @@ export default async function RecipeDetailPage({
 }) {
   const { slug } = await params;
 
-  const result = await getRecipeBySlug(slug);
-  const { recipe, ingredients, steps } = result.data;
+  const { data } = await getRecipeBySlug(slug);
+  const { recipe, ingredients, steps } = data;
 
   return (
     <main className="min-h-screen bg-orange-50 text-gray-800">
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <a
+          <Link
             href="/"
             className="text-2xl font-bold text-orange-600"
           >
             🍳 Culinary Blog
-          </a>
+          </Link>
 
-          <a
+          <Link
             href="/"
             className="font-medium text-gray-600 hover:text-orange-600"
           >
             ← Về trang chủ
-          </a>
+          </Link>
         </div>
       </header>
 

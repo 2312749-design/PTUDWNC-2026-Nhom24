@@ -13,6 +13,8 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<Recipe> Recipes => Set<Recipe>();
 
+    public DbSet<BlogUser> BlogUsers => Set<BlogUser>();
+
     public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
 
     public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
@@ -20,6 +22,29 @@ public class ApplicationDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<BlogUser>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Email)
+                .IsRequired()
+                .HasMaxLength(320);
+
+            entity.HasIndex(x => x.Email)
+                .IsUnique();
+
+            entity.Property(x => x.DisplayName)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.PasswordHash)
+                .IsRequired();
+
+            entity.Property(x => x.Role)
+                .IsRequired()
+                .HasMaxLength(50);
+        });
 
         modelBuilder.Entity<Recipe>(entity =>
         {

@@ -2,14 +2,17 @@ using CulinaryBlog.Api.Endpoints.Requests;
 using CulinaryBlog.Application.Abstractions;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
+using System.Security.Claims;
 
 namespace CulinaryBlog.Api.Endpoints;
 
 public static class RecipeEndpoints
 {
-    public static void MapRecipeEndpoints(this WebApplication app)
+    public static void MapRecipeEndpoints(this RouteGroupBuilder apiV1)
     {
-        app.MapGet("/api/v1/recipes", async (
+        var recipes = apiV1.MapGroup("/recipes").WithTags("Recipes");
+
+        recipes.MapGet("/", async (
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
@@ -17,7 +20,7 @@ public static class RecipeEndpoints
             return Results.Ok(new { data = recipes });
         });
 
-        app.MapGet("/api/v1/recipes/search", async (
+        recipes.MapGet("/search", async (
             string? q,
             int page,
             int pageSize,
@@ -51,7 +54,7 @@ public static class RecipeEndpoints
             });
         });
 
-        app.MapGet("/api/v1/recipes/{id:guid}", async (
+        recipes.MapGet("/{id:guid}", async (
             Guid id,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
@@ -62,7 +65,7 @@ public static class RecipeEndpoints
             return Results.Ok(recipe ?? throw new NotFoundException("Không tìm thấy công thức."));
         });
 
-        app.MapGet("/api/v1/recipes/slug/{slug}", async (
+        recipes.MapGet("/slug/{slug}", async (
             string slug,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
@@ -79,7 +82,7 @@ public static class RecipeEndpoints
             return Results.Ok(new { data = new { recipe, ingredients, steps } });
         });
 
-        app.MapGet("/api/v1/recipes/{id:guid}/ingredients", async (
+        recipes.MapGet("/{id:guid}/ingredients", async (
             Guid id,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
@@ -89,13 +92,14 @@ public static class RecipeEndpoints
             return Results.Ok(new { data = ingredients });
         });
 
-        app.MapPost("/api/v1/recipes/{id:guid}/ingredients", async (
+        recipes.MapPost("/{id:guid}/ingredients", async (
             Guid id,
             CreateIngredientRequest request,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            await GetRecipeOrThrowAsync(unitOfWork, id, cancellationToken);
+            await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
 
             var ingredient = new RecipeIngredient
             {
@@ -113,9 +117,9 @@ public static class RecipeEndpoints
             return Results.Created(
                 $"/api/v1/recipes/{id}/ingredients/{ingredient.Id}",
                 ingredient);
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapGet("/api/v1/recipes/{id:guid}/ingredients/{ingredientId:guid}", async (
+        recipes.MapGet("/{id:guid}/ingredients/{ingredientId:guid}", async (
             Guid id,
             Guid ingredientId,
             IUnitOfWork unitOfWork,
@@ -130,13 +134,15 @@ public static class RecipeEndpoints
             return Results.Ok(ingredient);
         });
 
-        app.MapPut("/api/v1/recipes/{id:guid}/ingredients/{ingredientId:guid}", async (
+        recipes.MapPut("/{id:guid}/ingredients/{ingredientId:guid}", async (
             Guid id,
             Guid ingredientId,
             UpdateIngredientRequest request,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
             var ingredient = await unitOfWork.RecipeIngredients.GetByIdAsync(
                 id,
                 ingredientId,
@@ -151,14 +157,16 @@ public static class RecipeEndpoints
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(ingredient);
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapDelete("/api/v1/recipes/{id:guid}/ingredients/{ingredientId:guid}", async (
+        recipes.MapDelete("/{id:guid}/ingredients/{ingredientId:guid}", async (
             Guid id,
             Guid ingredientId,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
             var ingredient = await unitOfWork.RecipeIngredients.GetByIdAsync(
                 id,
                 ingredientId,
@@ -169,11 +177,12 @@ public static class RecipeEndpoints
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(new { message = "Xóa nguyên liệu thành công." });
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapPost("/api/v1/recipes", async (
+        recipes.MapPost("/", async (
             CreateRecipeRequest request,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
             var recipe = new Recipe
@@ -186,7 +195,7 @@ public static class RecipeEndpoints
                 Servings = request.Servings,
                 Difficulty = request.Difficulty,
                 CategoryId = request.CategoryId,
-                AuthorId = request.AuthorId,
+                AuthorId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -194,18 +203,21 @@ public static class RecipeEndpoints
             unitOfWork.Recipes.Add(recipe);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             return Results.Created($"/api/v1/recipes/{recipe.Id}", recipe);
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapPut("/api/v1/recipes/{id:guid}", async (
+        recipes.MapPut("/{id:guid}", async (
             Guid id,
             UpdateRecipeRequest request,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            var recipe = await unitOfWork.Recipes.GetByIdAsync(
+            var recipe = await GetOwnedRecipeOrThrowAsync(
+                unitOfWork,
                 id,
-                trackChanges: true,
-                cancellationToken) ?? throw new NotFoundException("Không tìm thấy công thức.");
+                user,
+                cancellationToken,
+                trackChanges: true);
 
             recipe.Title = request.Title;
             recipe.Slug = request.Slug;
@@ -215,35 +227,42 @@ public static class RecipeEndpoints
             recipe.Difficulty = request.Difficulty;
             recipe.Status = request.Status;
             recipe.CategoryId = request.CategoryId;
-            recipe.AuthorId = request.AuthorId;
             recipe.UpdatedAt = DateTime.UtcNow;
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(recipe);
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapDelete("/api/v1/recipes/{id:guid}", async (
+        recipes.MapDelete("/{id:guid}", async (
             Guid id,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            var recipe = await unitOfWork.Recipes.GetByIdAsync(
+            var recipe = await GetOwnedRecipeOrThrowAsync(
+                unitOfWork,
                 id,
-                trackChanges: true,
-                cancellationToken) ?? throw new NotFoundException("Không tìm thấy công thức.");
+                user,
+                cancellationToken,
+                trackChanges: true);
 
             unitOfWork.Recipes.Remove(recipe);
             await unitOfWork.SaveChangesAsync(cancellationToken);
             return Results.Ok(new { message = "Xóa công thức thành công." });
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapPost("/api/v1/recipes/{recipeId:guid}/steps", async (
+        recipes.MapPost("/{recipeId:guid}/steps", async (
             Guid recipeId,
             CreateStepRequest request,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
-            await GetRecipeOrThrowAsync(unitOfWork, recipeId, cancellationToken);
+            await GetOwnedRecipeOrThrowAsync(
+                unitOfWork,
+                recipeId,
+                user,
+                cancellationToken);
 
             var step = new RecipeStep
             {
@@ -261,9 +280,9 @@ public static class RecipeEndpoints
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Created($"/api/v1/recipes/{recipeId}/steps/{step.Id}", step);
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapGet("/api/v1/recipes/{recipeId:guid}/steps/{stepId:guid}", async (
+        recipes.MapGet("/{recipeId:guid}/steps/{stepId:guid}", async (
             Guid recipeId,
             Guid stepId,
             IUnitOfWork unitOfWork,
@@ -278,13 +297,19 @@ public static class RecipeEndpoints
             return Results.Ok(step);
         });
 
-        app.MapPut("/api/v1/recipes/{recipeId:guid}/steps/{stepId:guid}", async (
+        recipes.MapPut("/{recipeId:guid}/steps/{stepId:guid}", async (
             Guid recipeId,
             Guid stepId,
             UpdateStepRequest request,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            await GetOwnedRecipeOrThrowAsync(
+                unitOfWork,
+                recipeId,
+                user,
+                cancellationToken);
             var step = await unitOfWork.RecipeSteps.GetByIdAsync(
                 recipeId,
                 stepId,
@@ -298,14 +323,20 @@ public static class RecipeEndpoints
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             return Results.Ok(step);
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapDelete("/api/v1/recipes/{recipeId:guid}/steps/{stepId:guid}", async (
+        recipes.MapDelete("/{recipeId:guid}/steps/{stepId:guid}", async (
             Guid recipeId,
             Guid stepId,
             IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            await GetOwnedRecipeOrThrowAsync(
+                unitOfWork,
+                recipeId,
+                user,
+                cancellationToken);
             var step = await unitOfWork.RecipeSteps.GetByIdAsync(
                 recipeId,
                 stepId,
@@ -325,9 +356,9 @@ public static class RecipeEndpoints
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
             return Results.NoContent();
-        });
+        }).RequireAuthorization("Author");
 
-        app.MapGet("/api/v1/recipes/{recipeId:guid}/steps", async (
+        recipes.MapGet("/{recipeId:guid}/steps", async (
             Guid recipeId,
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
@@ -349,5 +380,27 @@ public static class RecipeEndpoints
             recipeId,
             cancellationToken: cancellationToken)
             ?? throw new NotFoundException("Không tìm thấy công thức.");
+    }
+
+    private static async Task<Recipe> GetOwnedRecipeOrThrowAsync(
+        IUnitOfWork unitOfWork,
+        Guid recipeId,
+        ClaimsPrincipal user,
+        CancellationToken cancellationToken,
+        bool trackChanges = false)
+    {
+        var recipe = await unitOfWork.Recipes.GetByIdAsync(
+            recipeId,
+            trackChanges,
+            cancellationToken)
+            ?? throw new NotFoundException("Không tìm thấy công thức.");
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userId, out var authorId) || recipe.AuthorId != authorId)
+        {
+            throw new ForbiddenException(
+                "Bạn không có quyền thay đổi công thức này.");
+        }
+
+        return recipe;
     }
 }
