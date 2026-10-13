@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getRecipes, searchRecipes } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { getRecipes } from "@/lib/api";
 import type { Recipe } from "@/types/recipe";
 
 export default function Home() {
+const router = useRouter();
 const [recipes, setRecipes] = useState<Recipe[]>([]);
 const [keyword, setKeyword] = useState("");
 const [loading, setLoading] = useState(true);
-const [searching, setSearching] = useState(false);
 const [error, setError] = useState("");
 
 // Lấy danh sách công thức khi mở trang
@@ -33,46 +34,13 @@ loadRecipes();
 }, []);
 
 // Tìm kiếm công thức
-async function handleSearch() {
+function handleSearch() {
 const value = keyword.trim();
-
-if (!value) {
-  try {
-    setLoading(true);
-    setError("");
-
-    const result = await getRecipes();
-
-    setRecipes(result.data ?? []);
-  } catch (err) {
-    console.error(err);
-    setError("Không thể tải danh sách công thức.");
-  } finally {
-    setLoading(false);
-  }
-
-  return;
-}
-
 if (value.length < 2) {
   setError("Từ khóa tìm kiếm phải có ít nhất 2 ký tự.");
   return;
 }
-
-try {
-  setSearching(true);
-  setError("");
-
-  const result = await searchRecipes(value, 1, 10);
-
-  setRecipes(result.data ?? []);
-} catch (err) {
-  console.error(err);
-  setError("Không thể tìm kiếm công thức.");
-} finally {
-  setSearching(false);
-}
-
+router.push(`/search?q=${encodeURIComponent(value)}`);
 }
 
 // Nhấn Enter để tìm kiếm
@@ -156,10 +124,9 @@ return (
 
         <button
           onClick={handleSearch}
-          disabled={searching}
           className="bg-gray-900 px-7 font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {searching ? "Đang tìm..." : "Tìm kiếm"}
+          Tìm kiếm
         </button>
       </div>
     </div>

@@ -90,7 +90,7 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("tsvector")
                         .HasColumnName("SearchVector")
-                        .HasComputedColumnSql("to_tsvector('simple'::regconfig, coalesce(\"Title\", '') || ' ' || coalesce(\"Description\", ''))", true);
+                        .HasComputedColumnSql("to_tsvector('simple'::regconfig, public.immutable_unaccent(coalesce(\"Title\", '') || ' ' || coalesce(\"Description\", '')))", true);
 
                     b.Property<int>("Servings")
                         .HasColumnType("integer");

@@ -70,10 +70,6 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
                 "Kích thước trang phải lớn hơn hoặc bằng 1.");
         }
 
-        var tsQuery = EF.Functions.PlainToTsQuery(
-            "simple",
-            keyword.Trim());
-
         var query = dbContext.Recipes
             .AsNoTracking()
             .Where(recipe =>
@@ -81,7 +77,9 @@ public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRe
                 EF.Property<NpgsqlTypes.NpgsqlTsVector>(
                     recipe,
                     "SearchVector")
-                    .Matches(tsQuery));
+                    .Matches(EF.Functions.PlainToTsQuery(
+                        "simple",
+                        EF.Functions.Unaccent("unaccent", keyword.Trim()))));
 
         var total = await query.CountAsync(cancellationToken);
 
