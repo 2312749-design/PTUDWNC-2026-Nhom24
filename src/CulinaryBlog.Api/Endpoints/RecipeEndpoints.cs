@@ -1,5 +1,6 @@
 using CulinaryBlog.Api.Endpoints.Requests;
 using CulinaryBlog.Application.Abstractions;
+using CulinaryBlog.Application.Queries;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
 using System.Security.Claims;
@@ -24,34 +25,13 @@ public static class RecipeEndpoints
             string? q,
             int page,
             int pageSize,
-            IUnitOfWork unitOfWork,
+            SearchRecipesQueryHandler handler,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
-            {
-                throw new ValidationException("Từ khóa tìm kiếm phải có ít nhất 2 ký tự.");
-            }
-
-            page = Math.Max(page, 1);
-            pageSize = pageSize is < 1 or > 100 ? 10 : pageSize;
-
-            var (recipes, total) = await unitOfWork.Recipes.SearchPublishedAsync(
-                q.Trim(),
-                page,
-                pageSize,
+            var result = await handler.HandleAsync(
+                new SearchRecipesQuery(q ?? string.Empty, page, pageSize),
                 cancellationToken);
-
-            return Results.Ok(new
-            {
-                data = recipes,
-                pagination = new
-                {
-                    page,
-                    pageSize,
-                    total,
-                    totalPages = (int)Math.Ceiling(total / (double)pageSize)
-                }
-            });
+            return Results.Ok(result);
         });
 
         recipes.MapGet("/{id:guid}", async (

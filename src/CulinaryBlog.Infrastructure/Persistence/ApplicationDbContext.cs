@@ -66,7 +66,7 @@ public class ApplicationDbContext : DbContext
                 .HasColumnName("SearchVector")
                 .HasColumnType("tsvector")
                 .HasComputedColumnSql(
-                    """to_tsvector('simple'::regconfig, coalesce("Title", '') || ' ' || coalesce("Description", ''))""",
+                    """to_tsvector('simple'::regconfig, public.immutable_unaccent(coalesce("Title", '') || ' ' || coalesce("Description", '')))""",
                     stored: true);
             entity.HasIndex("SearchVector").HasMethod("GIN");
 

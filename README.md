@@ -55,6 +55,11 @@ Next.js server-side fetches and its `/api/*` rewrite.
 ## API security and documentation
 
 - API routes use URL-segment versioning, currently `/api/v1`.
+- Recipe search uses a validated query handler and returns `items`, `totalCount`,
+  `page`, and `totalPages`.
+- PostgreSQL recipe search uses the `unaccent` extension, a stored generated
+  `SearchVector`, and a GIN index. Apply the `AddAccentInsensitiveRecipeSearch`
+  migration before using the accent-insensitive search query.
 - `POST /api/v1/auth/register` creates an author account; `POST
   /api/v1/auth/login` returns a short-lived JWT bearer token. Passwords are
   hashed with ASP.NET Core's versioned password hasher.
