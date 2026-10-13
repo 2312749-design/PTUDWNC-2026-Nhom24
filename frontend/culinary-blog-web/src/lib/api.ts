@@ -1,4 +1,4 @@
-import type { ApiResponse, PaginatedApiResponse } from "@/types/api";
+import type { ApiResponse, PaginatedResult } from "@/types/api";
 import type {
   AuthResponse,
   LoginRequest,
@@ -47,7 +47,7 @@ export function searchRecipes(
   keyword: string,
   page = 1,
   pageSize = 10,
-): Promise<PaginatedApiResponse<Recipe>> {
+): Promise<PaginatedResult<Recipe>> {
   const params = new URLSearchParams({
     q: keyword,
     page: page.toString(),

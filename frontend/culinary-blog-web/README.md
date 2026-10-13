@@ -19,6 +19,7 @@ the frontend origin through its `Cors:AllowedOrigins` configuration.
 - `src/app/` — App Router pages, layouts, and global styles.
 - `src/lib/api.ts` — typed API client for recipes and authentication.
 - `src/types/` — shared API, recipe, and authentication contracts.
+- `src/app/search/` — `/search` recipe discovery page backed by TanStack Query.
 
 Run `npm run lint`, `npm run typecheck`, and `npm run build` before publishing.
 See the repository [README](../../README.md) for backend setup and API security.
