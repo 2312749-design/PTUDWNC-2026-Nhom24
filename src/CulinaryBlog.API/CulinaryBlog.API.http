@@ -9,3 +9,67 @@ GET {{CulinaryBlog.API_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
+
+@api = {{CulinaryBlog.API_HostAddress}}/api/v1
+@accessToken = replace-with-access-token
+@recipeId = replace-with-recipe-guid
+@recipeSlug = replace-with-recipe-slug
+
+### Public recipes only returns Published recipes
+GET {{api}}/recipes
+Accept: application/json
+
+### Public recipe by slug
+GET {{api}}/recipes/slug/{{recipeSlug}}
+Accept: application/json
+
+### Create a Draft recipe
+POST {{api}}/recipes
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+	"title": "Roasted vegetable bowl",
+	"description": "A weeknight bowl with seasonal vegetables.",
+	"categoryId": "00000000-0000-0000-0000-000000000001",
+	"prepTimeMinutes": 15,
+	"cookTimeMinutes": 25,
+	"servings": 2,
+	"difficulty": "Easy",
+	"ingredients": ["200 g chickpeas"],
+	"instructions": ["Roast the vegetables until tender."],
+	"recipeIngredients": [
+		{ "name": "Chickpeas", "quantity": "200", "unit": "g", "notes": "Drained", "orderIndex": 1 }
+	],
+	"recipeSteps": [
+		{ "title": null, "description": "Roast the vegetables until tender.", "timerMinutes": 25 }
+	],
+	"nutrition": { "calories": 420, "protein": 18, "carbohydrates": 55, "fat": 12, "fiber": 11, "sodium": 340 }
+}
+
+### Publish after ingredient and step validation
+POST {{api}}/recipes/{{recipeId}}/publish
+Authorization: Bearer {{accessToken}}
+
+### Nutrition PATCH: omitted keeps, null clears, object replaces
+PATCH {{api}}/recipes/{{recipeId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{ "nutrition": { "calories": 450, "protein": 20, "carbohydrates": 52, "fat": 14, "fiber": 12, "sodium": 310 } }
+
+### Unpublish
+POST {{api}}/recipes/{{recipeId}}/unpublish
+Authorization: Bearer {{accessToken}}
+
+### Archive
+POST {{api}}/recipes/{{recipeId}}/archive
+Authorization: Bearer {{accessToken}}
+
+### Restore Archived recipe to Draft
+POST {{api}}/recipes/{{recipeId}}/restore
+Authorization: Bearer {{accessToken}}
+
+### Soft delete
+DELETE {{api}}/recipes/{{recipeId}}
+Authorization: Bearer {{accessToken}}

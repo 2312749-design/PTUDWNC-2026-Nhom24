@@ -2,16 +2,19 @@
 using CulinaryBlog.Application.CQRS.Recipes.Queries;
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace CulinaryBlog.API.Controllers
 {
     [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     [ApiController]
     public class RecipesController : ControllerBase
     {
@@ -34,71 +37,65 @@ namespace CulinaryBlog.API.Controllers
             return Ok(result);
         }
 
-        [HttpGet("{id}")]
+        [HttpGet("{id:guid}")]
         [AllowAnonymous]
         public async Task<ActionResult<RecipeDto>> GetRecipeById(Guid id)
         {
             var cached = await _cache.GetAsync<RecipeDto>(CacheKeys.Recipe(id));
-            if (cached != null) return Ok(cached);
+            if (cached?.Status == RecipeStatus.Published) return Ok(cached);
 
             var recipe = await _context.Recipes
                 .Include(r => r.Category)
                 .Include(r => r.Author)
-                .FirstOrDefaultAsync(r => r.Id == id);
+                .FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted);
 
-            if (recipe == null)
+            if (recipe == null || !CanViewRecipe(recipe)) return NotFound(new { message = "Không tìm thấy công thức nấu ăn." });
+
+            var result = await MapRecipeAsync(recipe);
+            if (recipe.Status == RecipeStatus.Published)
             {
-                return NotFound(new { message = "Không tìm thấy công thức nấu ăn." });
+                await _cache.SetAsync(CacheKeys.Recipe(id), result, TimeSpan.FromMinutes(10));
             }
-
-            var ingredients = await _context.RecipeIngredients
-                .Where(item => item.RecipeId == id)
-                .OrderBy(item => item.Order)
-                .Select(item => new RecipeIngredientDto
-                {
-                    Id = item.Id,
-                    RecipeId = item.RecipeId,
-                    Name = item.Name,
-                    Quantity = item.Quantity,
-                    Unit = item.Unit,
-                    Order = item.Order
-                })
-                .ToListAsync();
-            var steps = await _context.RecipeSteps
-                .Where(item => item.RecipeId == id)
-                .OrderBy(item => item.Order)
-                .Select(item => new RecipeStepDto
-                {
-                    Id = item.Id,
-                    RecipeId = item.RecipeId,
-                    Title = item.Title,
-                    Description = item.Description,
-                    Order = item.Order
-                })
-                .ToListAsync();
-
-            var result = new RecipeDto
-            {
-                Id = recipe.Id,
-                Title = recipe.Title,
-                Slug = recipe.Slug,
-                Description = recipe.Description,
-                ImageUrl = recipe.ImageUrl,
-                Ingredients = recipe.Ingredients,
-                Instructions = recipe.Instructions,
-                RecipeIngredients = ingredients,
-                RecipeSteps = steps,
-                CategoryId = recipe.CategoryId,
-                CategoryName = recipe.Category != null ? recipe.Category.Name : string.Empty,
-                AuthorId = recipe.AuthorId,
-                Status = recipe.Status,
-                CookingTimeMinutes = recipe.CookingTimeMinutes,
-                Difficulty = recipe.Difficulty,
-                IsVegetarian = recipe.IsVegetarian
-            };
-
-            await _cache.SetAsync(CacheKeys.Recipe(id), result, TimeSpan.FromMinutes(10));
             return Ok(result);
+        }
+
+        [HttpGet("slug/{slug}")]
+        [AllowAnonymous]
+        public async Task<ActionResult<RecipeDto>> GetRecipeBySlug(string slug)
+        {
+            var recipe = await _context.Recipes
+                .Include(item => item.Category)
+                .Include(item => item.Author)
+                .FirstOrDefaultAsync(item => item.Slug == slug && !item.IsDeleted);
+            if (recipe == null || !CanViewRecipe(recipe)) return NotFound(new { message = "Không tìm thấy công thức nấu ăn." });
+            return Ok(await MapRecipeAsync(recipe));
+        }
+
+        [HttpGet("mine")]
+        [Authorize]
+        public async Task<ActionResult<IEnumerable<RecipeDto>>> GetMyRecipes()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
+            var query = _context.Recipes.Where(recipe => !recipe.IsDeleted);
+            if (!User.IsInRole("Admin")) query = query.Where(recipe => recipe.AuthorId == userId);
+            var recipes = await query.Include(recipe => recipe.Category).Include(recipe => recipe.Author)
+                .OrderByDescending(recipe => recipe.UpdatedAt).ToListAsync();
+            var result = new List<RecipeDto>(recipes.Count);
+            foreach (var recipe in recipes) result.Add(await MapRecipeAsync(recipe));
+            return Ok(result);
+        }
+
+        [HttpGet("sitemap")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetSitemapRecipes()
+        {
+            var recipes = await _context.Recipes.AsNoTracking()
+                .Where(recipe => !recipe.IsDeleted && recipe.Status == RecipeStatus.Published && !recipe.Category.IsDeleted)
+                .OrderBy(recipe => recipe.Id)
+                .Select(recipe => new { recipe.Slug, recipe.UpdatedAt })
+                .ToListAsync();
+            return Ok(recipes);
         }
 
         [HttpPost("{id:guid}/view")]
@@ -136,15 +133,18 @@ namespace CulinaryBlog.API.Controllers
                 RecipeSteps = dto.RecipeSteps,
                 CategoryId = dto.CategoryId,
                 AuthorId = userId,
-                CookingTimeMinutes = dto.CookingTimeMinutes,
+                PrepTimeMinutes = dto.PrepTimeMinutes!.Value,
+                CookTimeMinutes = dto.CookTimeMinutes!.Value,
+                Servings = dto.Servings!.Value,
                 Difficulty = dto.Difficulty,
-                IsVegetarian = dto.IsVegetarian
+                IsVegetarian = dto.IsVegetarian,
+                Nutrition = dto.Nutrition
             };
 
             try
             {
                 var result = await _mediator.Send(command);
-                return CreatedAtAction(nameof(GetAllRecipes), new { id = result.Id }, result);
+                return CreatedAtAction(nameof(GetRecipeById), new { id = result.Id }, result);
             }
             catch (Exception ex)
             {
@@ -164,17 +164,17 @@ namespace CulinaryBlog.API.Controllers
             }
 
             var recipe = await _context.Recipes.FindAsync(id);
-            if (recipe == null)
+            if (recipe == null || recipe.IsDeleted)
             {
                 return NotFound(new { message = "Không tìm thấy công thức nấu ăn cần sửa!" });
             }
 
-            if (recipe.AuthorId != userId)
+            if (!User.IsInRole("Admin") && recipe.AuthorId != userId)
             {
                 return Forbid();
             }
 
-            var categoryExists = await _context.Categories.AnyAsync(c => c.Id == dto.CategoryId);
+            var categoryExists = await _context.Categories.AnyAsync(c => c.Id == dto.CategoryId && !c.IsDeleted);
             if (!categoryExists)
             {
                 return BadRequest(new { message = "Danh mục (CategoryId) không tồn tại!" });
@@ -186,18 +186,117 @@ namespace CulinaryBlog.API.Controllers
                 dto.Ingredients,
                 dto.Instructions,
                 dto.CategoryId,
-                dto.Status,
                 dto.ImageUrl,
-                dto.CookingTimeMinutes,
-                dto.Difficulty,
-                dto.IsVegetarian
+                difficulty: dto.Difficulty,
+                isVegetarian: dto.IsVegetarian,
+                prepTimeMinutes: dto.PrepTimeMinutes,
+                cookTimeMinutes: dto.CookTimeMinutes,
+                servings: dto.Servings
             );
+            var slugBase = Recipe.CreateSlug(dto.Title);
+            var slug = slugBase;
+            var suffix = 2;
+            while (await _context.Recipes.AnyAsync(existing => existing.Id != id && existing.Slug == slug))
+            {
+                slug = $"{slugBase}-{suffix++}";
+            }
+            recipe.SetSlug(slug);
 
+            if (dto.Nutrition.ValueKind != JsonValueKind.Undefined)
+            {
+                if (dto.Nutrition.ValueKind == JsonValueKind.Null)
+                {
+                    recipe.SetNutrition(null);
+                }
+                else if (dto.Nutrition.ValueKind == JsonValueKind.Object)
+                {
+                    var nutrition = JsonSerializer.Deserialize<RecipeNutritionDto>(dto.Nutrition.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    recipe.SetNutrition(nutrition == null ? null : new RecipeNutrition(
+                        nutrition.Calories, nutrition.Protein, nutrition.Carbohydrates,
+                        nutrition.Fat, nutrition.Fiber, nutrition.Sodium));
+                }
+                else
+                {
+                    return BadRequest(new { message = "Nutrition phải là object hoặc null." });
+                }
+            }
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
             await _context.SaveChangesAsync();
+            await ReplaceRecipeChildrenAsync(recipe.Id, dto.RecipeIngredients, dto.RecipeSteps, dto.Ingredients, dto.Instructions);
+            await transaction.CommitAsync();
             await InvalidateCachesAsync(id);
 
             return Ok(new { message = "Cập nhật công thức nấu ăn thành công!" });
         }
+
+        [HttpPatch("{id:guid}")]
+        [Authorize]
+        public async Task<IActionResult> PatchRecipe(Guid id, [FromBody] PatchRecipeDto dto)
+        {
+            var recipe = await GetManageableRecipeAsync(id);
+            if (recipe == null) return NotFound(new { message = "Không tìm thấy công thức." });
+            if (dto.Nutrition.ValueKind == JsonValueKind.Undefined)
+            {
+                return Ok(new { changed = false });
+            }
+
+            if (dto.Nutrition.ValueKind == JsonValueKind.Null)
+            {
+                recipe.SetNutrition(null);
+            }
+            else if (dto.Nutrition.ValueKind == JsonValueKind.Object)
+            {
+                var nutrition = JsonSerializer.Deserialize<RecipeNutritionDto>(dto.Nutrition.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                recipe.SetNutrition(nutrition == null ? null : new RecipeNutrition(
+                    nutrition.Calories, nutrition.Protein, nutrition.Carbohydrates,
+                    nutrition.Fat, nutrition.Fiber, nutrition.Sodium));
+            }
+            else
+            {
+                return BadRequest(new { message = "Nutrition phải là object hoặc null." });
+            }
+
+            await _context.SaveChangesAsync();
+            await InvalidateCachesAsync(id);
+            return Ok(new { changed = true, data = await MapRecipeAsync(recipe) });
+        }
+
+        [HttpPost("{id:guid}/publish")]
+        [Authorize]
+        public async Task<IActionResult> PublishRecipe(Guid id)
+        {
+            var recipe = await GetManageableRecipeAsync(id);
+            if (recipe == null) return NotFound(new { message = "Không tìm thấy công thức." });
+            if (await _context.Categories.AnyAsync(category => category.Id == recipe.CategoryId && category.IsDeleted))
+            {
+                throw new CulinaryBlog.Domain.Exceptions.ValidationException("Không thể xuất bản công thức thuộc danh mục đã xóa.");
+            }
+
+            var hasIngredient = await _context.RecipeIngredients.AnyAsync(item => item.RecipeId == id && item.Name.Trim() != "") ||
+                recipe.Ingredients.Any(item => !string.IsNullOrWhiteSpace(item));
+            var hasStep = await _context.RecipeSteps.AnyAsync(item => item.RecipeId == id && item.Description.Trim() != "") ||
+                recipe.Instructions.Any(item => !string.IsNullOrWhiteSpace(item));
+            var changed = recipe.Publish(hasIngredient, hasStep);
+            if (changed)
+            {
+                await _context.SaveChangesAsync();
+                await InvalidateCachesAsync(id);
+            }
+            return Ok(new { data = new { recipe.Id, status = recipe.Status }, changed });
+        }
+
+        [HttpPost("{id:guid}/unpublish")]
+        [Authorize]
+        public Task<IActionResult> UnpublishRecipe(Guid id) => TransitionRecipeAsync(id, recipe => recipe.Unpublish());
+
+        [HttpPost("{id:guid}/archive")]
+        [Authorize]
+        public Task<IActionResult> ArchiveRecipe(Guid id) => TransitionRecipeAsync(id, recipe => recipe.Archive());
+
+        [HttpPost("{id:guid}/restore")]
+        [Authorize]
+        public Task<IActionResult> RestoreRecipe(Guid id) => TransitionRecipeAsync(id, recipe => recipe.RestoreToDraft());
 
         // 4. Xóa Recipe (Chỉ tác giả mới có quyền xóa)
         [HttpDelete("{id}")]
@@ -207,17 +306,17 @@ namespace CulinaryBlog.API.Controllers
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var recipe = await _context.Recipes.FindAsync(id);
 
-            if (recipe == null)
+            if (recipe == null || recipe.IsDeleted)
             {
                 return NotFound(new { message = "Không tìm thấy công thức nấu ăn cần xóa!" });
             }
 
-            if (recipe.AuthorId != userId)
+            if (!User.IsInRole("Admin") && recipe.AuthorId != userId)
             {
                 return Forbid();
             }
 
-            _context.Recipes.Remove(recipe);
+            recipe.SoftDelete();
             await _context.SaveChangesAsync();
             await InvalidateCachesAsync(id);
 
@@ -228,6 +327,122 @@ namespace CulinaryBlog.API.Controllers
         {
             await _cache.RemoveAsync(CacheKeys.Recipes, cancellationToken);
             await _cache.RemoveAsync(CacheKeys.Recipe(recipeId), cancellationToken);
+        }
+
+        private bool CanViewRecipe(Recipe recipe) =>
+            (recipe.Status == RecipeStatus.Published && recipe.Category?.IsDeleted != true) ||
+            User.IsInRole("Admin") || User.FindFirstValue(ClaimTypes.NameIdentifier) == recipe.AuthorId;
+
+        private async Task<Recipe?> GetManageableRecipeAsync(Guid id)
+        {
+            var recipe = await _context.Recipes.FirstOrDefaultAsync(item => item.Id == id && !item.IsDeleted);
+            if (recipe == null) return null;
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return User.IsInRole("Admin") || recipe.AuthorId == userId ? recipe : null;
+        }
+
+        private async Task<IActionResult> TransitionRecipeAsync(Guid id, Func<Recipe, bool> transition)
+        {
+            var recipe = await GetManageableRecipeAsync(id);
+            if (recipe == null) return NotFound(new { message = "Không tìm thấy công thức." });
+            var changed = transition(recipe);
+            if (changed)
+            {
+                await _context.SaveChangesAsync();
+                await InvalidateCachesAsync(id);
+            }
+            return Ok(new { data = new { recipe.Id, status = recipe.Status }, changed });
+        }
+
+        private async Task<RecipeDto> MapRecipeAsync(Recipe recipe)
+        {
+            var ingredients = await _context.RecipeIngredients.Where(item => item.RecipeId == recipe.Id)
+                .OrderBy(item => item.OrderIndex)
+                .Select(item => new RecipeIngredientDto
+                {
+                    Id = item.Id,
+                    RecipeId = item.RecipeId,
+                    Name = item.Name,
+                    Quantity = item.Quantity,
+                    Unit = item.Unit,
+                    Notes = item.Notes,
+                    OrderIndex = item.OrderIndex
+                }).ToListAsync();
+            var steps = await _context.RecipeSteps.Where(item => item.RecipeId == recipe.Id)
+                .OrderBy(item => item.StepNumber)
+                .Select(item => new RecipeStepDto
+                {
+                    Id = item.Id,
+                    RecipeId = item.RecipeId,
+                    Title = item.Title,
+                    Description = item.Description,
+                    StepNumber = item.StepNumber,
+                    TimerMinutes = item.TimerMinutes,
+                    ImageUrl = item.ImageUrl
+                }).ToListAsync();
+            return new RecipeDto
+            {
+                Id = recipe.Id,
+                Title = recipe.Title,
+                Slug = recipe.Slug,
+                Description = recipe.Description,
+                ImageUrl = recipe.ImageUrl,
+                Ingredients = recipe.Ingredients,
+                Instructions = recipe.Instructions,
+                RecipeIngredients = ingredients,
+                RecipeSteps = steps,
+                CategoryId = recipe.CategoryId,
+                CategoryName = recipe.Category?.Name ?? string.Empty,
+                AuthorId = recipe.AuthorId,
+                Status = recipe.Status,
+                UpdatedAt = recipe.UpdatedAt,
+                PrepTimeMinutes = recipe.PrepTimeMinutes,
+                CookTimeMinutes = recipe.CookTimeMinutes,
+                Servings = recipe.Servings,
+                CookingTimeMinutes = recipe.CookingTimeMinutes,
+                Difficulty = recipe.Difficulty,
+                IsVegetarian = recipe.IsVegetarian,
+                Nutrition = recipe.Nutrition == null ? null : new RecipeNutritionDto
+                {
+                    Calories = recipe.Nutrition.Calories,
+                    Protein = recipe.Nutrition.Protein,
+                    Carbohydrates = recipe.Nutrition.Carbohydrates,
+                    Fat = recipe.Nutrition.Fat,
+                    Fiber = recipe.Nutrition.Fiber,
+                    Sodium = recipe.Nutrition.Sodium
+                }
+            };
+        }
+
+        private async Task ReplaceRecipeChildrenAsync(
+            Guid recipeId,
+            List<CreateRecipeIngredientDto>? ingredientDtos,
+            List<CreateRecipeStepDto>? stepDtos,
+            List<string> legacyIngredients,
+            List<string> legacySteps)
+        {
+            var ingredientInputs = ingredientDtos ?? legacyIngredients
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select((value, index) => new CreateRecipeIngredientDto { Name = value, OrderIndex = index + 1 })
+                .ToList();
+            var stepInputs = stepDtos ?? legacySteps
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => new CreateRecipeStepDto { Description = value })
+                .ToList();
+
+            var oldIngredients = await _context.RecipeIngredients.Where(item => item.RecipeId == recipeId).ToListAsync();
+            var oldSteps = await _context.RecipeSteps.Where(item => item.RecipeId == recipeId).ToListAsync();
+            _context.RecipeIngredients.RemoveRange(oldIngredients);
+            _context.RecipeSteps.RemoveRange(oldSteps);
+            await _context.SaveChangesAsync();
+
+            var ingredients = ingredientInputs.Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                .Select((item, index) => RecipeIngredient.Create(recipeId, item.Name, item.Quantity, item.Unit, item.Notes, index + 1));
+            var steps = stepInputs.Where(item => !string.IsNullOrWhiteSpace(item.Description))
+                .Select((item, index) => RecipeStep.Create(recipeId, item.Title, item.Description, index + 1, item.TimerMinutes, item.ImageUrl));
+            _context.RecipeIngredients.AddRange(ingredients);
+            _context.RecipeSteps.AddRange(steps);
+            await _context.SaveChangesAsync();
         }
     }
 }

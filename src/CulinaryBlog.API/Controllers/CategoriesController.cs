@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CulinaryBlog.API.Controllers
 {
     [Route("api/[controller]")]
+    [Route("api/v1/[controller]")]
     [ApiController]
     public class CategoriesController : ControllerBase
     {
@@ -35,7 +36,7 @@ namespace CulinaryBlog.API.Controllers
 
         // 2. Tạo mới Category thông qua MediatR Command
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<CategoryDto>> CreateCategory([FromBody] CreateCategoryDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Name))
@@ -57,11 +58,11 @@ namespace CulinaryBlog.API.Controllers
 
         // 3. Cập nhật Category
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateCategory(Guid id, [FromBody] CreateCategoryDto dto)
         {
             var existing = await _context.Categories.FindAsync(id);
-            if (existing == null)
+            if (existing == null || existing.IsDeleted)
             {
                 return NotFound(new { message = "Không tìm thấy danh mục cần cập nhật." });
             }
@@ -69,6 +70,7 @@ namespace CulinaryBlog.API.Controllers
             existing.Name = dto.Name;
             existing.Description = dto.Description;
             existing.ImageUrl = dto.ImageUrl;
+            existing.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
 
             await InvalidateCachesAsync(id);
@@ -77,24 +79,24 @@ namespace CulinaryBlog.API.Controllers
 
         // 4. Xóa Category
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteCategory(Guid id)
         {
             var category = await _context.Categories
                 .Include(c => c.Recipes)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
-            if (category == null)
+            if (category == null || category.IsDeleted)
             {
                 return NotFound(new { message = "Không tìm thấy danh mục cần xóa." });
             }
 
-            if (category.Recipes.Any())
+            foreach (var recipe in category.Recipes.Where(r => !r.IsDeleted))
             {
-                _context.Recipes.RemoveRange(category.Recipes);
+                recipe.SoftDelete();
             }
 
-            _context.Categories.Remove(category);
+            category.SoftDelete();
             await _context.SaveChangesAsync();
 
             await InvalidateCachesAsync(id);

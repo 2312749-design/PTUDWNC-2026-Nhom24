@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
 import { useNavigate } from 'react-router-dom'
+import { getVersionedApiBaseUrl, readApiResponse } from '../api/config.js'
 
-const API_BASE = 'http://localhost:5152/api'
+const API_BASE = getVersionedApiBaseUrl()
 
 function CreateRecipeWizard() {
   const navigate = useNavigate()
@@ -11,12 +12,13 @@ function CreateRecipeWizard() {
     title: '',
     description: '',
     categoryId: '',
-    status: 1,
-    cookingTimeMinutes: '',
-    difficulty: 'Trung bình',
+    prepTimeMinutes: 1,
+    cookTimeMinutes: 0,
+    servings: 2,
+    difficulty: 'Medium',
     isVegetarian: false,
-    ingredients: [{ name: '', quantity: '', unit: '', order: 1 }],
-    steps: [{ title: '', description: '', order: 1 }],
+    ingredients: [{ name: '', quantity: '', unit: '', notes: '' }],
+    steps: [{ title: '', description: '', timerMinutes: '' }],
   })
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
@@ -25,7 +27,7 @@ function CreateRecipeWizard() {
     const loadCategories = async () => {
       const token = localStorage.getItem('accessToken')
       try {
-        const response = await fetch(`${API_BASE}/Categories`, {
+        const response = await fetch(`${API_BASE}/categories`, {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
@@ -36,7 +38,7 @@ function CreateRecipeWizard() {
           throw new Error('Không thể tải danh mục.')
         }
 
-        const data = await response.json()
+        const data = await readApiResponse(response)
         setCategories(data)
         if (data[0] && !form.categoryId) {
           setForm((current) => ({ ...current, categoryId: data[0].id }))
@@ -62,8 +64,8 @@ function CreateRecipeWizard() {
       return
     }
 
-    if (step === 3 && form.steps.some((item) => !item.title.trim() || !item.description.trim())) {
-      toast.error('Mỗi bước làm cần có tiêu đề và mô tả.')
+    if (step === 3 && form.steps.some((item) => !item.description.trim())) {
+      toast.error('Mỗi bước làm cần có mô tả.')
       return
     }
 
@@ -82,7 +84,7 @@ function CreateRecipeWizard() {
   const addIngredient = () => {
     setForm((current) => ({
       ...current,
-      ingredients: [...current.ingredients, { name: '', quantity: '', unit: '', order: current.ingredients.length + 1 }],
+      ingredients: [...current.ingredients, { name: '', quantity: '', unit: '', notes: '' }],
     }))
   }
 
@@ -103,7 +105,7 @@ function CreateRecipeWizard() {
   const addStep = () => {
     setForm((current) => ({
       ...current,
-      steps: [...current.steps, { title: '', description: '', order: current.steps.length + 1 }],
+      steps: [...current.steps, { title: '', description: '', timerMinutes: '' }],
     }))
   }
 
@@ -125,8 +127,9 @@ function CreateRecipeWizard() {
       title: form.title.trim(),
       description: form.description.trim(),
       categoryId: form.categoryId,
-      status: Number(form.status),
-      cookingTimeMinutes: form.cookingTimeMinutes ? Number(form.cookingTimeMinutes) : null,
+      prepTimeMinutes: Number(form.prepTimeMinutes),
+      cookTimeMinutes: Number(form.cookTimeMinutes),
+      servings: Number(form.servings),
       difficulty: form.difficulty,
       isVegetarian: form.isVegetarian,
       ingredients: form.ingredients
@@ -135,15 +138,16 @@ function CreateRecipeWizard() {
           const quantity = item.quantity?.trim() || ''
           const unit = item.unit?.trim() || ''
           if (!name) return ''
-          return [quantity, unit, name].filter(Boolean).join(' ')
+          const notes = item.notes?.trim() || ''
+          return [quantity, unit, name, notes].filter(Boolean).join(' ')
         })
         .filter(Boolean),
       instructions: form.steps
         .map((item, index) => {
           const title = item.title.trim()
           const description = item.description.trim()
-          if (!title || !description) return ''
-          return `${index + 1}. ${title}: ${description}`
+          if (!description) return ''
+          return title ? `${title}: ${description}` : description
         })
         .filter(Boolean),
       recipeIngredients: form.ingredients
@@ -151,20 +155,21 @@ function CreateRecipeWizard() {
           name: item.name.trim(),
           quantity: item.quantity?.trim() || null,
           unit: item.unit?.trim() || null,
-          order: index + 1,
+          notes: item.notes?.trim() || null,
+          orderIndex: index + 1,
         }))
         .filter((item) => item.name),
       recipeSteps: form.steps
         .map((item, index) => ({
           title: item.title.trim(),
           description: item.description.trim(),
-          order: index + 1,
+          timerMinutes: item.timerMinutes ? Number(item.timerMinutes) : null,
         }))
-        .filter((item) => item.title && item.description),
+        .filter((item) => item.description),
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Recipes`, {
+      const response = await fetch(`${API_BASE}/recipes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,8 +178,7 @@ function CreateRecipeWizard() {
         body: JSON.stringify(payload),
       })
 
-      const text = await response.text()
-      const data = text ? JSON.parse(text) : {}
+      const data = await readApiResponse(response)
       if (response.status === 401 || response.status === 403) {
         localStorage.removeItem('accessToken')
         localStorage.removeItem('refreshToken')
@@ -247,21 +251,17 @@ function CreateRecipeWizard() {
             </div>
 
             <div className="form-group">
-              <label>Trạng thái</label>
-              <select value={form.status} onChange={(event) => setForm({ ...form, status: Number(event.target.value) })}>
-                <option value={0}>Bản nháp</option>
-                <option value={1}>Đã đăng</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label>Thời gian nấu (phút)</label>
-              <input type="number" min="1" value={form.cookingTimeMinutes} onChange={event => setForm({ ...form, cookingTimeMinutes: event.target.value })} placeholder="Ví dụ: 35" />
+              <label>Prep time (phút)</label>
+              <input type="number" min="1" value={form.prepTimeMinutes} onChange={event => setForm({ ...form, prepTimeMinutes: event.target.value })} />
+              <label>Cook time (phút)</label>
+              <input type="number" min="0" value={form.cookTimeMinutes} onChange={event => setForm({ ...form, cookTimeMinutes: event.target.value })} />
+              <label>Servings</label>
+              <input type="number" min="1" value={form.servings} onChange={event => setForm({ ...form, servings: event.target.value })} />
             </div>
             <div className="form-group">
               <label>Độ khó</label>
               <select value={form.difficulty} onChange={event => setForm({ ...form, difficulty: event.target.value })}>
-                <option value="Dễ">Dễ</option><option value="Trung bình">Trung bình</option><option value="Khó">Khó</option>
+                <option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option><option value="Expert">Expert</option>
               </select>
             </div>
             <label className="recipe-vegetarian-toggle"><input type="checkbox" checked={form.isVegetarian} onChange={event => setForm({ ...form, isVegetarian: event.target.checked })} /> Món chay</label>
@@ -291,6 +291,7 @@ function CreateRecipeWizard() {
                     value={ingredient.unit}
                     onChange={(event) => updateIngredient(index, 'unit', event.target.value)}
                   />
+                  <input type="text" placeholder="Ghi chú (không bắt buộc)" value={ingredient.notes} onChange={(event) => updateIngredient(index, 'notes', event.target.value)} />
                   {form.ingredients.length > 1 && (
                     <button type="button" className="small-btn delete" onClick={() => removeIngredient(index)}>Xóa</button>
                   )}
@@ -307,18 +308,14 @@ function CreateRecipeWizard() {
             <div className="stack-list">
               {form.steps.map((stepItem, index) => (
                 <div key={index} className="step-row">
-                  <input
-                    type="text"
-                    placeholder={`Tên bước ${index + 1}`}
-                    value={stepItem.title}
-                    onChange={(event) => updateStep(index, 'title', event.target.value)}
-                  />
+                  <input type="text" placeholder={`Tên bước ${index + 1} (không bắt buộc)`} value={stepItem.title} onChange={(event) => updateStep(index, 'title', event.target.value)} />
                   <textarea
                     rows="3"
                     placeholder="Mô tả từng bước..."
                     value={stepItem.description}
                     onChange={(event) => updateStep(index, 'description', event.target.value)}
                   />
+                  <input type="number" min="0" max="1440" placeholder="Thời gian hẹn giờ (phút)" value={stepItem.timerMinutes} onChange={(event) => updateStep(index, 'timerMinutes', event.target.value)} />
                   {form.steps.length > 1 && (
                     <button type="button" className="small-btn delete" onClick={() => removeStep(index)}>Xóa</button>
                   )}

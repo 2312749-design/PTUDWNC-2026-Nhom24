@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { GoogleLogin } from '@react-oauth/google'
 import CreateRecipeWizard from './routes/wizard.jsx'
 import { AccountPage, ArticlePage, CommunityNav, FeedPage, MemberProfilePage, MembersPage } from './CommunityPages.jsx'
 import { AIAssistantPage, AuthorProfilePage, ChallengesPage, CookbookShelfPage, CookModePage, CookTogetherPage, CreatorDashboardPage, DraftsPage, EditorPicksPage, FlexibleRecipePage, FridgeMatchPage, MealPlannerPage, MultilingualPage, NotificationsPage, PrintExportPage, RecipeEngagement, RecipeJournalPage, RecipeQnaPage, SafetyPage, SavedRecipesPage, SeasonalChallengePage, StandardRecipePage, TasteSuggestionPage } from './PlatformFeaturePages.jsx'
 import { useLocale } from './LocaleContext.jsx'
+import { getVersionedApiBaseUrl, readApiResponse as readContractResponse } from './api/config.js'
+import { login } from './api/auth'
 import './App.css'
 
-const API_BASE = 'http://localhost:5152/api'
+const API_V1 = getVersionedApiBaseUrl()
 
 function getStoredToken() {
   const token = localStorage.getItem('accessToken') || ''
@@ -31,7 +34,7 @@ async function getFreshAccessToken() {
   if (!refreshToken) return ''
 
   try {
-    const response = await fetch(`${API_BASE}/Auth/refresh`, {
+    const response = await fetch(`${API_V1}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -70,31 +73,11 @@ function generateCaptcha() {
 }
 
 async function readApiResponse(response) {
-  const text = await response.text()
-
-  if (!text) {
-    return {}
-  }
-
-  try {
-    return JSON.parse(text)
-  } catch {
-    const message = text.replace(/\s+/g, ' ').trim().slice(0, 200)
-    throw new Error(message || 'Máy chủ trả về dữ liệu không hợp lệ.')
-  }
+  return readContractResponse(response)
 }
 
 async function safeReadJson(response) {
-  const text = await response.text()
-  if (!text) {
-    return {}
-  }
-
-  try {
-    return JSON.parse(text)
-  } catch {
-    return { message: text.replace(/\s+/g, ' ').trim().slice(0, 200) || 'Máy chủ trả về dữ liệu không hợp lệ.' }
-  }
+  return readContractResponse(response)
 }
 
 function LoginPage() {
@@ -111,44 +94,40 @@ function LoginPage() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: form.username,
-          email: form.username.includes('@') ? form.username : '',
-          password: form.password,
-        }),
-      })
-
-      const data = await readApiResponse(response)
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Đăng nhập thất bại.')
+      const payload = {
+        password: form.password,
+        ...(form.username.includes('@')
+          ? { email: form.username.trim() }
+          : { username: form.username.trim() })
       }
 
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken || '')
-      toast.success(data.message || 'Đăng nhập thành công!')
+      const result = await login(payload)
+
+      if (!result.ok) {
+        throw new Error(result.message)
+      }
+
+      localStorage.setItem('accessToken', result.data.accessToken)
+      localStorage.setItem('refreshToken', result.data.refreshToken)
+      toast.success(result.message || 'Đăng nhập thành công!')
       navigate('/home')
     } catch (error) {
       toast.error(error.message)
     }
   }
 
-  const handleGoogleLogin = async () => {
-    const idToken = window.prompt('Nhập mã xác thực Google để đăng nhập:')
-
-    if (!idToken || !idToken.trim()) {
-      toast.warning('Bạn chưa nhập mã xác thực Google.')
+  const handleGoogleLogin = async (credentialResponse) => {
+    const idToken = credentialResponse?.credential
+    if (!idToken) {
+      toast.error('Google không trả về ID token hợp lệ.')
       return
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Auth/google-login`, {
+      const response = await fetch(`${API_V1}/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: idToken.trim() }),
+        body: JSON.stringify({ idToken }),
       })
 
       const data = await readApiResponse(response)
@@ -211,9 +190,16 @@ function LoginPage() {
           <button type="submit" className="primary-btn">Đăng nhập</button>
         </form>
 
-        <button className="secondary-btn" type="button" onClick={handleGoogleLogin}>
-          Đăng nhập bằng Google
-        </button>
+        {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
+          <GoogleLogin
+            onSuccess={handleGoogleLogin}
+            onError={() => toast.error('Đăng nhập Google thất bại.')}
+          />
+        ) : (
+          <button className="secondary-btn" type="button" disabled>
+            Google OAuth chưa được cấu hình
+          </button>
+        )}
 
         <div className="token-box">
           <h3>Đăng nhập bằng mã truy cập</h3>
@@ -279,7 +265,7 @@ function RegisterPage() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Auth/register`, {
+      const response = await fetch(`${API_V1}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -383,7 +369,10 @@ function RecipeDetailPage() {
     const token = getStoredToken()
 
     try {
-      const response = await fetch(`${API_BASE}/Recipes/${id}`, {
+      const recipePath = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+        ? `/recipes/${id}`
+        : `/recipes/slug/${encodeURIComponent(id)}`
+      const response = await fetch(`${API_V1}${recipePath}`, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -410,7 +399,7 @@ function RecipeDetailPage() {
 
   useEffect(() => {
     const activeToken = getStoredToken()
-    if (activeToken) fetch(`${API_BASE}/Recipes/${id}/view`, { method: 'POST', headers: { Authorization: `Bearer ${activeToken}` } }).catch(() => {})
+    if (activeToken) fetch(`${API_V1}/recipes/${id}/view`, { method: 'POST', headers: { Authorization: `Bearer ${activeToken}` } }).catch(() => {})
   }, [id])
 
   const handleDelete = async () => {
@@ -421,7 +410,7 @@ function RecipeDetailPage() {
     const token = getStoredToken()
 
     try {
-      const response = await fetch(`${API_BASE}/Recipes/${id}`, {
+      const response = await fetch(`${API_V1}/recipes/${id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -497,10 +486,11 @@ function RecipeDetailPage() {
 
             <div className="recipe-detail-content">
               <div className="recipe-meta">
-                <span className="status-badge">{t(recipe.status === 1 ? 'Published' : 'Draft')}</span>
+                <span className="status-badge">{t(recipe.status === 1 ? 'Published' : recipe.status === 2 ? 'Archived' : 'Draft')}</span>
                 <span className="meta-chip">{t('Danh mục:')} {t(recipe.categoryName || 'Chưa phân loại')}</span>
                 <span className="meta-chip">{t('Tác giả:')} {recipe.authorId || 'System'}</span>
                 {recipe.cookingTimeMinutes && <span className="meta-chip">⏱ {recipe.cookingTimeMinutes} {t('phút')}</span>}
+                <span className="meta-chip">Prep {recipe.prepTimeMinutes}m · Cook {recipe.cookTimeMinutes}m · {recipe.servings} servings</span>
                 <span className="meta-chip">{t('Độ khó:')} {t(recipe.difficulty || 'Trung bình')}</span>
                 {recipe.isVegetarian && <span className="meta-chip">{t('Món chay')}</span>}
               </div>
@@ -529,6 +519,17 @@ function RecipeDetailPage() {
                   </ol>
                 </div>
               </div>
+              {recipe.nutrition && <div className="recipe-detail-section">
+                <h3>Nutrition (mỗi khẩu phần)</h3>
+                <div className="recipe-meta">
+                  {recipe.nutrition.calories != null && <span className="meta-chip">{recipe.nutrition.calories} kcal</span>}
+                  {recipe.nutrition.protein != null && <span className="meta-chip">Protein {recipe.nutrition.protein} g</span>}
+                  {recipe.nutrition.carbohydrates != null && <span className="meta-chip">Carbohydrates {recipe.nutrition.carbohydrates} g</span>}
+                  {recipe.nutrition.fat != null && <span className="meta-chip">Fat {recipe.nutrition.fat} g</span>}
+                  {recipe.nutrition.fiber != null && <span className="meta-chip">Fiber {recipe.nutrition.fiber} g</span>}
+                  {recipe.nutrition.sodium != null && <span className="meta-chip">Sodium {recipe.nutrition.sodium} mg</span>}
+                </div>
+              </div>}
             </div>
           </div>
           <RecipeEngagement recipe={recipe} />
@@ -556,11 +557,11 @@ function CategoriesPage() {
     setLoading(true)
     try {
       const [categoryResponse, recipeResponse] = await Promise.all([
-        fetch(`${API_BASE}/Categories`),
-        fetch(`${API_BASE}/Recipes`),
+        fetch(`${API_V1}/categories`),
+        fetch(`${API_V1}/recipes`),
       ])
       if (!categoryResponse.ok || !recipeResponse.ok) throw new Error('Không thể tải danh mục và công thức.')
-      const [categoryData, recipeData] = await Promise.all([categoryResponse.json(), recipeResponse.json()])
+      const [categoryData, recipeData] = await Promise.all([readApiResponse(categoryResponse), readApiResponse(recipeResponse)])
       setCategories(categoryData)
       setRecipes(recipeData)
       setSelectedCategoryId(current => current && categoryData.some(category => category.id === current) ? current : null)
@@ -617,7 +618,7 @@ function CategoriesPage() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Categories${editingId ? `/${editingId}` : ''}`, {
+      const response = await fetch(`${API_V1}/categories${editingId ? `/${editingId}` : ''}`, {
         method: editingId ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -626,7 +627,7 @@ function CategoriesPage() {
         body: JSON.stringify(payload),
       })
 
-      const data = await response.json()
+      const data = await safeReadJson(response)
 
       if (!response.ok) {
         throw new Error(data.message || 'Thao tác danh mục thất bại.')
@@ -690,7 +691,7 @@ function CategoriesPage() {
     const refreshToken = localStorage.getItem('refreshToken')
     try {
       if (refreshToken) {
-        await fetch(`${API_BASE}/Auth/logout`, {
+        await fetch(`${API_V1}/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ refreshToken }),
@@ -785,17 +786,19 @@ function RecipesPage() {
     categoryId: '',
     ingredients: '',
     instructions: '',
-    status: 1,
-    cookingTimeMinutes: '',
-    difficulty: 'Trung bình',
+    prepTimeMinutes: 1,
+    cookTimeMinutes: 0,
+    servings: 2,
+    difficulty: 'Medium',
     isVegetarian: false,
+    nutrition: { calories: '', protein: '', carbohydrates: '', fat: '', fiber: '', sodium: '' },
   })
   const [maxMinutesFilter, setMaxMinutesFilter] = useState('')
   const [difficultyFilter, setDifficultyFilter] = useState('all')
   const [vegetarianFilter, setVegetarianFilter] = useState('all')
   const [ingredientSearch, setIngredientSearch] = useState('')
 
-  const token = getStoredToken() || localStorage.getItem('refreshToken') || ''
+  const token = getStoredToken()
 
   const resetForm = () => {
     setForm({
@@ -805,24 +808,26 @@ function RecipesPage() {
       categoryId: categories[0]?.id || '',
       ingredients: '',
       instructions: '',
-      status: 1,
-      cookingTimeMinutes: '',
-      difficulty: 'Trung bình',
+      prepTimeMinutes: 1,
+      cookTimeMinutes: 0,
+      servings: 2,
+      difficulty: 'Medium',
       isVegetarian: false,
+      nutrition: { calories: '', protein: '', carbohydrates: '', fat: '', fiber: '', sodium: '' },
     })
     setEditingId(null)
     setIsFormOpen(false)
   }
 
   const fetchCategories = async () => {
-    const response = await fetch(`${API_BASE}/Categories`, {
+    const response = await fetch(`${API_V1}/categories`, {
     })
 
     if (!response.ok) {
       throw new Error('Không thể tải danh mục để gắn cho công thức.')
     }
 
-    const data = await response.json()
+    const data = await readApiResponse(response)
     setCategories(data)
     if (!form.categoryId && data[0]) {
       setForm((current) => ({ ...current, categoryId: data[0].id }))
@@ -830,13 +835,16 @@ function RecipesPage() {
   }
 
   const fetchRecipes = async () => {
-    const response = await fetch(`${API_BASE}/Recipes`)
+    const activeToken = await getFreshAccessToken()
+    const response = await fetch(`${API_V1}/recipes${activeToken ? '/mine' : ''}`, {
+      headers: activeToken ? { Authorization: `Bearer ${activeToken}` } : {},
+    })
 
     if (!response.ok) {
       throw new Error('Không thể tải danh sách công thức.')
     }
 
-    const data = await response.json()
+    const data = await readApiResponse(response)
     setRecipes(data)
   }
 
@@ -884,27 +892,30 @@ function RecipesPage() {
       return
     }
 
+    const ingredientValues = form.ingredients.split(/\n|,/).map((item) => item.trim()).filter(Boolean)
+    const stepValues = form.instructions.split(/\n|\./).map((item) => item.trim()).filter(Boolean)
+    const nutritionValues = Object.fromEntries(Object.entries(form.nutrition)
+      .map(([key, value]) => [key, value === '' ? null : Number(value)]))
+    const hasNutrition = Object.values(form.nutrition).some((value) => value !== '')
     const payload = {
       title: form.title.trim(),
       description: form.description.trim(),
       imageUrl: form.imageUrl || null,
-      ingredients: form.ingredients
-        .split(/\n|,/) // newline or comma separated
-        .map((item) => item.trim())
-        .filter(Boolean),
-      instructions: form.instructions
-        .split(/\n|\./) // step by step
-        .map((item) => item.trim())
-        .filter(Boolean),
+      ingredients: ingredientValues,
+      instructions: stepValues,
+      recipeIngredients: ingredientValues.map((name, index) => ({ name, orderIndex: index + 1 })),
+      recipeSteps: stepValues.map((description) => ({ title: null, description })),
       categoryId: form.categoryId,
-      status: Number(form.status),
-      cookingTimeMinutes: form.cookingTimeMinutes ? Number(form.cookingTimeMinutes) : null,
+      prepTimeMinutes: Number(form.prepTimeMinutes),
+      cookTimeMinutes: Number(form.cookTimeMinutes),
+      servings: Number(form.servings),
       difficulty: form.difficulty,
       isVegetarian: form.isVegetarian,
+      nutrition: hasNutrition ? nutritionValues : null,
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Recipes${editingId ? `/${editingId}` : ''}`, {
+      const response = await fetch(`${API_V1}/recipes${editingId ? `/${editingId}` : ''}`, {
         method: editingId ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -942,10 +953,19 @@ function RecipesPage() {
       categoryId: recipe.categoryId,
       ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.join('\n') : '',
       instructions: Array.isArray(recipe.instructions) ? recipe.instructions.join('\n') : '',
-      status: recipe.status ?? 1,
-      cookingTimeMinutes: recipe.cookingTimeMinutes ?? '',
-      difficulty: recipe.difficulty || 'Trung bình',
+      prepTimeMinutes: recipe.prepTimeMinutes ?? 1,
+      cookTimeMinutes: recipe.cookTimeMinutes ?? 0,
+      servings: recipe.servings ?? 1,
+      difficulty: recipe.difficulty || 'Medium',
       isVegetarian: recipe.isVegetarian ?? false,
+      nutrition: {
+        calories: recipe.nutrition?.calories ?? '',
+        protein: recipe.nutrition?.protein ?? '',
+        carbohydrates: recipe.nutrition?.carbohydrates ?? '',
+        fat: recipe.nutrition?.fat ?? '',
+        fiber: recipe.nutrition?.fiber ?? '',
+        sodium: recipe.nutrition?.sodium ?? '',
+      },
     })
     setIsFormOpen(true)
   }
@@ -1002,7 +1022,7 @@ function RecipesPage() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/Recipes/${id}`, {
+      const response = await fetch(`${API_V1}/recipes/${id}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1018,6 +1038,26 @@ function RecipesPage() {
       toast.success(data.message || 'Xóa công thức thành công.')
       setRecipes((current) => current.filter((recipe) => recipe.id !== id))
       if (editingId === id) resetForm()
+    } catch (error) {
+      toast.error(error.message)
+    }
+  }
+
+  const handleTransition = async (id, transition) => {
+    const activeToken = await getFreshAccessToken()
+    if (!activeToken) {
+      toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
+      return
+    }
+    try {
+      const response = await fetch(`${API_V1}/recipes/${id}/${transition}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${activeToken}` },
+      })
+      const data = await safeReadJson(response)
+      if (!response.ok) throw new Error(data.message || 'Không thể đổi trạng thái công thức.')
+      toast.success('Đã cập nhật trạng thái công thức.')
+      await fetchRecipes()
     } catch (error) {
       toast.error(error.message)
     }
@@ -1080,13 +1120,15 @@ function RecipesPage() {
               <option value="all">{t('Tất cả trạng thái')}</option>
               <option value="1">{t('Published')}</option>
               <option value="0">{t('Draft')}</option>
+              <option value="2">{t('Archived')}</option>
             </select>
             <input type="number" min="1" placeholder={t('Tối đa (phút)')} value={maxMinutesFilter} onChange={event => setMaxMinutesFilter(event.target.value)} />
             <select value={difficultyFilter} onChange={event => setDifficultyFilter(event.target.value)}>
               <option value="all">{t('Mọi độ khó')}</option>
-              <option value="Dễ">{t('Dễ')}</option>
-              <option value="Trung bình">{t('Trung bình')}</option>
-              <option value="Khó">{t('Khó')}</option>
+              <option value="Easy">{t('Easy')}</option>
+              <option value="Medium">{t('Medium')}</option>
+              <option value="Hard">{t('Hard')}</option>
+              <option value="Expert">{t('Expert')}</option>
             </select>
             <select value={vegetarianFilter} onChange={event => setVegetarianFilter(event.target.value)}>
               <option value="all">{t('Mọi chế độ ăn')}</option>
@@ -1120,7 +1162,7 @@ function RecipesPage() {
                     <span>◷ {recipe.cookingTimeMinutes ? `${recipe.cookingTimeMinutes} phút` : 'Chưa cập nhật thời gian'}</span>
                     <span>{t(recipe.difficulty || 'Trung bình')}</span>
                     {recipe.isVegetarian && <span>Món chay</span>}
-                    {token && <span className={recipe.status === 1 ? 'recipe-status-published' : 'recipe-status-draft'}>{recipe.status === 1 ? 'Đã đăng' : 'Bản nháp'}</span>}
+                    {token && <span className={`recipe-status-${recipe.status === 1 ? 'published' : recipe.status === 2 ? 'archived' : 'draft'}`}>{recipe.status === 1 ? 'Published' : recipe.status === 2 ? 'Archived' : 'Draft'}</span>}
                   </div>
                   <div className="recipe-card-details">
                     <div><h3>Nguyên liệu</h3><p>{ingredients.slice(0, 4).map(t).join(' · ')}{ingredients.length > 4 ? ` · +${ingredients.length - 4} nguyên liệu` : ''}</p></div>
@@ -1128,6 +1170,10 @@ function RecipesPage() {
                   </div>
                   <div className="recipe-card-actions">
                     <Link to={`/recipes/${recipe.id}`}>Xem công thức <span aria-hidden="true">→</span></Link>
+                    {token && recipe.status === 0 && <button type="button" onClick={() => handleTransition(recipe.id, 'publish')}>Publish</button>}
+                    {token && recipe.status === 1 && <button type="button" onClick={() => handleTransition(recipe.id, 'unpublish')}>Unpublish</button>}
+                    {token && recipe.status !== 2 && <button type="button" onClick={() => handleTransition(recipe.id, 'archive')}>Archive</button>}
+                    {token && recipe.status === 2 && <button type="button" onClick={() => handleTransition(recipe.id, 'restore')}>Restore</button>}
                     {token && <button type="button" onClick={() => handleDelete(recipe.id)} aria-label={`Xóa ${t(recipe.title)}`}>Xóa</button>}
                   </div>
                 </div>
@@ -1191,14 +1237,25 @@ function RecipesPage() {
             </div>
 
             <div className="form-group recipe-meta-fields">
-              <label htmlFor="recipe-time">Thời gian nấu (phút)</label>
-              <input id="recipe-time" type="number" min="1" max="1440" value={form.cookingTimeMinutes} onChange={event => setForm({ ...form, cookingTimeMinutes: event.target.value })} placeholder="Ví dụ: 35" />
+              <label htmlFor="recipe-prep-time">Prep time (phút)</label>
+              <input id="recipe-prep-time" type="number" min="1" max="1440" required value={form.prepTimeMinutes} onChange={event => setForm({ ...form, prepTimeMinutes: event.target.value })} />
+              <label htmlFor="recipe-cook-time">Cook time (phút)</label>
+              <input id="recipe-cook-time" type="number" min="0" max="1440" required value={form.cookTimeMinutes} onChange={event => setForm({ ...form, cookTimeMinutes: event.target.value })} />
+              <label htmlFor="recipe-servings">Servings</label>
+              <input id="recipe-servings" type="number" min="1" max="100" required value={form.servings} onChange={event => setForm({ ...form, servings: event.target.value })} />
               <label htmlFor="recipe-difficulty">Độ khó</label>
               <select id="recipe-difficulty" value={form.difficulty} onChange={event => setForm({ ...form, difficulty: event.target.value })}>
-                <option value="Dễ">Dễ</option><option value="Trung bình">Trung bình</option><option value="Khó">Khó</option>
+                <option value="Easy">Easy</option><option value="Medium">Medium</option><option value="Hard">Hard</option><option value="Expert">Expert</option>
               </select>
               <label className="recipe-vegetarian-toggle"><input type="checkbox" checked={form.isVegetarian} onChange={event => setForm({ ...form, isVegetarian: event.target.checked })} /> Món chay</label>
             </div>
+
+            <fieldset className="form-group recipe-meta-fields">
+              <legend>Nutrition (kcal / g / mg mỗi khẩu phần)</legend>
+              {Object.entries({ calories: 'Calories (kcal)', protein: 'Protein (g)', carbohydrates: 'Carbohydrates (g)', fat: 'Fat (g)', fiber: 'Fiber (g)', sodium: 'Sodium (mg)' }).map(([key, label]) => (
+                <label key={key} htmlFor={`nutrition-${key}`}>{label}<input id={`nutrition-${key}`} type="number" min="0" step="0.01" value={form.nutrition[key]} onChange={event => setForm(current => ({ ...current, nutrition: { ...current.nutrition, [key]: event.target.value } }))} /></label>
+              ))}
+            </fieldset>
 
             <div className="form-group">
               <label htmlFor="recipe-ingredients">Nguyên liệu</label>
@@ -1220,18 +1277,6 @@ function RecipesPage() {
                 onChange={(event) => setForm({ ...form, instructions: event.target.value })}
                 placeholder="Mỗi bước trên 1 dòng"
               />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="recipe-status">Trạng thái</label>
-              <select
-                id="recipe-status"
-                value={form.status}
-                onChange={(event) => setForm({ ...form, status: Number(event.target.value) })}
-              >
-                <option value={0}>Draft</option>
-                <option value={1}>Published</option>
-              </select>
             </div>
 
             <div className="form-actions">

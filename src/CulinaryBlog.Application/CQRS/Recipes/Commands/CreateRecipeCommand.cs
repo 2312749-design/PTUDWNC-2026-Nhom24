@@ -14,7 +14,10 @@ public class CreateRecipeCommand : IRequest<RecipeDto>
     public List<CreateRecipeStepDto> RecipeSteps { get; set; } = new();
     public Guid CategoryId { get; set; }
     public string AuthorId { get; set; } = string.Empty; // Nhận AuthorId từ Controller (lấy từ Token)
-    public int? CookingTimeMinutes { get; set; }
-    public string Difficulty { get; set; } = "Trung bình";
+    public int PrepTimeMinutes { get; set; }
+    public int CookTimeMinutes { get; set; }
+    public int Servings { get; set; }
+    public string Difficulty { get; set; } = "Medium";
     public bool IsVegetarian { get; set; }
+    public RecipeNutritionDto? Nutrition { get; set; }
 }

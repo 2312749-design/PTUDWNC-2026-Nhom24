@@ -5,6 +5,7 @@ namespace CulinaryBlog.Domain.Entities;
 public class ApplicationUser : IdentityUser
 {
     public string FullName { get; set; } = string.Empty;
+    public string Role { get; set; } = "User";
     public string? AvatarUrl { get; set; }
     public string? Bio { get; set; }
     public DateTime? BirthDate { get; set; }

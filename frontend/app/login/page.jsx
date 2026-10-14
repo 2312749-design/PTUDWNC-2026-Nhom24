@@ -1,5 +1,5 @@
-import ClientApp from '../ClientApp'
+import LoginClient from './LoginClient'
 
 export default function LoginPage() {
-  return <ClientApp />
+  return <LoginClient />
 }

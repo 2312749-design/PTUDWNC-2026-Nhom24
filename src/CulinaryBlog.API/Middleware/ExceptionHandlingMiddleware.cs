@@ -1,5 +1,6 @@
 using CulinaryBlog.Domain.Exceptions;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace CulinaryBlog.API.Middleware;
 
@@ -33,7 +34,7 @@ public class ExceptionHandlingMiddleware
 
             context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/problem+json";
-            await context.Response.WriteAsJsonAsync(problem);
+            await context.Response.WriteAsync(JsonSerializer.Serialize(problem, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
     }
 

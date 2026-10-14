@@ -23,6 +23,7 @@ public class GetCategoriesQueryHandler : IRequestHandler<GetCategoriesQuery, IEn
         if (cached != null) return cached;
 
         var categories = await _context.Categories
+            .Where(c => !c.IsDeleted)
             .Select(c => new CategoryDto
             {
                 Id = c.Id,

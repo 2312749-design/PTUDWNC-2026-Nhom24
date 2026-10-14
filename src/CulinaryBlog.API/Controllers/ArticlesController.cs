@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CulinaryBlog.API.Controllers;
 
 [Route("api/articles")]
+[Route("api/v1/articles")]
 [ApiController]
 public class ArticlesController : ControllerBase
 {

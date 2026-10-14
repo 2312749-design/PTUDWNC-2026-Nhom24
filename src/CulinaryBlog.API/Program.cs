@@ -1,4 +1,5 @@
 using CulinaryBlog.API.Middleware;
+using CulinaryBlog.API.Filters;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Application.Models;
 using CulinaryBlog.Infrastructure.Persistence;
@@ -7,7 +8,11 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
+using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -25,6 +30,8 @@ using StackExchange.Redis;
 using System.Diagnostics;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var serviceName = builder.Configuration["OpenTelemetry:ServiceName"] ?? "culinary-blog-api";
@@ -101,16 +108,26 @@ healthChecks.AddCheck("redis", () =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter("default", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = builder.Configuration.GetValue("RateLimiting:DefaultPermitLimit", 200);
-        limiterOptions.Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:DefaultWindowMinutes", 1));
-        limiterOptions.QueueLimit = 0;
-    });
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue("RateLimiting:DefaultPermitLimit", 200),
+                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:DefaultWindowMinutes", 1)),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
     options.AddFixedWindowLimiter("auth", limiterOptions =>
     {
         limiterOptions.PermitLimit = builder.Configuration.GetValue("RateLimiting:LoginPermitLimit", 5);
         limiterOptions.Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:LoginWindowMinutes", 1));
+        limiterOptions.QueueLimit = 0;
+    });
+    options.AddFixedWindowLimiter("registration", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = builder.Configuration.GetValue("RateLimiting:RegistrationPermitLimit", 3);
+        limiterOptions.Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:RegistrationWindowMinutes", 1));
         limiterOptions.QueueLimit = 0;
     });
 });
@@ -182,7 +199,23 @@ builder.Services.AddCors(options =>
 // Đăng ký MediatR tự động quét các Handler trong tầng Application
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.CategoryDto).Assembly));
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options => options.Filters.Add<ApiContractFilter>());
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+    options.ApiVersionReader = ApiVersionReader.Combine(
+        new UrlSegmentApiVersionReader(),
+        new HeaderApiVersionReader("X-Version"));
+});
+
+builder.Services.AddVersionedApiExplorer(options =>
+{
+    options.GroupNameFormat = "'v'VVV";
+    options.SubstituteApiVersionInUrl = true;
+});
+
 builder.Services.AddHttpClient("OpenAI", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(45);
@@ -204,7 +237,13 @@ builder.Services.AddHangfireServer();
 // 6. Cấu hình Swagger kèm nút Authorize chuẩn
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "CulinaryBlog.API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "CulinaryBlog API",
+        Version = "v1",
+        Description = "CulinaryBlog API documentation for version 1.0",
+        Contact = new OpenApiContact { Name = "CulinaryBlog Team" }
+    });
 
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
@@ -234,6 +273,17 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+var apiVersionProvider = app.Services.GetRequiredService<IApiVersionDescriptionProvider>();
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    foreach (var description in apiVersionProvider.ApiVersionDescriptions)
+    {
+        options.SwaggerEndpoint($"/swagger/{description.GroupName}/swagger.json", description.GroupName.ToUpperInvariant());
+    }
+});
+
 static string GetWebFilePath(IWebHostEnvironment env, string fileName)
 {
     var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
@@ -243,8 +293,7 @@ static string GetWebFilePath(IWebHostEnvironment env, string fileName)
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    // Swagger UI is enabled globally so API version metadata remains visible across environments.
 }
 
 app.UseSerilogRequestLogging(options =>
@@ -262,12 +311,27 @@ app.Use(async (context, next) =>
     await next(context);
 });
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseStatusCodePages(async (StatusCodeContext statusContext) =>
+{
+    var response = statusContext.HttpContext.Response;
+    var statusCode = response.StatusCode;
+    response.ContentType = "application/problem+json";
+    var problem = new ProblemDetails
+    {
+        Status = statusCode,
+        Title = Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(statusCode)
+    };
+    await response.WriteAsync(JsonSerializer.Serialize(problem, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+});
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseHangfireDashboard();
 
 // 7. Kích hoạt CORS Middleware
 app.UseCors("FrontendPolicy");
+
+// 7.1. Kích hoạt Rate Limiting Middleware để ràng buộc request thực sự
+app.UseRateLimiter();
 
 // 8. Thêm Authentication & Authorization Middleware
 app.UseAuthentication();

@@ -21,45 +21,92 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
     public async Task<RecipeDto> Handle(CreateRecipeCommand request, CancellationToken cancellationToken)
     {
         // 1. Kiểm tra Category có tồn tại không
-        var categoryExists = await _context.Categories.AnyAsync(c => c.Id == request.CategoryId, cancellationToken);
+        var categoryExists = await _context.Categories.AnyAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken);
         if (!categoryExists)
         {
             throw new Exception("Danh mục (CategoryId) không tồn tại trong hệ thống!");
         }
 
-        // 2. Sử dụng Domain Factory Method (Recipe.Create) theo thiết kế DDD hiện tại
+        var ingredientInputs = request.RecipeIngredients
+            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+            .Select((item, index) => new { Item = item, Index = index })
+            .OrderBy(entry => entry.Item.OrderIndex ?? entry.Index + 1)
+            .ThenBy(entry => entry.Index)
+            .Select(entry => entry.Item)
+            .ToList();
+
+        if (ingredientInputs.Count == 0)
+        {
+            ingredientInputs = request.Ingredients
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select((item, index) => new CreateRecipeIngredientDto { Name = item, OrderIndex = index + 1 })
+                .ToList();
+        }
+
+        var stepInputs = request.RecipeSteps
+            .Where(item => !string.IsNullOrWhiteSpace(item.Description))
+            .ToList();
+
+        if (stepInputs.Count == 0)
+        {
+            stepInputs = request.Instructions
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Select(item => new CreateRecipeStepDto { Description = item })
+                .ToList();
+        }
+
+        var ingredientNames = ingredientInputs.Select(item => item.Name.Trim()).ToList();
+        var stepDescriptions = stepInputs.Select(item => item.Description.Trim()).ToList();
         var recipe = Recipe.Create(
             request.Title,
             request.Description,
-            request.Ingredients,
-            request.Instructions,
+            ingredientNames,
+            stepDescriptions,
             request.CategoryId,
             request.AuthorId,
             request.ImageUrl,
-            request.CookingTimeMinutes,
-            request.Difficulty,
-            request.IsVegetarian
-        );
+            difficulty: request.Difficulty,
+            isVegetarian: request.IsVegetarian,
+            prepTimeMinutes: request.PrepTimeMinutes,
+            cookTimeMinutes: request.CookTimeMinutes,
+            servings: request.Servings);
 
-        var recipeIngredients = request.RecipeIngredients
-            .Where(item => !string.IsNullOrWhiteSpace(item.Name))
-            .Select((ingredient, index) => RecipeIngredient.Create(
+        var slugBase = Recipe.CreateSlug(request.Title);
+        var slug = slugBase;
+        var suffix = 2;
+        while (await _context.Recipes.AnyAsync(existing => existing.Slug == slug, cancellationToken))
+        {
+            slug = $"{slugBase}-{suffix++}";
+        }
+        recipe.SetSlug(slug);
+
+        recipe.SetNutrition(request.Nutrition == null ? null : new RecipeNutrition(
+            request.Nutrition.Calories,
+            request.Nutrition.Protein,
+            request.Nutrition.Carbohydrates,
+            request.Nutrition.Fat,
+            request.Nutrition.Fiber,
+            request.Nutrition.Sodium));
+
+        var recipeIngredients = ingredientInputs
+            .Select((item, index) => RecipeIngredient.Create(
                 recipe.Id,
-                ingredient.Name,
-                ingredient.Quantity,
-                ingredient.Unit,
-                ingredient.Order > 0 ? ingredient.Order : index + 1))
+                item.Name,
+                item.Quantity,
+                item.Unit,
+                item.Notes,
+                index + 1))
+            .ToList();
+        var recipeSteps = stepInputs
+            .Select((item, index) => RecipeStep.Create(
+                recipe.Id,
+                item.Title,
+                item.Description,
+                index + 1,
+                item.TimerMinutes,
+                item.ImageUrl))
             .ToList();
         _context.RecipeIngredients.AddRange(recipeIngredients);
-
-        var recipeSteps = request.RecipeSteps
-            .Where(item => !string.IsNullOrWhiteSpace(item.Title) && !string.IsNullOrWhiteSpace(item.Description))
-            .Select((step, index) => RecipeStep.Create(
-                recipe.Id,
-                step.Title,
-                step.Description,
-                step.Order > 0 ? step.Order : index + 1))
-            .ToList();
         _context.RecipeSteps.AddRange(recipeSteps);
 
         // Persist the recipe and its structured children together.
@@ -84,7 +131,8 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
                 Name = ingredient.Name,
                 Quantity = ingredient.Quantity,
                 Unit = ingredient.Unit,
-                Order = ingredient.Order
+                Notes = ingredient.Notes,
+                OrderIndex = ingredient.OrderIndex
             }).ToList(),
             RecipeSteps = recipeSteps.Select(step => new RecipeStepDto
             {
@@ -92,14 +140,28 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
                 RecipeId = recipe.Id,
                 Title = step.Title,
                 Description = step.Description,
-                Order = step.Order
+                StepNumber = step.StepNumber,
+                TimerMinutes = step.TimerMinutes,
+                ImageUrl = step.ImageUrl
             }).ToList(),
             CategoryId = recipe.CategoryId,
             AuthorId = recipe.AuthorId,
             Status = recipe.Status,
+            PrepTimeMinutes = recipe.PrepTimeMinutes,
+            CookTimeMinutes = recipe.CookTimeMinutes,
+            Servings = recipe.Servings,
             CookingTimeMinutes = recipe.CookingTimeMinutes,
             Difficulty = recipe.Difficulty,
-            IsVegetarian = recipe.IsVegetarian
+            IsVegetarian = recipe.IsVegetarian,
+            Nutrition = recipe.Nutrition == null ? null : new RecipeNutritionDto
+            {
+                Calories = recipe.Nutrition.Calories,
+                Protein = recipe.Nutrition.Protein,
+                Carbohydrates = recipe.Nutrition.Carbohydrates,
+                Fat = recipe.Nutrition.Fat,
+                Fiber = recipe.Nutrition.Fiber,
+                Sodium = recipe.Nutrition.Sodium
+            }
         };
     }
 }

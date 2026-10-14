@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CulinaryBlog.API.Controllers;
 
 [Route("api/account")]
+[Route("api/v1/account")]
 [ApiController]
 [Authorize]
 public class AccountController : ControllerBase

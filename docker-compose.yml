@@ -26,9 +26,21 @@ services:
       - redis-data:/data
     command: ["redis-server", "--appendonly", "yes"]
 
+  minio-init:
+    image: busybox:1.36
+    container_name: culinaryblog-minio-init
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 65532:65532 /data"]
+    volumes:
+      - minio-data:/data
+    restart: "no"
+
   minio:
     image: cleanstart/minio:latest
     container_name: culinaryblog-minio
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -38,6 +50,16 @@ services:
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9001"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.123.0
+    container_name: culinaryblog-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    expose:
+      - "4317"
+      - "4318"
 
   api:
     build:
@@ -49,19 +71,23 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      minio:
+        condition: service_started
+      otel-collector:
+        condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=CulinaryBlogDb;Username=postgres;Password=postgres;SSL Mode=Disable;
       ConnectionStrings__Redis: redis:6379,abortConnect=false
-      Minio__Enabled: "false"
+      Minio__Enabled: "true"
       Minio__Endpoint: http://minio:9000
       Minio__AccessKey: minioadmin
       Minio__SecretKey: minioadmin
       Minio__Bucket: culinary-blog
       Minio__PublicBaseUrl: http://localhost:9000
       JwtSettings__Secret: CulinaryBlogSuperSecretKeyForJwtAuthentication2026Here!
-      OpenTelemetry__OtlpEndpoint: ""
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
     expose:
       - "8080"
     ports:
@@ -71,6 +97,9 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: http://localhost
+        NEXT_PUBLIC_API_URL: http://localhost/api
     container_name: culinaryblog-frontend
     depends_on:
       - api

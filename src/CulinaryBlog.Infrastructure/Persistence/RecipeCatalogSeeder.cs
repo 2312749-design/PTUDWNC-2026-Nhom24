@@ -205,11 +205,11 @@ public static class RecipeCatalogSeeder
         {
             if (LegacyCategories.TryGetValue(recipe.Title, out var correctCategory))
             {
-                recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, categoryIds[correctCategory], recipe.Status, string.Empty, recipe.CookingTimeMinutes, recipe.Difficulty, recipe.IsVegetarian);
+                recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, categoryIds[correctCategory], string.Empty, recipe.CookingTimeMinutes, Recipe.NormalizeDifficulty(recipe.Difficulty), recipe.IsVegetarian);
             }
             else if (!string.IsNullOrEmpty(recipe.ImageUrl))
             {
-                recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, recipe.CategoryId, recipe.Status, string.Empty, recipe.CookingTimeMinutes, recipe.Difficulty, recipe.IsVegetarian);
+                recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, recipe.CategoryId, string.Empty, recipe.CookingTimeMinutes, Recipe.NormalizeDifficulty(recipe.Difficulty), recipe.IsVegetarian);
             }
         }
 
@@ -243,7 +243,7 @@ public static class RecipeCatalogSeeder
                 if (!replacementQueue.MoveNext()) break;
                 var replacement = replacementQueue.Current;
                 var details = CategoryCookingGuides[replacement.Category];
-                duplicate.Update(replacement.Title, $"{replacement.Title} dễ làm tại nhà, dùng nguyên liệu quen thuộc và cách nấu rõ ràng.", details.Ingredients.ToList(), details.Instructions.ToList(), categoryIds[replacement.Category], duplicate.Status, string.Empty, 35, "Trung bình", replacement.Category == "Món chay");
+                duplicate.Update(replacement.Title, $"{replacement.Title} dễ làm tại nhà, dùng nguyên liệu quen thuộc và cách nấu rõ ràng.", details.Ingredients.ToList(), details.Instructions.ToList(), categoryIds[replacement.Category], string.Empty, 35, "Medium", replacement.Category == "Món chay");
                 usedCatalogTitles.Add(replacement.Title);
             }
         }
@@ -264,7 +264,7 @@ public static class RecipeCatalogSeeder
                 categoryIds[seed.Category],
                 seedAuthor.Id,
                 cookingTimeMinutes: 20 + (newCount % 5) * 5,
-                difficulty: "Trung bình",
+                difficulty: "Medium",
                 isVegetarian: seed.Category == "Món chay"));
             newCount++;
         }

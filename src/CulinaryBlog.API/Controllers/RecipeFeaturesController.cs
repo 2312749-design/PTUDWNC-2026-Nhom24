@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CulinaryBlog.API.Controllers;
 
 [Route("api/features")]
+[Route("api/v1/features")]
 [ApiController]
 [Authorize]
 public class RecipeFeaturesController : ControllerBase

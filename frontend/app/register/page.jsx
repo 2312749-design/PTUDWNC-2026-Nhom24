@@ -1,5 +1,5 @@
-import ClientApp from '../ClientApp'
+import RegisterClient from './RegisterClient'
 
 export default function RegisterPage() {
-  return <ClientApp />
+  return <RegisterClient />
 }

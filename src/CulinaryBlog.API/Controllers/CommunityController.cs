@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 namespace CulinaryBlog.API.Controllers;
 
 [Route("api/community")]
+[Route("api/v1/community")]
 [ApiController]
 public class CommunityController : ControllerBase
 {

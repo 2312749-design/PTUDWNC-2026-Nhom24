@@ -216,8 +216,29 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 
         // Cấu hình bảng Recipe và các mối quan hệ khóa ngoại
         builder.Entity<Recipe>(entity => {
-            entity.ToTable(name: "Recipes");
+            entity.ToTable("Recipes", table =>
+            {
+                table.HasCheckConstraint("CK_Recipes_PrepTimeMinutes", "\"PrepTimeMinutes\" > 0");
+                table.HasCheckConstraint("CK_Recipes_CookTimeMinutes", "\"CookTimeMinutes\" >= 0");
+                table.HasCheckConstraint("CK_Recipes_Servings", "\"Servings\" > 0");
+                table.HasCheckConstraint("CK_Recipes_Difficulty", "\"Difficulty\" IN ('Easy', 'Medium', 'Hard', 'Expert')");
+                table.HasCheckConstraint("CK_Recipes_Nutrition", "(\"Nutrition_Calories\" IS NULL OR \"Nutrition_Calories\" >= 0) AND (\"Nutrition_Protein\" IS NULL OR \"Nutrition_Protein\" >= 0) AND (\"Nutrition_Carbohydrates\" IS NULL OR \"Nutrition_Carbohydrates\" >= 0) AND (\"Nutrition_Fat\" IS NULL OR \"Nutrition_Fat\" >= 0) AND (\"Nutrition_Fiber\" IS NULL OR \"Nutrition_Fiber\" >= 0) AND (\"Nutrition_Sodium\" IS NULL OR \"Nutrition_Sodium\" >= 0)");
+            });
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).HasMaxLength(160).IsRequired();
+            entity.Property(e => e.Slug).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Difficulty).HasMaxLength(10).IsRequired();
+            entity.HasIndex(e => e.Slug).IsUnique();
+            entity.OwnsOne(e => e.Nutrition, nutrition =>
+            {
+                nutrition.Property(value => value.Calories).HasColumnName("Nutrition_Calories").HasPrecision(12, 2);
+                nutrition.Property(value => value.Protein).HasColumnName("Nutrition_Protein").HasPrecision(12, 2);
+                nutrition.Property(value => value.Carbohydrates).HasColumnName("Nutrition_Carbohydrates").HasPrecision(12, 2);
+                nutrition.Property(value => value.Fat).HasColumnName("Nutrition_Fat").HasPrecision(12, 2);
+                nutrition.Property(value => value.Fiber).HasColumnName("Nutrition_Fiber").HasPrecision(12, 2);
+                nutrition.Property(value => value.Sodium).HasColumnName("Nutrition_Sodium").HasPrecision(12, 2);
+            });
+            entity.Navigation(e => e.Nutrition).IsRequired(false);
             entity.Property(e => e.SearchVector)
                 .HasColumnType("tsvector")
                 .HasDefaultValueSql("''::tsvector")
@@ -246,6 +267,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.Name).HasMaxLength(200);
             entity.Property(e => e.Quantity).HasMaxLength(100);
             entity.Property(e => e.Unit).HasMaxLength(50);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.HasIndex(e => new { e.RecipeId, e.OrderIndex }).IsUnique();
         });
 
         builder.Entity<RecipeStep>(entity => {
@@ -257,6 +280,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                   .OnDelete(DeleteBehavior.Cascade);
             entity.Property(e => e.Title).HasMaxLength(200);
             entity.Property(e => e.Description).HasMaxLength(2000);
+            entity.Property(e => e.ImageUrl).HasMaxLength(2048);
+            entity.HasIndex(e => new { e.RecipeId, e.StepNumber }).IsUnique();
         });
     }
 }

@@ -9,6 +9,7 @@ using NpgsqlTypes;
 namespace CulinaryBlog.API.Controllers;
 
 [Route("api/[controller]")]
+[Route("api/v1/[controller]")]
 [ApiController]
 public class SearchController : ControllerBase
 {
@@ -35,17 +36,49 @@ public class SearchController : ControllerBase
         var searchText = string.Join(" ", new[] { keyword, ingredient }.Where(value => !string.IsNullOrWhiteSpace(value)));
         var query = _context.Recipes
             .AsNoTracking()
+            .Where(r => !r.IsDeleted && r.Status == RecipeStatus.Published)
             .Include(r => r.Category)
             .Include(r => r.Author)
+            .Where(r => !r.Category.IsDeleted)
             .AsQueryable();
 
         NpgsqlTsQuery? searchQuery = null;
         if (!string.IsNullOrWhiteSpace(searchText))
         {
-            searchQuery = EF.Functions.WebSearchToTsQuery("simple", searchText);
-            query = _context.Recipes
-                .FromSqlInterpolated<Recipe>($"SELECT * FROM \"Recipes\" WHERE \"SearchVector\" @@ {searchQuery}");
+            if (_context.Database.IsNpgsql())
+            {
+                searchQuery = EF.Functions.WebSearchToTsQuery("simple", searchText);
+                query = query.Where(recipe => recipe.SearchVector.Matches(searchQuery));
+            }
+            else
+            {
+                var terms = searchText
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(term => term.Trim())
+                    .Where(term => !string.IsNullOrWhiteSpace(term))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+                if (terms.Length > 0)
+                {
+                    var normalizedTerms = terms
+                        .Select(term => term.Trim().ToLowerInvariant())
+                        .Where(term => !string.IsNullOrWhiteSpace(term))
+                        .ToArray();
+
+                    if (normalizedTerms.Length > 0)
+                    {
+                        query = query.Where(recipe =>
+                            normalizedTerms.All(term =>
+                                recipe.Title.ToLower().Contains(term) ||
+                                (recipe.Description != null && recipe.Description.ToLower().Contains(term)) ||
+                                recipe.Ingredients.Any(ingredient => ingredient.ToLower().Contains(term)) ||
+                                recipe.Instructions.Any(step => step.ToLower().Contains(term))));
+                    }
+                }
+            }
         }
+
         if (categoryId.HasValue) query = query.Where(recipe => recipe.CategoryId == categoryId.Value);
         if (maxMinutes.HasValue) query = query.Where(recipe => recipe.CookingTimeMinutes != null && recipe.CookingTimeMinutes <= maxMinutes.Value);
         if (!string.IsNullOrWhiteSpace(difficulty)) query = query.Where(recipe => recipe.Difficulty == difficulty);
@@ -79,9 +112,22 @@ public class SearchController : ControllerBase
                 CategoryName = r.Category != null ? r.Category.Name : string.Empty,
                 AuthorId = r.AuthorId,
                 Status = r.Status,
+                UpdatedAt = r.UpdatedAt,
+                PrepTimeMinutes = r.PrepTimeMinutes,
+                CookTimeMinutes = r.CookTimeMinutes,
+                Servings = r.Servings,
                 CookingTimeMinutes = r.CookingTimeMinutes,
                 Difficulty = r.Difficulty,
-                IsVegetarian = r.IsVegetarian
+                IsVegetarian = r.IsVegetarian,
+                Nutrition = r.Nutrition == null ? null : new RecipeNutritionDto
+                {
+                    Calories = r.Nutrition.Calories,
+                    Protein = r.Nutrition.Protein,
+                    Carbohydrates = r.Nutrition.Carbohydrates,
+                    Fat = r.Nutrition.Fat,
+                    Fiber = r.Nutrition.Fiber,
+                    Sodium = r.Nutrition.Sodium
+                }
             })
             .ToListAsync();
 

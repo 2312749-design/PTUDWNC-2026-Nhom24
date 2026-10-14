@@ -23,6 +23,7 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
         if (cached != null) return cached;
 
         var recipes = await _context.Recipes
+            .Where(r => !r.IsDeleted && r.Status == CulinaryBlog.Domain.Entities.RecipeStatus.Published && !r.Category.IsDeleted)
             .Include(r => r.Category)
             .Include(r => r.Author)
             .Select(r => new RecipeDto
@@ -38,9 +39,22 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
                 CategoryName = r.Category != null ? r.Category.Name : string.Empty,
                 AuthorId = r.AuthorId,
                 Status = r.Status,
+                UpdatedAt = r.UpdatedAt,
+                PrepTimeMinutes = r.PrepTimeMinutes,
+                CookTimeMinutes = r.CookTimeMinutes,
+                Servings = r.Servings,
                 CookingTimeMinutes = r.CookingTimeMinutes,
                 Difficulty = r.Difficulty,
-                IsVegetarian = r.IsVegetarian
+                IsVegetarian = r.IsVegetarian,
+                Nutrition = r.Nutrition == null ? null : new RecipeNutritionDto
+                {
+                    Calories = r.Nutrition.Calories,
+                    Protein = r.Nutrition.Protein,
+                    Carbohydrates = r.Nutrition.Carbohydrates,
+                    Fat = r.Nutrition.Fat,
+                    Fiber = r.Nutrition.Fiber,
+                    Sodium = r.Nutrition.Sodium
+                }
             })
             .ToListAsync(cancellationToken);
         await _cache.SetAsync(CacheKeys.Recipes, recipes, TimeSpan.FromMinutes(5), cancellationToken);

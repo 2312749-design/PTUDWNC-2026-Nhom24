@@ -1,25 +1,28 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import NextLink from 'next/link'
+import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useLocale } from './LocaleContext.jsx'
-import { CommunityNav } from './CommunityPages.jsx'
+import { getVersionedApiBaseUrl, readApiResponse } from './api/config.js'
+import { CommunityNav, NextCommunityNav } from './CommunityPages.jsx'
 import './PlatformFeaturePages.css'
 
-const API = 'http://localhost:5152/api'
+const API_V1 = getVersionedApiBaseUrl()
+const API = API_V1
 const getToken = () => localStorage.getItem('accessToken') || ''
 const headers = (json = false) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) })
 
 async function request(path, options = {}) {
   const response = await fetch(`${API}${path}`, { ...options, headers: { ...headers(Boolean(options.body)), ...options.headers } })
-  const text = await response.text()
-  const data = text ? JSON.parse(text) : {}
+  const data = await readApiResponse(response)
   if (!response.ok) throw new Error(data.message || 'Không thể hoàn thành yêu cầu.')
   return data
 }
 
-function FeatureShell({ eyebrow, title, intro, children }) {
+function FeatureShell({ eyebrow, title, intro, children, Navigation = CommunityNav }) {
   const { t } = useLocale()
-  return <div className="community-app"><CommunityNav /><main className="community-main feature-page"><header className="feature-heading"><p className="community-kicker">{t(eyebrow)}</p><h1>{t(title)}</h1>{intro && <p>{t(intro)}</p>}</header>{children}</main></div>
+  return <div className="community-app"><Navigation /><main className="community-main feature-page"><header className="feature-heading"><p className="community-kicker">{t(eyebrow)}</p><h1>{t(title)}</h1>{intro && <p>{t(intro)}</p>}</header>{children}</main></div>
 }
 
 function formatCountdown(totalSeconds) {
@@ -1403,7 +1406,7 @@ export function MealPlannerPage() {
   useEffect(() => {
     if (!getToken()) { navigate('/login'); return }
     let active = true
-    Promise.all([request(`/features/meal-plan?weekStart=${weekStart}`), request(`/features/meal-plan/shopping-list?weekStart=${weekStart}`), fetch(`${API}/Recipes`).then(response => response.json())])
+    Promise.all([request(`/features/meal-plan?weekStart=${weekStart}`), request(`/features/meal-plan/shopping-list?weekStart=${weekStart}`), fetch(`${API_V1}/recipes`).then(readApiResponse)])
       .then(([plan, list, recipeList]) => { if (active) { setEntries(plan.entries); setShopping(list.items); setRecipes(recipeList) } })
       .catch(error => toast.error(error.message)).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -1432,8 +1435,7 @@ export function MealPlannerPage() {
   </FeatureShell>
 }
 
-export function ChallengesPage() {
-  const navigate = useNavigate()
+function ChallengesContent({ navigate, Navigation = CommunityNav, useNextLinks = false }) {
   const [challenges, setChallenges] = useState([])
   const [recipes, setRecipes] = useState([])
   const [recipeId, setRecipeId] = useState('')
@@ -1442,24 +1444,35 @@ export function ChallengesPage() {
   const [refresh, setRefresh] = useState(0)
   useEffect(() => {
     let active = true
-    Promise.all([request('/features/challenges'), fetch(`${API}/Recipes`).then(response => response.json()), getToken() ? request('/account/me') : Promise.resolve(null)])
+    Promise.all([request('/features/challenges'), fetch(`${API_V1}/recipes`).then(readApiResponse), getToken() ? request('/account/me') : Promise.resolve(null)])
       .then(([items, recipeList, me]) => { if (active) { setChallenges(items); setRecipes(recipeList); setMyId(me?.id || '') } })
       .catch(error => toast.error(error.message)).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [navigate, refresh])
+  }, [refresh])
   const submit = async (challengeId, event) => {
     event.preventDefault()
     if (!getToken()) return navigate('/login')
     try { await request(`/features/challenges/${challengeId}/submit`, { method: 'POST', body: JSON.stringify({ recipeId }) }); toast.success('Bạn đã tham gia thử thách!'); setRefresh(value => value + 1) }
     catch (error) { toast.error(error.message) }
   }
-  return <FeatureShell eyebrow="SÂN CHƠI CỘNG ĐỒNG" title="Thử thách nấu ăn" intro="Mỗi tuần một chủ đề mới. Chọn công thức do bạn tạo để tham gia và nhận huy hiệu.">
-    {loading ? <p className="feature-empty">Đang tải thử thách...</p> : challenges.length ? <div className="challenge-grid">{challenges.map(challenge => <article className="challenge-card" key={challenge.id}><p className="community-kicker">{new Date(challenge.endsAt).toLocaleDateString('vi-VN') === new Date().toLocaleDateString('vi-VN') ? 'KẾT THÚC HÔM NAY' : 'THỬ THÁCH ĐANG MỞ'}</p><h2>{challenge.title}</h2><p>{challenge.theme}</p><div className="challenge-progress"><strong>{challenge.entriesCount}</strong><span>bài dự thi</span><span>{new Date(challenge.endsAt).toLocaleDateString('vi-VN')}</span></div>{challenge.enteredByMe ? <div className="challenge-entered">✓ Bạn đã tham gia</div> : myId ? <form className="challenge-submit" onSubmit={event => submit(challenge.id,event)}><select value={recipeId} onChange={event => setRecipeId(event.target.value)} required><option value="">Chọn công thức của bạn</option>{recipes.filter(recipe => recipe.authorId === myId).map(recipe => <option key={recipe.id} value={recipe.id}>{recipe.title}</option>)}</select><button className="feature-button primary">Gửi dự thi</button></form> : <Link className="feature-button primary" to="/login">Đăng nhập để tham gia</Link>}</article>)}</div> : <p className="feature-empty">Chưa có thử thách nào.</p>}
+  const LoginLink = useNextLinks ? NextLink : Link
+  const loginLinkProps = useNextLinks ? { href: '/login' } : { to: '/login' }
+  return <FeatureShell Navigation={Navigation} eyebrow="SÂN CHƠI CỘNG ĐỒNG" title="Thử thách nấu ăn" intro="Mỗi tuần một chủ đề mới. Chọn công thức do bạn tạo để tham gia và nhận huy hiệu.">
+    {loading ? <p className="feature-empty">Đang tải thử thách...</p> : challenges.length ? <div className="challenge-grid">{challenges.map(challenge => <article className="challenge-card" key={challenge.id}><p className="community-kicker">{new Date(challenge.endsAt).toLocaleDateString('vi-VN') === new Date().toLocaleDateString('vi-VN') ? 'KẾT THÚC HÔM NAY' : 'THỬ THÁCH ĐANG MỞ'}</p><h2>{challenge.title}</h2><p>{challenge.theme}</p><div className="challenge-progress"><strong>{challenge.entriesCount}</strong><span>bài dự thi</span><span>{new Date(challenge.endsAt).toLocaleDateString('vi-VN')}</span></div>{challenge.enteredByMe ? <div className="challenge-entered">✓ Bạn đã tham gia</div> : myId ? <form className="challenge-submit" onSubmit={event => submit(challenge.id,event)}><select value={recipeId} onChange={event => setRecipeId(event.target.value)} required><option value="">Chọn công thức của bạn</option>{recipes.filter(recipe => recipe.authorId === myId).map(recipe => <option key={recipe.id} value={recipe.id}>{recipe.title}</option>)}</select><button className="feature-button primary">Gửi dự thi</button></form> : <LoginLink className="feature-button primary" {...loginLinkProps}>Đăng nhập để tham gia</LoginLink>}</article>)}</div> : <p className="feature-empty">Chưa có thử thách nào.</p>}
   </FeatureShell>
 }
 
-export function CreatorDashboardPage() {
+export function ChallengesPage() {
   const navigate = useNavigate()
+  return <ChallengesContent navigate={navigate} />
+}
+
+export function NextChallengesPage() {
+  const router = useRouter()
+  return <ChallengesContent navigate={(path) => router.push(path)} Navigation={NextCommunityNav} useNextLinks />
+}
+
+function CreatorDashboardContent({ navigate, Navigation = CommunityNav, useNextLinks = false }) {
   const [stats, setStats] = useState(null)
   useEffect(() => {
     if (!getToken()) { navigate('/login'); return }
@@ -1469,9 +1482,22 @@ export function CreatorDashboardPage() {
     ['Công thức', stats.recipeCount], ['Lượt xem', stats.recipeViews], ['Lượt lưu', stats.savedCount],
     ['Bài viết', stats.postCount], ['Lượt thích', stats.receivedLikes], ['Bình luận', stats.receivedComments]
   ] : []
-  return <FeatureShell eyebrow="BẾP CỦA BẠN" title="Tổng quan tác giả" intro="Theo dõi những gì cộng đồng đang đón nhận từ các công thức và bài viết của bạn.">
-    {stats ? <><div className="creator-metrics">{metrics.map(([label,value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value.toLocaleString('vi-VN')}</strong></article>)}</div><div className="creator-actions"><Link to="/recipes/new">+ Tạo công thức</Link><Link to="/account">Cập nhật hồ sơ →</Link></div></> : <p className="feature-empty">Đang tải số liệu...</p>}
+  const DashboardLink = useNextLinks ? NextLink : Link
+  const recipesLinkProps = useNextLinks ? { href: '/recipes/new' } : { to: '/recipes/new' }
+  const accountLinkProps = useNextLinks ? { href: '/account' } : { to: '/account' }
+  return <FeatureShell Navigation={Navigation} eyebrow="BẾP CỦA BẠN" title="Tổng quan tác giả" intro="Theo dõi những gì cộng đồng đang đón nhận từ các công thức và bài viết của bạn.">
+    {stats ? <><div className="creator-metrics">{metrics.map(([label,value]) => <article className="metric-card" key={label}><span>{label}</span><strong>{value.toLocaleString('vi-VN')}</strong></article>)}</div><div className="creator-actions"><DashboardLink {...recipesLinkProps}>+ Tạo công thức</DashboardLink><DashboardLink {...accountLinkProps}>Cập nhật hồ sơ →</DashboardLink></div></> : <p className="feature-empty">Đang tải số liệu...</p>}
   </FeatureShell>
+}
+
+export function CreatorDashboardPage() {
+  const navigate = useNavigate()
+  return <CreatorDashboardContent navigate={navigate} />
+}
+
+export function NextCreatorDashboardPage() {
+  const router = useRouter()
+  return <CreatorDashboardContent navigate={(path) => router.push(path)} Navigation={NextCommunityNav} useNextLinks />
 }
 
 export function NotificationsPage() {

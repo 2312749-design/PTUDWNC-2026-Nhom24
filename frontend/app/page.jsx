@@ -1,7 +1,5 @@
-import ClientApp from './ClientApp'
-
-export const dynamic = 'force-dynamic'
+import { redirect } from 'next/navigation'
 
 export default function HomePage() {
-  return <ClientApp />
+  redirect('/community')
 }

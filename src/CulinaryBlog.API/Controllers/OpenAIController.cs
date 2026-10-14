@@ -32,6 +32,7 @@ public sealed record OpenAiChatMessage
 public sealed record OpenAiChatResponse(string Answer);
 
 [Route("api/openai")]
+[Route("api/v1/openai")]
 [ApiController]
 public sealed class OpenAIController(IHttpClientFactory httpClientFactory) : ControllerBase
 {

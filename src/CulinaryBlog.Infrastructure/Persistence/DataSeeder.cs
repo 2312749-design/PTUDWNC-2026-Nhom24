@@ -15,11 +15,21 @@ public static class DataSeeder
         if (defaultUser == null)
         {
             defaultUser = ApplicationUser.Create("Chef Demo", "admin@culinaryblog.com", "chefdemo");
+            defaultUser.Role = "Admin";
             defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
             await context.Users.AddAsync(defaultUser);
-            await context.SaveChangesAsync();
         }
-        else if (!string.IsNullOrWhiteSpace(defaultUser.PasswordHash))
+
+        if (defaultUser.Role != "Admin")
+        {
+            defaultUser.Role = "Admin";
+        }
+
+        if (string.IsNullOrWhiteSpace(defaultUser.PasswordHash))
+        {
+            defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
+        }
+        else
         {
             try
             {
@@ -36,6 +46,8 @@ public static class DataSeeder
                 await context.SaveChangesAsync();
             }
         }
+
+        await context.SaveChangesAsync();
 
         defaultUser = await context.Users.FirstAsync(u => u.Email == "admin@culinaryblog.com" || u.UserName == "chefdemo");
 

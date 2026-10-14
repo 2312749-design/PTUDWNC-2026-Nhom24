@@ -124,6 +124,10 @@ namespace CulinaryBlog.Infrastructure.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -203,6 +207,12 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");
@@ -211,9 +221,15 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -486,15 +502,25 @@ namespace CulinaryBlog.Infrastructure.Migrations
                     b.Property<Guid>("CategoryId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("CookTimeMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("CookingTimeMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
                     b.Property<string>("Difficulty")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
 
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text");
@@ -507,8 +533,14 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text[]");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsVegetarian")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("PrepTimeMinutes")
+                        .HasColumnType("integer");
 
                     b.Property<NpgsqlTsVector>("SearchVector")
                         .IsRequired()
@@ -516,16 +548,24 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .HasColumnType("tsvector")
                         .HasDefaultValueSql("''::tsvector");
 
+                    b.Property<int>("Servings")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Slug")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -533,10 +573,25 @@ namespace CulinaryBlog.Infrastructure.Migrations
 
                     b.HasIndex("CategoryId");
 
-                    b.HasIndex("SearchVector")
-                        .HasAnnotation("Npgsql:IndexMethod", "GIN");
+                    b.HasIndex("SearchVector");
 
-                    b.ToTable("Recipes", (string)null);
+                    NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("SearchVector"), "GIN");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Recipes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Recipes_CookTimeMinutes", "\"CookTimeMinutes\" >= 0");
+
+                            t.HasCheckConstraint("CK_Recipes_Difficulty", "\"Difficulty\" IN ('Easy', 'Medium', 'Hard', 'Expert')");
+
+                            t.HasCheckConstraint("CK_Recipes_Nutrition", "(\"Nutrition_Calories\" IS NULL OR \"Nutrition_Calories\" >= 0) AND (\"Nutrition_Protein\" IS NULL OR \"Nutrition_Protein\" >= 0) AND (\"Nutrition_Carbohydrates\" IS NULL OR \"Nutrition_Carbohydrates\" >= 0) AND (\"Nutrition_Fat\" IS NULL OR \"Nutrition_Fat\" >= 0) AND (\"Nutrition_Fiber\" IS NULL OR \"Nutrition_Fiber\" >= 0) AND (\"Nutrition_Sodium\" IS NULL OR \"Nutrition_Sodium\" >= 0)");
+
+                            t.HasCheckConstraint("CK_Recipes_PrepTimeMinutes", "\"PrepTimeMinutes\" > 0");
+
+                            t.HasCheckConstraint("CK_Recipes_Servings", "\"Servings\" > 0");
+                        });
                 });
 
             modelBuilder.Entity("CulinaryBlog.Domain.Entities.RecipeBookmark", b =>
@@ -611,7 +666,11 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
-                    b.Property<int>("Order")
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("OrderIndex")
                         .HasColumnType("integer");
 
                     b.Property<string>("Quantity")
@@ -627,7 +686,8 @@ namespace CulinaryBlog.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RecipeId");
+                    b.HasIndex("RecipeId", "OrderIndex")
+                        .IsUnique();
 
                     b.ToTable("RecipeIngredients", (string)null);
                 });
@@ -683,20 +743,27 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
-                    b.Property<int>("Order")
-                        .HasColumnType("integer");
+                    b.Property<string>("ImageUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<Guid>("RecipeId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("StepNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("TimerMinutes")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Title")
-                        .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RecipeId");
+                    b.HasIndex("RecipeId", "StepNumber")
+                        .IsUnique();
 
                     b.ToTable("RecipeSteps", (string)null);
                 });
@@ -1122,9 +1189,54 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.OwnsOne("CulinaryBlog.Domain.Entities.RecipeNutrition", "Nutrition", b1 =>
+                        {
+                            b1.Property<Guid>("RecipeId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<decimal?>("Calories")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("Nutrition_Calories");
+
+                            b1.Property<decimal?>("Carbohydrates")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("Nutrition_Carbohydrates");
+
+                            b1.Property<decimal?>("Fat")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("Nutrition_Fat");
+
+                            b1.Property<decimal?>("Fiber")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("Nutrition_Fiber");
+
+                            b1.Property<decimal?>("Protein")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("Nutrition_Protein");
+
+                            b1.Property<decimal?>("Sodium")
+                                .HasPrecision(12, 2)
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("Nutrition_Sodium");
+
+                            b1.HasKey("RecipeId");
+
+                            b1.ToTable("Recipes");
+
+                            b1.WithOwner()
+                                .HasForeignKey("RecipeId");
+                        });
+
                     b.Navigation("Author");
 
                     b.Navigation("Category");
+
+                    b.Navigation("Nutrition");
                 });
 
             modelBuilder.Entity("CulinaryBlog.Domain.Entities.RecipeBookmark", b =>

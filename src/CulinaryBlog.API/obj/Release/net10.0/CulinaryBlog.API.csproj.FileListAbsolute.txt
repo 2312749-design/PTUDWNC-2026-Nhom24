@@ -2,7 +2,6 @@ D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\appsettings.Development
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\appsettings.json
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\CulinaryBlog.API.staticwebassets.runtime.json
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\CulinaryBlog.API.staticwebassets.endpoints.json
-D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\CulinaryBlog.API.exe
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\CulinaryBlog.API.deps.json
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\CulinaryBlog.API.runtimeconfig.json
 D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\CulinaryBlog.API.dll
@@ -201,3 +200,5 @@ D:\CulinaryBlog\src\CulinaryBlog.API\obj\Release\net10.0\refint\CulinaryBlog.API
 D:\CulinaryBlog\src\CulinaryBlog.API\obj\Release\net10.0\CulinaryBlog.API.pdb
 D:\CulinaryBlog\src\CulinaryBlog.API\obj\Release\net10.0\CulinaryBlog.API.genruntimeconfig.cache
 D:\CulinaryBlog\src\CulinaryBlog.API\obj\Release\net10.0\ref\CulinaryBlog.API.dll
+D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\Microsoft.AspNetCore.Mvc.Versioning.dll
+D:\CulinaryBlog\src\CulinaryBlog.API\bin\Release\net10.0\Microsoft.AspNetCore.Mvc.Versioning.ApiExplorer.dll

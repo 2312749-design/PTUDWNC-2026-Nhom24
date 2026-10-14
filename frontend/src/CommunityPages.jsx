@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import NextLink from 'next/link'
+import { useParams as useNextParams, usePathname, useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useLocale } from './LocaleContext.jsx'
+import { getVersionedApiBaseUrl, readApiResponse } from './api/config.js'
 import './CommunityPages.css'
 
-const API = 'http://localhost:5152/api'
+const API_V1 = getVersionedApiBaseUrl()
+const API = API_V1
 const EDITORIAL_STARTERS = [
   {
     id: 'starter-vietnamese-table',
@@ -59,12 +63,12 @@ let refreshRequest
 
 async function refreshAccessToken() {
   if (!refreshRequest) {
-    refreshRequest = fetch(`${API}/Auth/refresh`, {
+    refreshRequest = fetch(`${API_V1}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken: localStorage.getItem('refreshToken') || '' }),
     }).then(async response => {
-      const data = await response.json()
+      const data = await readApiResponse(response)
       if (!response.ok || !data.accessToken || !data.refreshToken) throw new Error('Phiên đăng nhập đã hết hạn.')
       localStorage.setItem('accessToken', data.accessToken)
       localStorage.setItem('refreshToken', data.refreshToken)
@@ -89,8 +93,7 @@ async function apiRequest(path, options = {}) {
       throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
     }
   }
-  const text = await response.text()
-  const data = text ? JSON.parse(text) : {}
+  const data = await readApiResponse(response)
   if (!response.ok) throw new Error(data.message || 'Không thể hoàn thành yêu cầu.')
   return data
 }
@@ -102,9 +105,7 @@ function Avatar({ user, size = 'normal' }) {
     : <span className={`community-avatar avatar-fallback ${size}`}>{initials}</span>
 }
 
-export function CommunityNav() {
-  const navigate = useNavigate()
-  const location = useLocation()
+function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
   const { t } = useLocale()
   const [me, setMe] = useState(null)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -124,7 +125,7 @@ export function CommunityNav() {
     const refreshToken = localStorage.getItem('refreshToken')
     try {
       if (refreshToken) {
-        await fetch(`${API}/Auth/logout`, {
+        await fetch(`${API_V1}/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
           body: JSON.stringify({ refreshToken }),
@@ -171,21 +172,24 @@ export function CommunityNav() {
       ],
     },
   ]
-  const isActive = (path) => location.pathname === path || (path !== '/community' && location.pathname.startsWith(`${path}/`))
+  const isActive = (path) => pathname === path || (path !== '/community' && pathname.startsWith(`${path}/`))
+  const AppLink = ({ to, ...props }) => useNextLinks
+    ? <NextLink href={to} {...props} />
+    : <Link to={to} {...props} />
 
   return (
     <header className="community-nav">
-      <Link to="/community" className="community-wordmark"><span className="wordmark-mark">B</span><span>Bếp Nhà<small>{t('CỘNG ĐỒNG ẨM THỰC')}</small></span></Link>
+      <AppLink to="/community" className="community-wordmark"><span className="wordmark-mark">B</span><span>Bếp Nhà<small>{t('CỘNG ĐỒNG ẨM THỰC')}</small></span></AppLink>
       <nav aria-label={t('Điều hướng chính')}>
-        <Link to="/community" className={`community-nav-home${isActive('/community') ? ' active' : ''}`} aria-current={isActive('/community') ? 'page' : undefined}>{t('Bảng tin')}</Link>
+        <AppLink to="/community" className={`community-nav-home${isActive('/community') ? ' active' : ''}`} aria-current={isActive('/community') ? 'page' : undefined}>{t('Bảng tin')}</AppLink>
         {navigationGroups.map((group) => (
           <details className="community-nav-group" key={group.title}>
             <summary>{t(group.title)}<span aria-hidden="true">⌄</span></summary>
             <div className="community-nav-group-links">
               {group.links.map(([path, label]) => (
-                <Link key={path} to={path} className={isActive(path) ? 'active' : ''} aria-current={isActive(path) ? 'page' : undefined}>
+                <AppLink key={path} to={path} className={isActive(path) ? 'active' : ''} aria-current={isActive(path) ? 'page' : undefined}>
                   {t(label)}
-                </Link>
+                </AppLink>
               ))}
             </div>
           </details>
@@ -193,19 +197,31 @@ export function CommunityNav() {
       </nav>
       <div className="community-nav-account">
         {me ? <>
-          <Link to={`/members/${encodeURIComponent(me.username)}`} className="nav-profile"><Avatar user={me} size="small" /><span>{me.fullName || me.username}</span></Link>
+          <AppLink to={`/members/${encodeURIComponent(me.username)}`} className="nav-profile"><Avatar user={me} size="small" /><span>{me.fullName || me.username}</span></AppLink>
           <button type="button" onClick={logout}>{t('Đăng xuất')}</button>
         </> : <>
-          <Link to="/login" className="nav-login">{t('Đăng nhập')}</Link>
-          <Link to="/register" className="nav-join">{t('Tạo tài khoản')}</Link>
+          <AppLink to="/login" className="nav-login">{t('Đăng nhập')}</AppLink>
+          <AppLink to="/register" className="nav-join">{t('Tạo tài khoản')}</AppLink>
         </>}
       </div>
     </header>
   )
 }
 
-function CommunityLayout({ children }) {
-  return <div className="community-app"><CommunityNav />{children}</div>
+export function CommunityNav() {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  return <CommunityNavContent navigate={navigate} pathname={pathname} />
+}
+
+export function NextCommunityNav() {
+  const router = useRouter()
+  const pathname = usePathname()
+  return <CommunityNavContent navigate={(path) => router.push(path)} pathname={pathname} useNextLinks />
+}
+
+function CommunityLayout({ children, Navigation = CommunityNav }) {
+  return <div className="community-app"><Navigation />{children}</div>
 }
 
 function PostMedia({ mediaUrl, mediaType }) {
@@ -215,7 +231,7 @@ function PostMedia({ mediaUrl, mediaType }) {
     : <img src={mediaUrl} alt="Ảnh đính kèm bài viết" loading="lazy" />}</div>
 }
 
-function FeedPost({ post, me, onChanged }) {
+function FeedPost({ post, me, onChanged, useNextLinks = false }) {
   const [comment, setComment] = useState('')
   const [replyTo, setReplyTo] = useState(null)
   const [showComments, setShowComments] = useState(false)
@@ -224,6 +240,11 @@ function FeedPost({ post, me, onChanged }) {
   const [displayContent, setDisplayContent] = useState(post.content)
   const canInteract = Boolean(token())
   const isOwner = me?.username === post.author.username
+  const PostLink = useNextLinks ? NextLink : Link
+  const authorLinkProps = useNextLinks
+    ? { href: `/members/${encodeURIComponent(post.author.username)}` }
+    : { to: `/members/${encodeURIComponent(post.author.username)}` }
+  const loginLinkProps = useNextLinks ? { href: '/login' } : { to: '/login' }
 
   const like = async () => {
     if (!canInteract) return toast.info('Đăng nhập để thả tim bài viết.')
@@ -284,7 +305,7 @@ function FeedPost({ post, me, onChanged }) {
   return (
     <article className="feed-post">
       <div className="post-author-row">
-        <Link to={`/members/${encodeURIComponent(post.author.username)}`} className="post-author-link"><Avatar user={post.author} /><span><strong>{post.author.fullName || post.author.username}</strong><small>@{post.author.username} · {new Date(post.createdAt).toLocaleString('vi-VN')}</small></span></Link>
+        <PostLink {...authorLinkProps} className="post-author-link"><Avatar user={post.author} /><span><strong>{post.author.fullName || post.author.username}</strong><small>@{post.author.username} · {new Date(post.createdAt).toLocaleString('vi-VN')}</small></span></PostLink>
         {isOwner ? <div className="post-owner-actions"><button type="button" onClick={() => { setDraft(displayContent); setEditing(value => !value) }}>{editing ? 'Đóng sửa' : 'Sửa'}</button><button type="button" onClick={deletePost}>Xóa</button><button type="button" onClick={toggleComments}>{post.commentsEnabled ? 'Tắt bình luận' : 'Bật bình luận'}</button></div> : <div className="post-owner-actions"><button type="button" onClick={reportPost}>Báo cáo</button><button type="button" onClick={blockAuthor}>Chặn</button></div>}
       </div>
       {editing ? <form className="post-edit-form" onSubmit={savePost}><textarea value={draft} onChange={event => setDraft(event.target.value)} maxLength={3000} required /><div><span>{draft.length}/3000</span><button type="submit" disabled={!draft.trim()}>Lưu sửa đổi</button></div></form> : <p className="post-copy">{displayContent}</p>}
@@ -296,7 +317,7 @@ function FeedPost({ post, me, onChanged }) {
       {!post.commentsEnabled && <p className="comments-closed">Tác giả đã tắt bình luận.</p>}
       {showComments && <div className="post-comments">
         {(post.comments || []).map(item => <div key={item.id} className={`comment-line ${item.parentCommentId ? 'comment-reply' : ''}`}><Avatar user={item.author} size="tiny" /><p><strong>{item.author.fullName || item.author.username}</strong> {item.content}{canInteract && <button type="button" className="reply-comment-button" onClick={() => setReplyTo(item.id)}>Trả lời</button>}</p></div>)}
-        {canInteract ? <form onSubmit={submitComment} className="comment-form"><input value={comment} onChange={event => setComment(event.target.value)} placeholder={replyTo ? 'Trả lời bình luận...' : 'Viết bình luận...'} maxLength={1000} /><button type="submit">Gửi</button></form> : <p className="comment-signin"><Link to="/login">Đăng nhập</Link> để tham gia trò chuyện.</p>}
+        {canInteract ? <form onSubmit={submitComment} className="comment-form"><input value={comment} onChange={event => setComment(event.target.value)} placeholder={replyTo ? 'Trả lời bình luận...' : 'Viết bình luận...'} maxLength={1000} /><button type="submit">Gửi</button></form> : <p className="comment-signin"><PostLink {...loginLinkProps}>Đăng nhập</PostLink> để tham gia trò chuyện.</p>}
       </div>}
     </article>
   )
@@ -375,7 +396,7 @@ export function FeedPage() {
     setUploadingMedia(true)
     try {
       const response = await fetch(`${API}/community/upload-media`, { method: 'POST', headers: authHeaders(), body: formData })
-      const data = await response.json()
+      const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.message || 'Tải tệp lên thất bại.')
       setMedia(data)
       toast.success(isVideo ? 'Video đã sẵn sàng.' : 'Ảnh đã sẵn sàng.')
@@ -439,8 +460,7 @@ export function FeedPage() {
   </CommunityLayout>
 }
 
-export function ArticlePage() {
-  const { slug } = useParams()
+function ArticleContent({ slug, Navigation = CommunityNav, useNextLinks = false }) {
   const starterArticle = EDITORIAL_STARTERS.find(item => item.slug === slug)
   const [article, setArticle] = useState(starterArticle || null)
   const [loadedSlug, setLoadedSlug] = useState(null)
@@ -457,28 +477,41 @@ export function ArticlePage() {
 
   const loading = !starterArticle && loadedSlug !== slug
   const visibleArticle = starterArticle || article
-  if (loading) return <CommunityLayout><main className="community-main article-page"><p>Đang tải bài viết...</p></main></CommunityLayout>
-  if (!visibleArticle) return <CommunityLayout><main className="community-main article-page"><p>Không tìm thấy bài viết.</p><Link to="/community">Quay lại bảng tin</Link></main></CommunityLayout>
+  const ArticleLink = useNextLinks ? NextLink : Link
+  const feedLinkProps = useNextLinks ? { href: '/community' } : { to: '/community' }
+  if (loading) return <CommunityLayout Navigation={Navigation}><main className="community-main article-page"><p>Đang tải bài viết...</p></main></CommunityLayout>
+  if (!visibleArticle) return <CommunityLayout Navigation={Navigation}><main className="community-main article-page"><p>Không tìm thấy bài viết.</p><ArticleLink {...feedLinkProps}>Quay lại bảng tin</ArticleLink></main></CommunityLayout>
 
-  return <CommunityLayout>
+  return <CommunityLayout Navigation={Navigation}>
     <main className="community-main article-page">
-      <Link className="article-back-link" to="/community">← Bảng tin</Link>
+      <ArticleLink className="article-back-link" {...feedLinkProps}>← Bảng tin</ArticleLink>
       <article className="article-reading">
         {visibleArticle.coverImageUrl && <img className="article-cover" src={visibleArticle.coverImageUrl} alt={visibleArticle.title} />}
         <header className="article-reading-header">
           <p className="community-kicker">BẾP NHÀ · CHUYỆN MÓN NGON</p>
           <h1>{visibleArticle.title}</h1>
           <p className="article-summary">{visibleArticle.summary}</p>
-          <div className="article-byline"><span>{visibleArticle.author?.fullName || visibleArticle.author?.userName || 'Cộng đồng Bếp Nhà'}</span><time dateTime={visibleArticle.createdAt}>{new Date(visibleArticle.createdAt).toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: 'numeric' })}</time></div>
+          <div className="article-byline"><span>{visibleArticle.author?.fullName || visibleArticle.author?.userName || 'Cộng đồng Bếp Nhà'}</span><time dateTime={visibleArticle.createdAt}>{new Date(visibleArticle.createdAt).toLocaleDateString('vi-VN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}</time></div>
         </header>
         <div className="article-body">{visibleArticle.content.split(/\n\s*\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>
-        <footer className="article-reading-footer"><span>Hết bài · Cảm ơn bạn đã đọc</span><Link to="/community">Khám phá thêm bài viết →</Link></footer>
+        <footer className="article-reading-footer"><span>Hết bài · Cảm ơn bạn đã đọc</span><ArticleLink {...feedLinkProps}>Khám phá thêm bài viết →</ArticleLink></footer>
       </article>
     </main>
   </CommunityLayout>
 }
 
-export function MembersPage() {
+export function ArticlePage() {
+  const { slug } = useParams()
+  return <ArticleContent slug={slug} />
+}
+
+export function NextArticlePage() {
+  const parameters = useNextParams()
+  const slug = Array.isArray(parameters.slug) ? parameters.slug[0] : parameters.slug
+  return <ArticleContent slug={slug} Navigation={NextCommunityNav} useNextLinks />
+}
+
+function MembersDirectoryContent({ Navigation = CommunityNav, useNextLinks = false }) {
   const [query, setQuery] = useState('')
   const [users, setUsers] = useState([])
   const [total, setTotal] = useState(0)
@@ -509,7 +542,20 @@ export function MembersPage() {
     catch (error) { toast.error(error.message) }
   }
 
-  return <CommunityLayout><main className="community-main directory-page"><section className="directory-head"><p className="community-kicker">NHỮNG NGƯỜI CÙNG YÊU BẾP</p><h1>Tìm người truyền cảm hứng.</h1><p>Khám phá mọi thành viên Bếp Nhà, tìm theo tên hoặc username và xem những gì họ chia sẻ.</p><label className="member-search"><span>⌕</span><input value={query} onChange={event => { setQuery(event.target.value); setPage(1); setUsers([]); setTotal(0); setLoading(true) }} placeholder="Tìm theo tên hoặc username" autoComplete="off" /></label></section><section className="member-results"><div className="results-heading"><h2>{query.trim() ? `Kết quả cho “${query}”` : 'Tất cả thành viên'}</h2><span>{users.length} / {total}</span></div>{loading && users.length === 0 ? <div className="feed-empty">Đang tải thành viên...</div> : users.length ? <><div className="member-grid">{users.map(user => <article className="member-card" key={user.username}><Link to={`/members/${encodeURIComponent(user.username)}`} className="member-card-person"><Avatar user={user} size="large" /><span><strong>{user.fullName || user.username}</strong><small>@{user.username}</small></span></Link><p>{user.bio || 'Chưa thêm giới thiệu.'}</p><div className="member-card-actions"><Link to={`/members/${encodeURIComponent(user.username)}`}>{user.isSelf ? 'Trang cá nhân' : 'Xem hồ sơ'} <span>↗</span></Link>{!user.isSelf && <button type="button" className={user.isFollowing ? 'followed' : ''} onClick={() => toggleFollow(user)}>{user.isFollowing ? 'Đang theo dõi' : 'Theo dõi +'}</button>}</div></article>)}</div>{users.length < total && <div className="load-more-wrap"><button type="button" className="load-more-button" disabled={loading} onClick={() => { setLoading(true); setPage(current => current + 1) }}>{loading ? 'Đang tải...' : 'Xem thêm thành viên'}</button></div>}</> : <div className="feed-empty">Không tìm thấy thành viên phù hợp.</div>}</section></main></CommunityLayout>
+  const ProfileLink = useNextLinks ? NextLink : Link
+  const profileLinkProps = username => useNextLinks
+    ? { href: `/members/${encodeURIComponent(username)}` }
+    : { to: `/members/${encodeURIComponent(username)}` }
+
+  return <CommunityLayout Navigation={Navigation}><main className="community-main directory-page"><section className="directory-head"><p className="community-kicker">NHỮNG NGƯỜI CÙNG YÊU BẾP</p><h1>Tìm người truyền cảm hứng.</h1><p>Khám phá mọi thành viên Bếp Nhà, tìm theo tên hoặc username và xem những gì họ chia sẻ.</p><label className="member-search"><span>⌕</span><input value={query} onChange={event => { setQuery(event.target.value); setPage(1); setUsers([]); setTotal(0); setLoading(true) }} placeholder="Tìm theo tên hoặc username" autoComplete="off" /></label></section><section className="member-results"><div className="results-heading"><h2>{query.trim() ? `Kết quả cho “${query}”` : 'Tất cả thành viên'}</h2><span>{users.length} / {total}</span></div>{loading && users.length === 0 ? <div className="feed-empty">Đang tải thành viên...</div> : users.length ? <><div className="member-grid">{users.map(user => <article className="member-card" key={user.username}><ProfileLink {...profileLinkProps(user.username)} className="member-card-person"><Avatar user={user} size="large" /><span><strong>{user.fullName || user.username}</strong><small>@{user.username}</small></span></ProfileLink><p>{user.bio || 'Chưa thêm giới thiệu.'}</p><div className="member-card-actions"><ProfileLink {...profileLinkProps(user.username)}>{user.isSelf ? 'Trang cá nhân' : 'Xem hồ sơ'} <span>↗</span></ProfileLink>{!user.isSelf && <button type="button" className={user.isFollowing ? 'followed' : ''} onClick={() => toggleFollow(user)}>{user.isFollowing ? 'Đang theo dõi' : 'Theo dõi +'}</button>}</div></article>)}</div>{users.length < total && <div className="load-more-wrap"><button type="button" className="load-more-button" disabled={loading} onClick={() => { setLoading(true); setPage(current => current + 1) }}>{loading ? 'Đang tải...' : 'Xem thêm thành viên'}</button></div>}</> : <div className="feed-empty">Không tìm thấy thành viên phù hợp.</div>}</section></main></CommunityLayout>
+}
+
+export function MembersPage() {
+  return <MembersDirectoryContent />
+}
+
+export function NextMembersPage() {
+  return <MembersDirectoryContent Navigation={NextCommunityNav} useNextLinks />
 }
 
 function ProfilePost({ post, isOwner, onChanged }) {
@@ -541,8 +587,7 @@ function ProfilePost({ post, isOwner, onChanged }) {
   </article>
 }
 
-export function MemberProfilePage() {
-  const { username } = useParams()
+function MemberProfileContent({ username, navigate, Navigation = CommunityNav, useNextLinks = false }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -615,7 +660,13 @@ export function MemberProfilePage() {
     } catch (error) { toast.error(error.message) }
   }
 
-  return <CommunityLayout><main className="community-main profile-page">{loading ? <div className="feed-empty">Đang tải hồ sơ...</div> : data && <>
+  const ProfileLink = useNextLinks ? NextLink : Link
+  const profileLinkProps = targetUsername => useNextLinks
+    ? { href: `/members/${encodeURIComponent(targetUsername)}` }
+    : { to: `/members/${encodeURIComponent(targetUsername)}` }
+  const accountLinkProps = useNextLinks ? { href: '/account' } : { to: '/account' }
+
+  return <CommunityLayout Navigation={Navigation}><main className="community-main profile-page">{loading ? <div className="feed-empty">Đang tải hồ sơ...</div> : data && <>
     <section className="profile-banner">
       <div className="profile-identity"><Avatar user={data.profile} size="profile" /><div><p className="community-kicker">THÀNH VIÊN BẾP NHÀ</p><h1>{data.profile.fullName || data.profile.username}</h1><span>@{data.profile.username}</span></div></div>
       <div className="profile-stats">
@@ -623,13 +674,25 @@ export function MemberProfilePage() {
         <button type="button" onClick={() => showConnections('followers')}><strong>{data.followersCount}</strong><span>NGƯỜI THEO DÕI</span></button>
         <button type="button" onClick={() => showConnections('following')}><strong>{data.followingCount}</strong><span>ĐANG THEO DÕI</span></button>
       </div>
-      {data.isOwnProfile ? <Link className="profile-follow" to="/account">Cài đặt hồ sơ</Link> : token() && <div className="profile-community-actions"><button className={`profile-follow ${data.isFollowing ? 'followed' : ''}`} type="button" onClick={toggleFollow}>{data.isFollowing ? 'Đang theo dõi · Bỏ theo dõi' : 'Theo dõi thành viên +'}</button><button type="button" onClick={reportUser}>Báo cáo</button><button type="button" onClick={blockUser}>Chặn</button></div>}
+      {data.isOwnProfile ? <ProfileLink className="profile-follow" {...accountLinkProps}>Cài đặt hồ sơ</ProfileLink> : token() && <div className="profile-community-actions"><button className={`profile-follow ${data.isFollowing ? 'followed' : ''}`} type="button" onClick={toggleFollow}>{data.isFollowing ? 'Đang theo dõi · Bỏ theo dõi' : 'Theo dõi thành viên +'}</button><button type="button" onClick={reportUser}>Báo cáo</button><button type="button" onClick={blockUser}>Chặn</button></div>}
     </section>
     <p className="profile-bio">{data.profile.bio || 'Thành viên này chưa thêm phần giới thiệu.'}</p>
-    {connectionMode && <section className="connections-panel"><header><h2>{connectionMode === 'followers' ? 'Người theo dõi' : 'Đang theo dõi'}</h2><button type="button" onClick={() => setConnectionMode('')}>Đóng</button></header>{connectionsLoading ? <p className="connection-empty">Đang tải danh sách...</p> : connections.length ? <div className="connections-list">{connections.map(user => <article className="connection-row" key={user.username}><Link to={`/members/${encodeURIComponent(user.username)}`}><Avatar user={user} size="small" /><span><strong>{user.fullName || user.username}</strong><small>@{user.username}</small></span></Link>{data.isOwnProfile ? <button type="button" onClick={() => manageConnection(user)}>{connectionMode === 'following' ? 'Hủy theo dõi' : 'Xóa người theo dõi'}</button> : !user.isFollowing && <button type="button" onClick={() => followFromConnections(user)}>Theo dõi +</button>}</article>)}</div> : <p className="connection-empty">Danh sách này hiện chưa có ai.</p>}</section>}
+    {connectionMode && <section className="connections-panel"><header><h2>{connectionMode === 'followers' ? 'Người theo dõi' : 'Đang theo dõi'}</h2><button type="button" onClick={() => setConnectionMode('')}>Đóng</button></header>{connectionsLoading ? <p className="connection-empty">Đang tải danh sách...</p> : connections.length ? <div className="connections-list">{connections.map(user => <article className="connection-row" key={user.username}><ProfileLink {...profileLinkProps(user.username)}><Avatar user={user} size="small" /><span><strong>{user.fullName || user.username}</strong><small>@{user.username}</small></span></ProfileLink>{data.isOwnProfile ? <button type="button" onClick={() => manageConnection(user)}>{connectionMode === 'following' ? 'Hủy theo dõi' : 'Xóa người theo dõi'}</button> : !user.isFollowing && <button type="button" onClick={() => followFromConnections(user)}>Theo dõi +</button>}</article>)}</div> : <p className="connection-empty">Danh sách này hiện chưa có ai.</p>}</section>}
     <div className="profile-posts-heading"><h2>Bài viết</h2><span>{data.posts.length} chia sẻ</span></div>
     {data.posts.length ? data.posts.map(post => <ProfilePost key={post.id} post={post} isOwner={data.isOwnProfile} onChanged={() => setRefreshKey(value => value + 1)} />) : <div className="feed-empty">Chưa có bài viết nào.</div>}
   </>}</main></CommunityLayout>
+}
+
+export function MemberProfilePage() {
+  const { username } = useParams()
+  const navigate = useNavigate()
+  return <MemberProfileContent username={username} navigate={navigate} />
+}
+
+export function NextMemberProfilePage() {
+  const parameters = useNextParams()
+  const router = useRouter()
+  return <MemberProfileContent username={parameters.username} navigate={(path) => router.push(path)} Navigation={NextCommunityNav} useNextLinks />
 }
 
 function AccountAvatarEditor({ form, setForm }) {
@@ -643,7 +706,7 @@ function AccountAvatarEditor({ form, setForm }) {
     setUploading(true)
     try {
       const response = await fetch(`${API}/account/avatar`, { method: 'POST', headers: authHeaders(), body })
-      const data = await response.json()
+      const data = await readApiResponse(response)
       if (!response.ok) throw new Error(data.message || 'Không thể cập nhật ảnh đại diện.')
       setForm(current => ({ ...current, avatarUrl: data.avatarUrl }))
       toast.success(data.message)

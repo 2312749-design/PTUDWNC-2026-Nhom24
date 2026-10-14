@@ -8,10 +8,14 @@ public static class MinioClientFactory
     public static IMinioClient Create(IOptions<MinioOptions> options)
     {
         var value = options.Value;
+        var endpoint = Uri.TryCreate(value.Endpoint, UriKind.Absolute, out var configuredUri)
+            ? configuredUri
+            : new Uri($"http://{value.Endpoint}", UriKind.Absolute);
+
         return new MinioClient()
-            .WithEndpoint(value.Endpoint)
+            .WithEndpoint(endpoint.Authority)
             .WithCredentials(value.AccessKey, value.SecretKey)
-            .WithSSL(value.Endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            .WithSSL(endpoint.Scheme == Uri.UriSchemeHttps)
             .Build();
     }
 }

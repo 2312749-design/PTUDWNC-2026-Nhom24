@@ -1,5 +1,9 @@
 # React + Vite
 
+## Google OAuth
+
+Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in the frontend environment and `Google__ClientId` in the API environment to the same Google OAuth web client ID. Add `http://localhost:3000` to the authorized JavaScript origins in Google Cloud Console. Rebuild the frontend after changing its public client ID. The API returns `503` for Google sign-in until its client ID is configured.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
