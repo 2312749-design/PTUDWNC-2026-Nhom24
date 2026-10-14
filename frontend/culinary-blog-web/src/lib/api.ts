@@ -5,6 +5,7 @@ import type {
   RegisterRequest,
 } from "@/types/auth";
 import type { Recipe, RecipeDetail } from "@/types/recipe";
+import { ApiClientError } from "@/lib/api-error";
 
 const apiBaseUrl =
   typeof window === "undefined"
@@ -33,7 +34,43 @@ async function apiFetch<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed (${response.status})`);
+    const body = await response.text();
+    let errorDetails: {
+      detail?: unknown;
+      message?: unknown;
+      title?: unknown;
+      traceId?: unknown;
+    } = {};
+
+    if (body) {
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (typeof parsed === "object" && parsed !== null) {
+          errorDetails = parsed;
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) {
+          throw error;
+        }
+      }
+    }
+
+    const message =
+      (typeof errorDetails.detail === "string" && errorDetails.detail) ||
+      (typeof errorDetails.message === "string" && errorDetails.message) ||
+      (typeof errorDetails.title === "string" && errorDetails.title) ||
+      (response.status === 401
+        ? "Thông tin xác thực không hợp lệ hoặc phiên đăng nhập đã hết hạn."
+        : body.trim()) ||
+      `Yêu cầu API thất bại (${response.status}).`;
+
+    throw new ApiClientError(
+      message,
+      response.status,
+      typeof errorDetails.traceId === "string"
+        ? errorDetails.traceId
+        : undefined,
+    );
   }
 
   return response.json() as Promise<T>;
@@ -54,7 +91,19 @@ export function searchRecipes(
     pageSize: pageSize.toString(),
   });
 
-  return apiFetch(`recipes/search?${params.toString()}`);
+  return apiFetch<{
+    data: Recipe[];
+    pagination: {
+      page: number;
+      total: number;
+      totalPages: number;
+    };
+  }>(`recipes/search?${params.toString()}`).then((result) => ({
+    items: result.data,
+    totalCount: result.pagination.total,
+    page: result.pagination.page,
+    totalPages: result.pagination.totalPages,
+  }));
 }
 
 export function getRecipeBySlug(slug: string): Promise<ApiResponse<RecipeDetail>> {

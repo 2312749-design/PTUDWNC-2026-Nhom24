@@ -3,7 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Search, Sparkles } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import ErrorState from "@/components/common/error-state";
+import LoadingState from "@/components/common/loading-state";
+import Pagination from "@/components/common/pagination";
+import RecipeCard from "@/components/common/recipe-card";
 import { searchRecipes } from "@/lib/api";
 
 const pageSize = 10;
@@ -37,142 +42,104 @@ export default function SearchExperience({
   }
 
   return (
-    <main className="min-h-screen bg-orange-50 text-gray-800">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-2xl font-bold text-orange-600">
-            🍳 Culinary Blog
-          </Link>
+    <main className="flex-1">
+      <section className="bg-[#f8eee3]">
+        <div className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16">
+          <div className="mx-auto max-w-3xl text-center">
+            <span className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white/80 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-orange-800">
+              <Sparkles className="size-4" aria-hidden="true" />
+              Tìm cảm hứng cho bữa ăn
+            </span>
+            <h1 className="mt-5 text-4xl font-black tracking-tight text-stone-900 sm:text-5xl">
+              Công thức dành cho bạn
+            </h1>
+            <p className="mx-auto mt-4 max-w-xl text-sm leading-6 text-stone-600 sm:text-base">
+              Tìm món ăn yêu thích trong bộ sưu tập công thức từ cộng đồng Culinary.
+            </p>
+            <form
+              onSubmit={handleSubmit}
+              className="mx-auto mt-7 flex max-w-2xl items-center rounded-2xl border border-stone-200 bg-white p-2 shadow-lg shadow-orange-900/5 focus-within:border-orange-400"
+            >
+              <Search className="ml-3 size-5 shrink-0 text-stone-400" aria-hidden="true" />
+              <input
+                type="search"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                placeholder="Ví dụ: phở bò, bánh xèo..."
+                aria-label="Từ khóa tìm kiếm công thức"
+                className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-stone-800 outline-none placeholder:text-stone-400"
+              />
+              <button
+                type="submit"
+                disabled={query.isFetching}
+                className="rounded-xl bg-orange-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-orange-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {query.isFetching ? "Đang tìm..." : "Tìm kiếm"}
+              </button>
+            </form>
+            {keyword.trim().length === 1 && (
+              <p role="alert" className="mt-3 text-sm font-medium text-red-700">
+                Từ khóa tìm kiếm phải có ít nhất 2 ký tự.
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-7xl px-5 py-12 sm:px-8 sm:py-16">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-700">
+              {submittedKeyword ? "Kết quả tìm kiếm" : "Khám phá"}
+            </p>
+            <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl">
+              {submittedKeyword
+                ? `Công thức cho “${submittedKeyword}”`
+                : "Bắt đầu với món bạn yêu thích"}
+            </h2>
+          </div>
           <Link
             href="/"
-            className="font-medium text-gray-600 hover:text-orange-600"
+            className="text-sm font-semibold text-stone-500 transition hover:text-orange-700"
           >
             ← Về trang chủ
           </Link>
         </div>
-      </header>
 
-      <section className="bg-gradient-to-r from-orange-500 to-amber-400">
-        <div className="mx-auto max-w-5xl px-6 py-16 text-center text-white">
-          <h1 className="text-4xl font-bold md:text-5xl">
-            Tìm kiếm công thức
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg">
-            Khám phá món ăn yêu thích từ kho công thức Culinary Blog.
-          </p>
-          <form
-            onSubmit={handleSubmit}
-            className="mx-auto mt-8 flex max-w-2xl overflow-hidden rounded-xl bg-white shadow-lg"
-          >
-            <input
-              type="search"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="Bạn muốn nấu món gì hôm nay?"
-              aria-label="Từ khóa tìm kiếm công thức"
-              className="min-w-0 flex-1 px-5 py-4 text-gray-800 outline-none"
+        <div className="mt-8">
+          {query.isPending && submittedKeyword.length >= 2 && (
+            <LoadingState message="Đang tìm những công thức phù hợp..." />
+          )}
+          {query.isError && (
+            <ErrorState
+              message={query.error.message || "Không thể tìm kiếm công thức. Vui lòng thử lại."}
+              onRetry={() => void query.refetch()}
             />
-            <button
-              type="submit"
-              disabled={query.isFetching}
-              className="bg-gray-900 px-7 font-medium text-white hover:bg-gray-800 disabled:cursor-wait disabled:opacity-60"
-            >
-              {query.isFetching ? "Đang tìm..." : "Tìm kiếm"}
-            </button>
-          </form>
-          {keyword.trim().length === 1 && (
-            <p role="alert" className="mt-3 text-sm text-white">
-              Từ khóa tìm kiếm phải có ít nhất 2 ký tự.
-            </p>
+          )}
+          {query.isSuccess && query.data.items.length === 0 && (
+            <div className="rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center">
+              <span className="text-5xl" aria-hidden="true">🔎</span>
+              <p className="mt-4 font-semibold text-stone-700">Chưa tìm thấy công thức phù hợp.</p>
+              <p className="mt-1 text-sm text-stone-500">Thử một từ khóa khác ngắn gọn hơn nhé.</p>
+            </div>
+          )}
+          {query.data && query.data.items.length > 0 && (
+            <>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {query.data.items.map((recipe, index) => (
+                  <RecipeCard key={recipe.id} recipe={recipe} index={index} />
+                ))}
+              </div>
+              <Pagination
+                page={query.data.page}
+                totalPages={query.data.totalPages}
+                totalCount={query.data.totalCount}
+                isLoading={query.isFetching}
+                onPageChange={setPage}
+              />
+            </>
           )}
         </div>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-6 py-12">
-        <h2 className="text-3xl font-bold">
-          {submittedKeyword
-            ? `Kết quả cho “${submittedKeyword}”`
-            : "Nhập từ khóa để tìm công thức"}
-        </h2>
-
-        {query.isPending && submittedKeyword.length >= 2 && (
-          <div className="mt-8 rounded-xl bg-white p-10 text-center shadow-sm">
-            <p className="text-gray-500">Đang tải kết quả...</p>
-          </div>
-        )}
-
-        {query.isError && (
-          <div role="alert" className="mt-8 rounded-xl bg-red-50 p-5 text-red-700">
-            Không thể tìm kiếm công thức. Vui lòng thử lại.
-          </div>
-        )}
-
-        {query.isSuccess && query.data.items.length === 0 && (
-          <div className="mt-8 rounded-xl bg-white p-10 text-center shadow-sm">
-            <p className="text-gray-500">Không tìm thấy công thức nào.</p>
-          </div>
-        )}
-
-        {query.data && query.data.items.length > 0 && (
-          <>
-            <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {query.data.items.map((recipe) => (
-                <Link
-                  key={recipe.id}
-                  href={`/recipes/${recipe.slug}`}
-                  className="block overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                >
-                  <div className="flex h-48 items-center justify-center bg-orange-100 text-6xl">
-                    🍲
-                  </div>
-                  <div className="p-5">
-                    <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
-                      {recipe.status}
-                    </span>
-                    <h3 className="mt-3 text-xl font-bold">{recipe.title}</h3>
-                    <p className="mt-2 text-sm leading-6 text-gray-500">
-                      {recipe.description}
-                    </p>
-                    <div className="mt-4 flex justify-between border-t pt-4 text-sm text-gray-500">
-                      <span>⏱ {recipe.cookTimeMinutes} phút</span>
-                      <span>👥 {recipe.servings} người</span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-
-            {query.data.totalPages > 1 && (
-              <nav
-                aria-label="Phân trang kết quả tìm kiếm"
-                className="mt-8 flex items-center justify-center gap-4"
-              >
-                <button
-                  type="button"
-                  disabled={query.data.page <= 1 || query.isFetching}
-                  onClick={() => setPage((currentPage) => currentPage - 1)}
-                  className="rounded-lg bg-white px-4 py-2 font-medium text-gray-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Trang trước
-                </button>
-                <span className="text-sm text-gray-600">
-                  Trang {query.data.page} / {query.data.totalPages} ·{" "}
-                  {query.data.totalCount} công thức
-                </span>
-                <button
-                  type="button"
-                  disabled={
-                    query.data.page >= query.data.totalPages || query.isFetching
-                  }
-                  onClick={() => setPage((currentPage) => currentPage + 1)}
-                  className="rounded-lg bg-white px-4 py-2 font-medium text-gray-700 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Trang sau
-                </button>
-              </nav>
-            )}
-          </>
-        )}
       </section>
     </main>
   );

@@ -10,8 +10,8 @@ Recipe-sharing application with a .NET 10 Minimal API, PostgreSQL, and a Next.js
 - `src/CulinaryBlog.Application/` — application abstractions.
 - `src/CulinaryBlog.Domain/` — recipe and author-account entities.
 - `src/CulinaryBlog.Infrastructure/` — EF Core persistence and migrations.
-- `frontend/culinary-blog-web/` — Next.js App Router app and shared TypeScript API
-  types.
+- `frontend/culinary-blog-web/` — Next.js App Router app, Tailwind CSS 4 UI,
+  shared components, Zustand auth state, and typed API client.
 
 ## Local setup
 

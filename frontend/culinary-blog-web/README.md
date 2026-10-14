@@ -17,9 +17,16 @@ the frontend origin through its `Cors:AllowedOrigins` configuration.
 ## Source layout
 
 - `src/app/` — App Router pages, layouts, and global styles.
-- `src/lib/api.ts` — typed API client for recipes and authentication.
+- `src/components/common/` — shared recipe cards, pagination, loading, and error states.
+- `src/components/layout/` — site-wide header and footer.
+- `src/lib/api.ts` — typed API client, HTTP error handling, and search pagination mapping.
+- `src/lib/auth-store.ts` — in-memory authentication state managed with Zustand.
 - `src/types/` — shared API, recipe, and authentication contracts.
 - `src/app/search/` — `/search` recipe discovery page backed by TanStack Query.
+
+The interface is styled with Tailwind CSS 4 and Lucide icons. The root layout
+provides the shared header and footer; the sign-in page keeps the access token
+in the in-memory auth store for the current browser session.
 
 Run `npm run lint`, `npm run typecheck`, and `npm run build` before publishing.
 See the repository [README](../../README.md) for backend setup and API security.

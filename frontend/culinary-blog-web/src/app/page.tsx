@@ -1,256 +1,266 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  ChefHat,
+  Clock3,
+  Search,
+  Sparkles,
+  Utensils,
+} from "lucide-react";
+import { useState, type FormEvent } from "react";
+import ErrorState from "@/components/common/error-state";
+import LoadingState from "@/components/common/loading-state";
+import RecipeCard from "@/components/common/recipe-card";
 import { getRecipes } from "@/lib/api";
-import type { Recipe } from "@/types/recipe";
+import { useRouter } from "next/navigation";
+
+const categories = [
+  { title: "Món Việt", note: "Đậm đà hương vị quê nhà", emoji: "🍜", query: "món Việt" },
+  { title: "Bữa sáng", note: "Khởi đầu ngày mới ngon lành", emoji: "🥞", query: "bữa sáng" },
+  { title: "Món chay", note: "Thanh nhẹ và đủ dinh dưỡng", emoji: "🥑", query: "món chay" },
+  { title: "Tráng miệng", note: "Ngọt ngào cho phút cuối", emoji: "🍰", query: "tráng miệng" },
+];
 
 export default function Home() {
-const router = useRouter();
-const [recipes, setRecipes] = useState<Recipe[]>([]);
-const [keyword, setKeyword] = useState("");
-const [loading, setLoading] = useState(true);
-const [error, setError] = useState("");
+  const router = useRouter();
+  const [keyword, setKeyword] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const recipesQuery = useQuery({
+    queryKey: ["recipes", "latest"],
+    queryFn: getRecipes,
+  });
 
-// Lấy danh sách công thức khi mở trang
-useEffect(() => {
-async function loadRecipes() {
-try {
-setLoading(true);
+  function handleSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = keyword.trim();
+    if (value.length < 2) {
+      setValidationError("Hãy nhập ít nhất 2 ký tự để tìm công thức.");
+      return;
+    }
 
-    const result = await getRecipes();
-
-    setRecipes(result.data ?? []);
-  } catch (err) {
-    console.error(err);
-    setError("Không thể tải danh sách công thức.");
-  } finally {
-    setLoading(false);
+    router.push(`/search?q=${encodeURIComponent(value)}`);
   }
-}
 
-loadRecipes();
-
-}, []);
-
-// Tìm kiếm công thức
-function handleSearch() {
-const value = keyword.trim();
-if (value.length < 2) {
-  setError("Từ khóa tìm kiếm phải có ít nhất 2 ký tự.");
-  return;
-}
-router.push(`/search?q=${encodeURIComponent(value)}`);
-}
-
-// Nhấn Enter để tìm kiếm
-function handleKeyDown(
-event: React.KeyboardEvent<HTMLInputElement>
-) {
-if (event.key === "Enter") {
-handleSearch();
-}
-}
-
-return (
-<main className="min-h-screen bg-orange-50 text-gray-800">
-{/* Header */}
-<header className="border-b bg-white">
-<div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-<div className="text-2xl font-bold text-orange-600">
-🍳 Culinary Blog
-</div>
-
-      <nav className="hidden gap-8 md:flex">
-        <a
-          href="#"
-          className="font-medium text-orange-600"
-        >
-          Trang chủ
-        </a>
-
-        <a
-          href="#"
-          className="text-gray-600 hover:text-orange-600"
-        >
-          Công thức
-        </a>
-
-        <a
-          href="#"
-          className="text-gray-600 hover:text-orange-600"
-        >
-          Danh mục
-        </a>
-
-        <a
-          href="#"
-          className="text-gray-600 hover:text-orange-600"
-        >
-          Giới thiệu
-        </a>
-      </nav>
-
-      <button className="rounded-lg bg-orange-500 px-5 py-2 font-medium text-white hover:bg-orange-600">
-        Đăng nhập
-      </button>
-    </div>
-  </header>
-
-  {/* Hero */}
-  <section className="bg-gradient-to-r from-orange-500 to-amber-400">
-    <div className="mx-auto max-w-7xl px-6 py-20 text-center text-white">
-      <h1 className="text-4xl font-bold md:text-6xl">
-        Khám phá thế giới ẩm thực
-      </h1>
-
-      <p className="mx-auto mt-5 max-w-2xl text-lg">
-        Tìm kiếm công thức nấu ăn ngon, đơn giản và phù hợp với bạn.
-      </p>
-
-      {/* Search */}
-      <div className="mx-auto mt-8 flex max-w-2xl overflow-hidden rounded-xl bg-white shadow-lg">
-        <input
-          type="text"
-          value={keyword}
-          onChange={(event) => {
-            setKeyword(event.target.value);
-            setError("");
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Bạn muốn nấu món gì hôm nay?"
-          className="flex-1 px-5 py-4 text-gray-800 outline-none"
-        />
-
-        <button
-          onClick={handleSearch}
-          className="bg-gray-900 px-7 font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Tìm kiếm
-        </button>
-      </div>
-    </div>
-  </section>
-
-  {/* Categories */}
-  <section className="mx-auto max-w-7xl px-6 py-12">
-    <h2 className="text-3xl font-bold">
-      Khám phá danh mục
-    </h2>
-
-    <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-      {[
-        "Món Việt",
-        "Món chính",
-        "Món ăn sáng",
-        "Tráng miệng",
-      ].map((category) => (
-        <div
-          key={category}
-          className="cursor-pointer rounded-xl bg-white p-6 text-center shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-        >
-          <div className="text-3xl">🍽️</div>
-
-          <p className="mt-3 font-semibold">
-            {category}
-          </p>
-        </div>
-      ))}
-    </div>
-  </section>
-
-  {/* Recipes */}
-  <section className="mx-auto max-w-7xl px-6 pb-16">
-    <div className="flex items-center justify-between">
-      <h2 className="text-3xl font-bold">
-        {keyword.trim()
-          ? `Kết quả tìm kiếm: "${keyword}"`
-          : "Công thức mới nhất"}
-      </h2>
-
-      <button className="font-medium text-orange-600 hover:text-orange-700">
-        Xem tất cả →
-      </button>
-    </div>
-
-    {/* Error */}
-    {error && (
-      <div className="mt-6 rounded-xl bg-red-50 p-4 text-center text-red-600">
-        {error}
-      </div>
-    )}
-
-    {/* Loading */}
-    {loading ? (
-      <div className="mt-8 rounded-xl bg-white p-10 text-center shadow-sm">
-        <p className="text-gray-500">
-          Đang tải công thức...
-        </p>
-      </div>
-    ) : recipes.length === 0 ? (
-      <div className="mt-8 rounded-xl bg-white p-10 text-center shadow-sm">
-        <p className="text-gray-500">
-          Không tìm thấy công thức nào.
-        </p>
-      </div>
-    ) : (
-      <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {recipes.map((recipe) => (
-          <a
-            key={recipe.id}
-            href={`/recipes/${recipe.slug}`}
-            className="block overflow-hidden rounded-2xl bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-          >
-            <div className="flex h-48 items-center justify-center bg-orange-100 text-6xl">
-              🍲
-            </div>
-
-            <div className="p-5">
-              <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-medium text-orange-700">
-                {recipe.status}
+  return (
+    <main className="flex-1">
+      <section className="relative isolate overflow-hidden bg-[#f8eee3]">
+        <div className="absolute -right-28 -top-32 -z-10 size-[34rem] rounded-full border-[70px] border-orange-200/30" />
+        <div className="absolute -bottom-52 -left-32 -z-10 size-[30rem] rounded-full bg-amber-200/25 blur-2xl" />
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[1.1fr_0.9fr] lg:py-24">
+          <div className="max-w-2xl">
+            <p className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-white/70 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-orange-800">
+              <Sparkles className="size-4" aria-hidden="true" />
+              Món ngon bắt đầu từ đây
+            </p>
+            <h1 className="mt-6 text-5xl font-black leading-[1.08] tracking-tight text-stone-900 sm:text-6xl lg:text-7xl">
+              Nấu ngon hơn,
+              <span className="mt-1 block font-serif font-medium italic text-orange-700">
+                sống vui hơn.
               </span>
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-stone-600 sm:text-lg sm:leading-8">
+              Khám phá những công thức gần gũi, dễ làm và đầy cảm hứng — được
+              chia sẻ bởi những người yêu căn bếp như bạn.
+            </p>
 
-              <h3 className="mt-3 text-xl font-bold">
-                {recipe.title}
-              </h3>
-
-              <p className="mt-2 text-sm leading-6 text-gray-500">
-                {recipe.description}
+            <form
+              onSubmit={handleSearch}
+              className="mt-8 flex max-w-xl items-center rounded-2xl border border-stone-200 bg-white p-2 shadow-xl shadow-orange-900/5 focus-within:border-orange-400"
+            >
+              <Search className="ml-3 size-5 shrink-0 text-stone-400" aria-hidden="true" />
+              <input
+                type="search"
+                value={keyword}
+                onChange={(event) => {
+                  setKeyword(event.target.value);
+                  setValidationError("");
+                }}
+                aria-label="Tìm kiếm công thức"
+                placeholder="Hôm nay bạn muốn nấu món gì?"
+                className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm text-stone-800 outline-none placeholder:text-stone-400"
+              />
+              <button
+                type="submit"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-orange-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-orange-700 sm:px-5"
+              >
+                Tìm món
+                <ArrowRight className="size-4" aria-hidden="true" />
+              </button>
+            </form>
+            {validationError && (
+              <p role="alert" className="mt-2 text-sm font-medium text-red-700">
+                {validationError}
               </p>
+            )}
+            <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-2 text-xs text-stone-500">
+              <span className="font-semibold text-stone-700">Được yêu thích:</span>
+              {["phở bò", "món chay", "bánh ngọt"].map((term) => (
+                <Link
+                  key={term}
+                  href={`/search?q=${encodeURIComponent(term)}`}
+                  className="rounded-full bg-white/80 px-3 py-1.5 transition hover:text-orange-700"
+                >
+                  {term}
+                </Link>
+              ))}
+            </div>
+          </div>
 
-              <div className="mt-4 flex justify-between border-t pt-4 text-sm text-gray-500">
-                <span>
-                  ⏱ {recipe.cookTimeMinutes} phút
+          <div className="relative mx-auto w-full max-w-lg">
+            <div className="absolute -inset-5 rotate-3 rounded-[2.5rem] bg-orange-200/60" />
+            <div className="relative overflow-hidden rounded-[2.2rem] border-[10px] border-white bg-gradient-to-br from-amber-200 via-orange-100 to-rose-200 p-6 shadow-2xl shadow-orange-950/10 sm:p-8">
+              <div className="flex items-center justify-between">
+                <span className="rounded-full bg-white/80 px-4 py-2 text-xs font-bold text-orange-900">
+                  Món ngon mỗi ngày
                 </span>
-
-                <span>
-                  👥 {recipe.servings} người
+                <span className="flex size-11 items-center justify-center rounded-full bg-white text-orange-700 shadow-sm">
+                  <ChefHat className="size-5" aria-hidden="true" />
                 </span>
               </div>
+              <div className="flex min-h-[300px] items-center justify-center sm:min-h-[350px]">
+                <span className="select-none text-[10rem] drop-shadow-xl sm:text-[12rem]" aria-hidden="true">
+                  🍲
+                </span>
+              </div>
+              <div className="rounded-2xl bg-white/85 p-5 backdrop-blur">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-orange-700">
+                      Công thức nổi bật
+                    </p>
+                    <p className="mt-1 text-lg font-extrabold text-stone-900">
+                      Ấm áp từ căn bếp nhà
+                    </p>
+                  </div>
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-700">
+                    <ArrowUpRight className="size-5" aria-hidden="true" />
+                  </span>
+                </div>
+                <div className="mt-4 flex items-center gap-4 text-xs font-medium text-stone-500">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock3 className="size-4 text-orange-600" aria-hidden="true" />
+                    Dễ làm mỗi ngày
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Utensils className="size-4 text-orange-600" aria-hidden="true" />
+                    Nguyên liệu thân quen
+                  </span>
+                </div>
+              </div>
             </div>
-          </a>
-        ))}
-      </div>
-    )}
-  </section>
+          </div>
+        </div>
+      </section>
 
-  {/* Footer */}
-  <footer className="bg-gray-900 text-white">
-    <div className="mx-auto max-w-7xl px-6 py-10 text-center">
-      <h2 className="text-xl font-bold">
-        🍳 Culinary Blog
-      </h2>
+      <section id="categories" className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-20">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-700">
+              Chọn theo khẩu vị
+            </p>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl">
+              Hôm nay ăn gì nhỉ?
+            </h2>
+          </div>
+          <Link
+            href="/search"
+            className="inline-flex items-center gap-2 text-sm font-bold text-orange-700 transition hover:text-orange-900"
+          >
+            Xem tất cả
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {categories.map((category) => (
+            <Link
+              key={category.title}
+              href={`/search?q=${encodeURIComponent(category.query)}`}
+              className="group flex items-center gap-4 rounded-2xl border border-stone-200/80 bg-white p-5 transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-900/5"
+            >
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-3xl transition group-hover:scale-105">
+                {category.emoji}
+              </span>
+              <span>
+                <span className="block font-bold text-stone-900">{category.title}</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-500">{category.note}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
 
-      <p className="mt-3 text-gray-400">
-        Chia sẻ công thức, khám phá hương vị và cùng nhau nấu ăn.
-      </p>
+      <section className="bg-[#f7f4ef]">
+        <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-20">
+          <div className="flex flex-wrap items-end justify-between gap-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-700">
+                Từ cộng đồng của chúng ta
+              </p>
+              <h2 className="mt-2 text-3xl font-extrabold tracking-tight text-stone-900 sm:text-4xl">
+                Mới nhất trong căn bếp
+              </h2>
+            </div>
+            <Link
+              href="/search"
+              className="inline-flex items-center gap-2 text-sm font-bold text-orange-700 transition hover:text-orange-900"
+            >
+              Khám phá công thức
+              <ArrowRight className="size-4" aria-hidden="true" />
+            </Link>
+          </div>
 
-      <p className="mt-6 text-sm text-gray-500">
-        © 2026 Culinary Blog. All rights reserved.
-      </p>
-    </div>
-  </footer>
-</main>
+          <div className="mt-9">
+            {recipesQuery.isPending && <LoadingState message="Đang chuẩn bị những công thức mới nhất..." />}
+            {recipesQuery.isError && (
+              <ErrorState
+                message={recipesQuery.error.message || "Không thể tải danh sách công thức."}
+                onRetry={() => void recipesQuery.refetch()}
+              />
+            )}
+            {recipesQuery.isSuccess && recipesQuery.data.data.length === 0 && (
+              <div className="rounded-3xl border border-dashed border-stone-300 bg-white p-12 text-center">
+                <span className="text-5xl" aria-hidden="true">🥣</span>
+                <p className="mt-4 font-semibold text-stone-700">Chưa có công thức nào được chia sẻ.</p>
+              </div>
+            )}
+            {recipesQuery.isSuccess && recipesQuery.data.data.length > 0 && (
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {recipesQuery.data.data.slice(0, 4).map((recipe, index) => (
+                  <RecipeCard key={recipe.id} recipe={recipe} index={index} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
-);
+      <section id="about" className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-20">
+        <div className="flex flex-col items-start justify-between gap-7 rounded-[2rem] bg-stone-900 px-7 py-9 text-white sm:px-10 sm:py-12 lg:flex-row lg:items-center">
+          <div className="max-w-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-orange-300">
+              Cùng nhau vào bếp
+            </p>
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
+              Mỗi món ăn đều có một câu chuyện.
+            </h2>
+            <p className="mt-4 max-w-xl text-sm leading-6 text-stone-300">
+              Tìm cảm hứng cho bữa ăn tiếp theo, hoặc đăng nhập để bắt đầu chia sẻ
+              bí quyết của riêng bạn.
+            </p>
+          </div>
+          <Link
+            href="/login"
+            className="inline-flex shrink-0 items-center gap-2 rounded-full bg-orange-500 px-6 py-3.5 text-sm font-bold text-white transition hover:bg-orange-400"
+          >
+            Bắt đầu khám phá
+            <ArrowUpRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+      </section>
+    </main>
+  );
 }
