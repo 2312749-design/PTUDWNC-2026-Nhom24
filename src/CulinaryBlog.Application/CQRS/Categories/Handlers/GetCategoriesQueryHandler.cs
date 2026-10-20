@@ -28,6 +28,7 @@ public class GetCategoriesQueryHandler : IRequestHandler<GetCategoriesQuery, IEn
             {
                 Id = c.Id,
                 Name = c.Name,
+                Slug = c.Slug,
                 Description = c.Description,
                 ImageUrl = c.ImageUrl
             })

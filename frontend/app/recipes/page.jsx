@@ -1,5 +1,4 @@
-import ClientApp from '../ClientApp'
+import PageClient from '../PageClient'
+import { RecipesPage } from '../../src/RecipePages'
 
-export default function RecipesPage() {
-  return <ClientApp />
-}
+export default function Page() { return <PageClient><RecipesPage /></PageClient> }

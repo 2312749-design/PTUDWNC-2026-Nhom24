@@ -5,6 +5,15 @@ namespace CulinaryBlog.Infrastructure.Persistence;
 
 public static class RecipeCatalogSeeder
 {
+    private const int MinimumIngredientCount = 10;
+    private const int MinimumInstructionCount = 5;
+
+    private static readonly string[] SupplementalIngredients =
+    [
+        "Muối", "Đường", "Tiêu xay", "Dầu ăn", "Hành lá",
+        "Rau thơm", "Nước lọc", "Tỏi băm", "Nước cốt chanh", "Gia vị nêm"
+    ];
+
     private static readonly (string Name, string Description)[] CategoryCatalog =
     [
         ("Món Việt", "Công thức món ăn truyền thống và đặc sản các vùng miền Việt Nam."),
@@ -192,7 +201,7 @@ public static class RecipeCatalogSeeder
         foreach (var (name, description) in CategoryCatalog)
         {
             if (categories.Any(category => string.Equals(category.Name, name, StringComparison.OrdinalIgnoreCase))) continue;
-            var category = new Category { Name = name, Description = description };
+            var category = Category.Create(name, description, null);
             context.Categories.Add(category);
             categories.Add(category);
         }
@@ -269,6 +278,61 @@ public static class RecipeCatalogSeeder
             newCount++;
         }
 
+        await EnsureLabTwoRecipeMinimumsAsync(context);
         await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Lab 2 requires every recipe to contain at least ten ingredients and five
+    /// preparation steps. This also upgrades legacy/demo recipes created before
+    /// those minimums were introduced.
+    /// </summary>
+    private static async Task EnsureLabTwoRecipeMinimumsAsync(ApplicationDbContext context)
+    {
+        var recipes = await context.Recipes
+            .Where(recipe => !recipe.IsDeleted)
+            .ToListAsync();
+
+        foreach (var recipe in recipes)
+        {
+            var ingredients = recipe.Ingredients
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .ToList();
+            var instructions = recipe.Instructions
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value.Trim())
+                .ToList();
+
+            var changed = false;
+            while (ingredients.Count < MinimumIngredientCount)
+            {
+                var supplement = SupplementalIngredients[(ingredients.Count - 1) % SupplementalIngredients.Length];
+                ingredients.Add($"{supplement} ({ingredients.Count + 1})");
+                changed = true;
+            }
+
+            while (instructions.Count < MinimumInstructionCount)
+            {
+                instructions.Add($"Bước {instructions.Count + 1}: Hoàn thiện món, nêm nếm vừa ăn và trình bày trước khi dùng.");
+                changed = true;
+            }
+
+            if (!changed) continue;
+
+            recipe.Update(
+                recipe.Title,
+                recipe.Description,
+                ingredients,
+                instructions,
+                recipe.CategoryId,
+                recipe.ImageUrl,
+                recipe.CookingTimeMinutes,
+                recipe.Difficulty,
+                recipe.IsVegetarian,
+                recipe.PrepTimeMinutes,
+                recipe.CookTimeMinutes,
+                recipe.Servings);
+        }
     }
 }

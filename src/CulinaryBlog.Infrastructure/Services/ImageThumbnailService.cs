@@ -1,30 +1,48 @@
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Webp;
-using SixLabors.ImageSharp.Processing;
+using ImageMagick;
 
 namespace CulinaryBlog.Infrastructure.Services;
 
 public static class ImageThumbnailService
 {
-    public const int MaxWidth = 320;
-    public const int MaxHeight = 240;
+    public const int ThumbnailWidth = 300;
+    public const int ThumbnailHeight = 300;
+    public const int MediumWidth = 800;
+    public const int MediumHeight = 600;
+    public const int MaxWidth = ThumbnailWidth;
+    public const int MaxHeight = ThumbnailHeight;
 
-    public static async Task<byte[]> CreateAsync(Stream source, CancellationToken cancellationToken = default)
+    public static Task<byte[]> CreateAsync(Stream source, CancellationToken cancellationToken = default) =>
+        CreateThumbnailAsync(source, cancellationToken);
+
+    public static Task<byte[]> CreateThumbnailAsync(Stream source, CancellationToken cancellationToken = default) =>
+        CreateWebpAsync(source, ThumbnailWidth, ThumbnailHeight, crop: true, cancellationToken);
+
+    public static Task<byte[]> CreateMediumAsync(Stream source, CancellationToken cancellationToken = default) =>
+        CreateWebpAsync(source, MediumWidth, MediumHeight, crop: false, cancellationToken);
+
+    private static Task<byte[]> CreateWebpAsync(
+        Stream source,
+        int width,
+        int height,
+        bool crop,
+        CancellationToken cancellationToken)
     {
-        using var image = await Image.LoadAsync(source, cancellationToken);
-        var destinationSize = GetDestinationSize(image.Width, image.Height);
-        image.Mutate(configuration => configuration.Resize(
-            destinationSize.Width,
-            destinationSize.Height));
+        cancellationToken.ThrowIfCancellationRequested();
+        using var image = new MagickImage(source);
+        var geometry = new MagickGeometry((uint)width, (uint)height);
+        if (crop)
+        {
+            geometry.FillArea = true;
+            image.Resize(geometry);
+            image.Crop((uint)width, (uint)height, Gravity.Center);
+            image.ResetPage();
+        }
+        else
+        {
+            image.Resize(geometry);
+        }
 
-        using var output = new MemoryStream();
-        await image.SaveAsync(output, new WebpEncoder { FileFormat = WebpFileFormatType.Lossless }, cancellationToken);
-        return output.ToArray();
-    }
-
-    private static (int Width, int Height) GetDestinationSize(int width, int height)
-    {
-        var scale = Math.Min(Math.Min((double)MaxWidth / width, (double)MaxHeight / height), 1);
-        return (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+        image.Format = MagickFormat.WebP;
+        return Task.FromResult(image.ToByteArray());
     }
 }

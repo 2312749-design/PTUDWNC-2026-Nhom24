@@ -1,5 +1,4 @@
-import CreatorClient from './CreatorClient'
+import PageClient from '../PageClient'
+import { CreatorDashboardPage } from '../../src/PlatformFeaturePages'
 
-export default function CreatorRoute() {
-  return <CreatorClient />
-}
+export default function Page() { return <PageClient><CreatorDashboardPage /></PageClient> }

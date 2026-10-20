@@ -1,5 +1,9 @@
 import './globals.css'
 import 'react-toastify/dist/ReactToastify.css'
+import JsonLd from './JsonLd'
+import '../src/components/common/common.css'
+import AppProviders from '../src/components/layout/AppProviders'
+import AppShell from '../src/components/layout/AppShell'
 
 export const metadata = {
   title: {
@@ -18,7 +22,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="vi">
-      <body>{children}</body>
+      <body><JsonLd data={{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'CulinaryBlog', url: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000' }} /><AppProviders><AppShell>{children}</AppShell></AppProviders></body>
     </html>
   )
 }

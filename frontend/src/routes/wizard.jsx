@@ -1,9 +1,9 @@
+'use client'
+
 import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
-import { useNavigate } from 'react-router-dom'
-import { getVersionedApiBaseUrl, readApiResponse } from '../api/config.js'
-
-const API_BASE = getVersionedApiBaseUrl()
+import { useNavigate } from '../navigation.jsx'
+import { apiRequest, getFreshAccessToken } from '../api/session.js'
 
 function CreateRecipeWizard() {
   const navigate = useNavigate()
@@ -22,23 +22,14 @@ function CreateRecipeWizard() {
   })
   const [categories, setCategories] = useState([])
   const [loadingCategories, setLoadingCategories] = useState(true)
+  const [imageFile, setImageFile] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     const loadCategories = async () => {
-      const token = localStorage.getItem('accessToken')
+      await getFreshAccessToken()
       try {
-        const response = await fetch(`${API_BASE}/categories`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error('Không thể tải danh mục.')
-        }
-
-        const data = await readApiResponse(response)
+        const data = await apiRequest('/categories')
         setCategories(data)
         if (data[0] && !form.categoryId) {
           setForm((current) => ({ ...current, categoryId: data[0].id }))
@@ -117,7 +108,7 @@ function CreateRecipeWizard() {
   }
 
   const handleSubmit = async () => {
-    const token = localStorage.getItem('accessToken')
+    const token = await getFreshAccessToken()
     if (!token) {
       toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
       return
@@ -168,31 +159,21 @@ function CreateRecipeWizard() {
         .filter((item) => item.description),
     }
 
+    setSaving(true)
     try {
-      const response = await fetch(`${API_BASE}/recipes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-
-      const data = await readApiResponse(response)
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
-        throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
-      }
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Tạo công thức thất bại.')
+      const created = await apiRequest('/recipes', { method: 'POST', body: JSON.stringify(payload) })
+      if (imageFile && created?.id) {
+        const image = new FormData()
+        image.append('file', imageFile)
+        await apiRequest(`/recipes/${created.id}/images`, { method: 'POST', body: image })
       }
 
       toast.success('Tạo công thức thành công!')
       navigate('/recipes')
     } catch (error) {
       toast.error(error.message)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -248,6 +229,25 @@ function CreateRecipeWizard() {
                   <option key={category.id} value={category.id}>{category.name}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="wizard-recipe-image">Ảnh món ăn (không bắt buộc)</label>
+              <input id="wizard-recipe-image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={event => {
+                const file = event.target.files?.[0] || null
+                if (file && !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
+                  toast.error('Chỉ hỗ trợ ảnh JPEG, PNG, WebP hoặc AVIF.')
+                  event.target.value = ''
+                  return
+                }
+                if (file && file.size > 5 * 1024 * 1024) {
+                  toast.error('Ảnh món ăn tối đa 5 MB.')
+                  event.target.value = ''
+                  return
+                }
+                setImageFile(file)
+              }} />
+              <small>{imageFile ? imageFile.name : 'JPEG, PNG, WebP hoặc AVIF · tối đa 5 MB'}</small>
             </div>
 
             <div className="form-group">
@@ -332,7 +332,7 @@ function CreateRecipeWizard() {
           {step < 3 ? (
             <button type="button" className="primary-btn" onClick={nextStep}>Tiếp tục</button>
           ) : (
-            <button type="button" className="primary-btn" onClick={handleSubmit}>Hoàn tất</button>
+            <button type="button" className="primary-btn" onClick={handleSubmit} disabled={saving}>{saving ? 'Đang lưu...' : 'Hoàn tất'}</button>
           )}
         </div>
       </div>

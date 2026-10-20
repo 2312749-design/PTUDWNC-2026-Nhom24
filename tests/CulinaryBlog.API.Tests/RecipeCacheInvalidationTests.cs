@@ -1,4 +1,4 @@
-using CulinaryBlog.API.Controllers;
+using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
@@ -17,7 +17,7 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
     private SqliteConnection _connection = null!;
     private ApplicationDbContext _context = null!;
     private InMemoryCacheService _cache = null!;
-    private RecipesController _controller = null!;
+    private RecipesHandlers _controller = null!;
 
     public async Task InitializeAsync()
     {
@@ -29,19 +29,16 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
         _context = new TestApplicationDbContext(options);
         await _context.Database.EnsureCreatedAsync();
         _cache = new InMemoryCacheService();
-        _controller = new RecipesController(
+        _controller = new RecipesHandlers(
             new MockMediator(),
             _context,
             _cache)
         {
-            ControllerContext = new ControllerContext
-            {
-                HttpContext = new DefaultHttpContext
+            HttpContext = new DefaultHttpContext
                 {
                     User = new ClaimsPrincipal(new ClaimsIdentity(
                         [new Claim(ClaimTypes.NameIdentifier, "user-1")], "Test"))
                 }
-            }
         };
     }
 
@@ -65,7 +62,7 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
             CategoryId = recipe.CategoryId
         });
 
-        Assert.IsType<OkObjectResult>(result);
+        ResponseAssert.Status(200, result);
         Assert.Null(await _cache.GetAsync<RecipeDto>(CacheKeys.Recipe(recipe.Id)));
         Assert.Null(await _cache.GetAsync<IEnumerable<RecipeDto>>(CacheKeys.Recipes));
     }
@@ -80,7 +77,7 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
 
         var result = await _controller.DeleteRecipe(recipe.Id);
 
-        Assert.IsType<OkObjectResult>(result);
+        ResponseAssert.Status(200, result);
         Assert.Null(await _cache.GetAsync<RecipeDto>(CacheKeys.Recipe(recipe.Id)));
         Assert.Null(await _cache.GetAsync<IEnumerable<RecipeDto>>(CacheKeys.Recipes));
     }

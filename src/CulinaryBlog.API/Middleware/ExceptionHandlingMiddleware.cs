@@ -42,6 +42,12 @@ public class ExceptionHandlingMiddleware
     {
         return exception switch
         {
+            BadHttpRequestException badRequest => new ProblemDetails
+            {
+                Status = badRequest.StatusCode,
+                Title = "Invalid request",
+                Detail = "Nội dung JSON, kiểu dữ liệu hoặc tham số của yêu cầu không hợp lệ."
+            },
             NotFoundException => new ProblemDetails
             {
                 Status = StatusCodes.Status404NotFound,

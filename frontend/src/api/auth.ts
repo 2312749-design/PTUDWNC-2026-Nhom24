@@ -1,42 +1,22 @@
-import type { ApiErrorResponse, ApiResponse, AuthTokens, LoginRequest, RegisterRequest } from '../types/api'
-import { getVersionedApiBaseUrl } from './config.js'
+import type { AuthTokens, LoginRequest, RegisterRequest } from '../types/api'
+import { ApiClientError, requestJson } from '../lib/api-client'
 
 type AuthResult =
   | { ok: true; data: AuthTokens; message?: string }
   | { ok: false; message: string }
 
 async function submitAuthRequest(action: 'login' | 'register', request: LoginRequest | RegisterRequest): Promise<AuthResult> {
-  let response: Response
-
   try {
-    response = await fetch(`${getVersionedApiBaseUrl()}/auth/${action}`, {
+    const data = await requestJson(`/auth/${action}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     })
-  } catch {
+    if (!data?.accessToken || !data?.refreshToken) return { ok: false, message: 'Máy chủ không trả về thông tin phiên đăng nhập.' }
+    return { ok: true, data: data as AuthTokens, message: data.message }
+  } catch (error) {
+    if (error instanceof ApiClientError) return { ok: false, message: error.message }
     return { ok: false, message: 'Không thể kết nối đến máy chủ.' }
   }
-
-  let payload: ApiResponse<AuthTokens> | ApiErrorResponse
-  try {
-    payload = await response.json() as ApiResponse<AuthTokens> | ApiErrorResponse
-  } catch {
-    return { ok: false, message: 'Máy chủ trả về dữ liệu không hợp lệ.' }
-  }
-
-  if (!response.ok) {
-    return {
-      ok: false,
-      message: payload.message ?? ('detail' in payload ? payload.detail : undefined) ?? 'Đăng nhập thất bại.',
-    }
-  }
-
-  if (!('data' in payload) || !payload.data) {
-    return { ok: false, message: 'Máy chủ không trả về thông tin phiên đăng nhập.' }
-  }
-
-  return { ok: true, data: payload.data, message: payload.message }
 }
 
 export function login(request: LoginRequest): Promise<AuthResult> {

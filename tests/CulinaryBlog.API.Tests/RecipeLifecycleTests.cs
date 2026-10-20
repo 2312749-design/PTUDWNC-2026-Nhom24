@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
-using CulinaryBlog.API.Controllers;
+using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
@@ -61,6 +61,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         Assert.False(recipe.Unpublish());
         Assert.True(recipe.Archive());
         Assert.False(recipe.Archive());
+        Assert.Throws<ValidationException>(() => recipe.Unpublish());
         Assert.True(recipe.RestoreToDraft());
         Assert.False(recipe.RestoreToDraft());
     }
@@ -71,7 +72,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         var recipe = CreateRecipe();
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync();
-        var controller = CreateRecipesController(_owner.Id);
+        var controller = CreateRecipesHandlers(_owner.Id);
 
         await Assert.ThrowsAsync<ValidationException>(() => controller.PublishRecipe(recipe.Id));
 
@@ -81,7 +82,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
 
         _context.RecipeSteps.Add(RecipeStep.Create(recipe.Id, null, "Roast until tender", 1, 20, null));
         await _context.SaveChangesAsync();
-        Assert.IsType<OkObjectResult>(await controller.PublishRecipe(recipe.Id));
+        ResponseAssert.Status(200, await controller.PublishRecipe(recipe.Id));
         Assert.Equal(RecipeStatus.Published, recipe.Status);
     }
 
@@ -92,13 +93,13 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         recipe.Publish(true, true);
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync();
-        var controller = CreateRecipesController(_owner.Id);
+        var controller = CreateRecipesHandlers(_owner.Id);
 
-        Assert.IsType<OkObjectResult>(await controller.UnpublishRecipe(recipe.Id));
+        ResponseAssert.Status(200, await controller.UnpublishRecipe(recipe.Id));
         Assert.Equal(RecipeStatus.Draft, recipe.Status);
-        Assert.IsType<OkObjectResult>(await controller.ArchiveRecipe(recipe.Id));
+        ResponseAssert.Status(200, await controller.ArchiveRecipe(recipe.Id));
         Assert.Equal(RecipeStatus.Archived, recipe.Status);
-        Assert.IsType<OkObjectResult>(await controller.RestoreRecipe(recipe.Id));
+        ResponseAssert.Status(200, await controller.RestoreRecipe(recipe.Id));
         Assert.Equal(RecipeStatus.Draft, recipe.Status);
     }
 
@@ -109,13 +110,13 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         recipe.Publish(true, true);
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync();
-        var controller = CreateRecipesController(_owner.Id);
+        var controller = CreateRecipesHandlers(_owner.Id);
 
-        Assert.IsType<OkObjectResult>(await controller.DeleteRecipe(recipe.Id));
+        ResponseAssert.Status(200, await controller.DeleteRecipe(recipe.Id));
         Assert.True(recipe.IsDeleted);
         Assert.NotNull(recipe.DeletedAt);
-        Assert.IsType<NotFoundObjectResult>((await controller.GetRecipeById(recipe.Id)).Result);
-        Assert.IsType<NotFoundObjectResult>((await controller.GetRecipeBySlug(recipe.Slug)).Result);
+        ResponseAssert.Status(404, (await controller.GetRecipeById(recipe.Id)));
+        ResponseAssert.Status(404, (await controller.GetRecipeBySlug(recipe.Slug)));
         Assert.True(await _context.Recipes.AnyAsync(item => item.Id == recipe.Id));
     }
 
@@ -125,10 +126,23 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         var recipe = CreateRecipe();
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync();
-        var controller = CreateRecipesController("other-user");
+        var controller = CreateRecipesHandlers("other-user");
 
-        Assert.IsType<ForbidResult>(await controller.DeleteRecipe(recipe.Id));
+        ResponseAssert.Status(403, await controller.DeleteRecipe(recipe.Id));
         Assert.False(recipe.IsDeleted);
+    }
+
+    [Fact]
+    public async Task PublishRecipe_RejectsNonOwner()
+    {
+        var recipe = CreateRecipe();
+        _context.Recipes.Add(recipe);
+        _context.RecipeIngredients.Add(RecipeIngredient.Create(recipe.Id, "Tomato", "2", "pcs", null, 1));
+        _context.RecipeSteps.Add(RecipeStep.Create(recipe.Id, null, "Roast until tender", 1, null, null));
+        await _context.SaveChangesAsync();
+
+        ResponseAssert.Status(403, await CreateRecipesHandlers("other-user").PublishRecipe(recipe.Id));
+        Assert.Equal(RecipeStatus.Draft, recipe.Status);
     }
 
     [Fact]
@@ -138,10 +152,10 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         recipe.SetNutrition(new RecipeNutrition(300, 12, 45, 8, 6, 250));
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync();
-        var controller = CreateRecipesController(_owner.Id);
+        var controller = CreateRecipesHandlers(_owner.Id);
 
         var omitted = await controller.PatchRecipe(recipe.Id, new PatchRecipeDto());
-        Assert.IsType<OkObjectResult>(omitted);
+        ResponseAssert.Status(200, omitted);
         Assert.Equal(300, recipe.Nutrition?.Calories);
 
         using (var nullJson = JsonDocument.Parse("null"))
@@ -167,16 +181,51 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         var third = RecipeStep.Create(recipe.Id, null, "Third", 3, null, null);
         _context.RecipeSteps.AddRange(first, removed, third);
         await _context.SaveChangesAsync();
-        var controller = new RecipeStepsController(_context)
+        var controller = new RecipeStepsHandlers(_context)
         {
-            ControllerContext = CreateControllerContext(_owner.Id)
+            HttpContext = CreateHttpContext(_owner.Id)
         };
 
-        Assert.IsType<OkObjectResult>(await controller.DeleteStep(recipe.Id, removed.Id));
+        ResponseAssert.Status(200, await controller.DeleteStep(recipe.Id, removed.Id));
         var remaining = await _context.RecipeSteps.Where(step => step.RecipeId == recipe.Id)
             .OrderBy(step => step.StepNumber).ToListAsync();
         Assert.Equal([1, 2], remaining.Select(step => step.StepNumber).ToArray());
         Assert.Equal(["First", "Third"], remaining.Select(step => step.Description).ToArray());
+    }
+
+    [Fact]
+    public async Task CreateStep_AllowsAnUntitledStepAndAssignsItsNumber()
+    {
+        var recipe = CreateRecipe();
+        _context.Recipes.Add(recipe);
+        await _context.SaveChangesAsync();
+        var controller = new RecipeStepsHandlers(_context)
+        {
+            HttpContext = CreateHttpContext(_owner.Id)
+        };
+
+        ResponseAssert.Status(201, await controller.CreateStep(recipe.Id, new CreateRecipeStepDto
+        {
+            Description = "Nướng rau trong 20 phút."
+        }));
+        var step = await _context.RecipeSteps.SingleAsync();
+        Assert.Null(step.Title);
+        Assert.Equal(1, step.StepNumber);
+    }
+
+    [Fact]
+    public async Task GetSteps_HidesAnotherAuthorsDraft()
+    {
+        var recipe = CreateRecipe();
+        _context.Recipes.Add(recipe);
+        _context.RecipeSteps.Add(RecipeStep.Create(recipe.Id, null, "Bước riêng tư", 1, null, null));
+        await _context.SaveChangesAsync();
+        var controller = new RecipeStepsHandlers(_context)
+        {
+            HttpContext = CreateHttpContext("other-user")
+        };
+
+        ResponseAssert.Status(404, await controller.GetSteps(recipe.Id));
     }
 
     private Recipe CreateRecipe() => Recipe.Create(
@@ -191,21 +240,18 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         servings: 2,
         difficulty: "Easy");
 
-    private RecipesController CreateRecipesController(string userId)
+    private RecipesHandlers CreateRecipesHandlers(string userId)
     {
-        var controller = new RecipesController(new Mock<IMediator>().Object, _context, _cache)
+        var controller = new RecipesHandlers(new Mock<IMediator>().Object, _context, _cache)
         {
-            ControllerContext = CreateControllerContext(userId)
+            HttpContext = CreateHttpContext(userId)
         };
         return controller;
     }
 
-    private static ControllerContext CreateControllerContext(string userId) => new()
+    private static DefaultHttpContext CreateHttpContext(string userId) => new()
     {
-        HttpContext = new DefaultHttpContext
-        {
             User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId)], "Test"))
-        }
     };
 
     private sealed class TestApplicationDbContext(DbContextOptions<ApplicationDbContext> options)

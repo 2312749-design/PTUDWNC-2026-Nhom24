@@ -4,14 +4,15 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google'
-import { toast, ToastContainer } from 'react-toastify'
+import { toast } from 'react-toastify'
 import { login } from '../../src/api/auth'
-import { getVersionedApiBaseUrl, readApiResponse } from '../../src/api/config.js'
+import { requestJson } from '../../src/lib/api-client'
+import { saveSession } from '../../src/api/session.js'
 
 function LoginForm() {
   const router = useRouter()
   const [form, setForm] = useState({ username: '', password: '' })
-  const [tokenInput, setTokenInput] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -27,15 +28,16 @@ function LoginForm() {
         ? { email: form.username.trim() }
         : { username: form.username.trim() }),
     }
+    setSubmitting(true)
     const result = await login(request)
+    setSubmitting(false)
 
     if (!result.ok) {
       toast.error(result.message)
       return
     }
 
-    localStorage.setItem('accessToken', result.data.accessToken)
-    localStorage.setItem('refreshToken', result.data.refreshToken)
+    saveSession(result.data)
     toast.success(result.message || 'Đăng nhập thành công!')
     router.push('/community')
   }
@@ -48,38 +50,17 @@ function LoginForm() {
     }
 
     try {
-      const response = await fetch(`${getVersionedApiBaseUrl()}/auth/google`, {
+      const data = await requestJson('/auth/google', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken }),
       })
-      const data = await readApiResponse(response)
 
-      if (!response.ok) {
-        throw new Error(data.message || 'Đăng nhập bằng Google thất bại.')
-      }
-
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken || '')
+      if (!data.refreshToken || !saveSession(data)) throw new Error('Máy chủ không trả về phiên đăng nhập hợp lệ.')
       toast.success(data.message || 'Đăng nhập Google thành công!')
       router.push('/community')
     } catch (error) {
       toast.error(error.message || 'Đăng nhập bằng Google thất bại.')
     }
-  }
-
-  const handleTokenLogin = () => {
-    const token = tokenInput.trim()
-    const parts = token.split('.')
-
-    if (!token || parts.length !== 3 || !parts.every(Boolean)) {
-      toast.error('Token không hợp lệ.')
-      return
-    }
-
-    localStorage.setItem('accessToken', token)
-    toast.success('Đăng nhập bằng mã truy cập thành công.')
-    router.push('/community')
   }
 
   return (
@@ -109,7 +90,7 @@ function LoginForm() {
               onChange={(event) => setForm({ ...form, password: event.target.value })}
             />
           </div>
-          <button type="submit" className="primary-btn">Đăng nhập</button>
+          <button type="submit" className="primary-btn" disabled={submitting}>{submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
         </form>
 
         {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
@@ -122,19 +103,6 @@ function LoginForm() {
             Google OAuth chưa được cấu hình
           </button>
         )}
-
-        <div className="token-box">
-          <h3>Đăng nhập bằng mã truy cập</h3>
-          <input
-            type="text"
-            placeholder="Dán mã JWT"
-            value={tokenInput}
-            onChange={(event) => setTokenInput(event.target.value)}
-          />
-          <button className="primary-btn" type="button" onClick={handleTokenLogin}>
-            Xác nhận
-          </button>
-        </div>
 
         <p className="switch-text">
           Chưa có tài khoản? <Link href="/register">Đăng ký ngay</Link>
@@ -149,14 +117,6 @@ export default function LoginClient() {
 
   return (
     <>
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        pauseOnHover
-      />
       {googleClientId ? (
         <GoogleOAuthProvider clientId={googleClientId}>
           <LoginForm />

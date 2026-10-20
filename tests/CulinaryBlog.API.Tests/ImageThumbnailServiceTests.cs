@@ -1,6 +1,5 @@
 using CulinaryBlog.Infrastructure.Services;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 using Xunit;
 
 namespace CulinaryBlog.API.Tests;
@@ -10,34 +9,29 @@ public class ImageThumbnailServiceTests
     [Fact]
     public async Task CreateAsync_ResizesImageToWebpThumbnail()
     {
-        await using var source = new MemoryStream();
-        using (var image = new Image<Rgba32>(1200, 800))
-        {
-            image[0, 0] = new Rgba32(255, 0, 0, 255);
-            await image.SaveAsync(source, new SixLabors.ImageSharp.Formats.Jpeg.JpegEncoder
-            {
-                Quality = 90
-            });
-        }
-        source.Position = 0;
+        using var image = new MagickImage(MagickColors.Red, 1200, 800) { Format = MagickFormat.Jpeg };
+        await using var source = new MemoryStream(image.ToByteArray());
 
         var thumbnail = await ImageThumbnailService.CreateAsync(source);
 
         Assert.NotEmpty(thumbnail);
-        Assert.Equal(0x52, thumbnail[0]);
-        Assert.Equal(0x49, thumbnail[1]);
-        Assert.Equal(0x46, thumbnail[2]);
-        Assert.Equal(0x46, thumbnail[3]);
-        Assert.Equal(0x57, thumbnail[8]);
-        Assert.Equal(0x45, thumbnail[9]);
-        Assert.Equal(0x42, thumbnail[10]);
-        Assert.Equal(0x50, thumbnail[11]);
+        Assert.Equal("RIFF"u8.ToArray(), thumbnail[..4]);
+        Assert.Equal("WEBP"u8.ToArray(), thumbnail[8..12]);
+        using var result = new MagickImage(thumbnail);
+        Assert.Equal(300U, result.Width);
+        Assert.Equal(300U, result.Height);
+    }
 
-        await using var thumbnailStream = new MemoryStream(thumbnail);
-        using var result = await Image.LoadAsync(thumbnailStream);
-        Assert.Equal(320, result.Width);
-        Assert.Equal(213, result.Height);
-        Assert.True(result.Width <= ImageThumbnailService.MaxWidth);
-        Assert.True(result.Height <= ImageThumbnailService.MaxHeight);
+    [Fact]
+    public async Task CreateMediumAsync_CreatesWebpWithin800By600()
+    {
+        using var image = new MagickImage(MagickColors.Blue, 1600, 900) { Format = MagickFormat.Png };
+        await using var source = new MemoryStream(image.ToByteArray());
+
+        var medium = await ImageThumbnailService.CreateMediumAsync(source);
+
+        using var result = new MagickImage(medium);
+        Assert.Equal(800U, result.Width);
+        Assert.Equal(450U, result.Height);
     }
 }

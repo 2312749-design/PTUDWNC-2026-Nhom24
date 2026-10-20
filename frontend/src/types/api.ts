@@ -18,6 +18,7 @@ export interface UserProfile {
   username: string | null;
   avatarUrl: string | null;
   bio: string | null;
+  role?: string;
   createdAt?: string;
 }
 
@@ -35,7 +36,7 @@ export interface LoginRequest {
 }
 
 export interface RegisterRequest {
-  fullName: string;
+  displayName: string;
   username: string;
   email: string;
   password: string;

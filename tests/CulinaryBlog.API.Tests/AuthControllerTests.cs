@@ -1,4 +1,4 @@
-using CulinaryBlog.API.Controllers;
+using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
@@ -15,11 +15,11 @@ using Xunit;
 
 namespace CulinaryBlog.API.Tests;
 
-public class AuthControllerTests : IAsyncLifetime
+public class AuthHandlersTests : IAsyncLifetime
 {
     private SqliteConnection _connection = null!;
     private TestApplicationDbContext _context = null!;
-    private AuthController _controller = null!;
+    private AuthHandlers _controller = null!;
 
     public async Task InitializeAsync()
     {
@@ -33,16 +33,13 @@ public class AuthControllerTests : IAsyncLifetime
 
         var tokenService = new Mock<ITokenService>();
         var backgroundJobs = new Mock<IBackgroundJobClient>();
-        _controller = new AuthController(_context, tokenService.Object, backgroundJobs.Object)
+        _controller = new AuthHandlers(_context, tokenService.Object, backgroundJobs.Object)
         {
-            ControllerContext = new ControllerContext
-            {
-                HttpContext = new DefaultHttpContext
+            HttpContext = new DefaultHttpContext
                 {
                     User = new ClaimsPrincipal(new ClaimsIdentity(
                         [new Claim(ClaimTypes.NameIdentifier, "user-1")], "Test"))
                 }
-            }
         };
     }
 
@@ -55,7 +52,7 @@ public class AuthControllerTests : IAsyncLifetime
     [Fact]
     public void LoginDto_AllowsUsernameWithoutEmail()
     {
-        var model = new AuthController.LoginDto
+        var model = new AuthHandlers.LoginDto
         {
             Username = "chefdemo",
             Email = "",
@@ -83,19 +80,16 @@ public class AuthControllerTests : IAsyncLifetime
         tokenService.Setup(service => service.GenerateAccessToken(user)).Returns("access-token");
         tokenService.Setup(service => service.GenerateRefreshToken(user.Id, It.IsAny<string>(), familyId))
             .Returns(RefreshToken.Create(user.Id, "rotated-token", 30, familyId));
-        _controller = new AuthController(_context, tokenService.Object, new Mock<IBackgroundJobClient>().Object)
+        _controller = new AuthHandlers(_context, tokenService.Object, new Mock<IBackgroundJobClient>().Object)
         {
-            ControllerContext = new ControllerContext
-            {
-                HttpContext = new DefaultHttpContext()
-            }
-        };
+            HttpContext = new DefaultHttpContext()
+            };
 
-        var firstResponse = await _controller.Refresh(new AuthController.RefreshTokenDto { RefreshToken = "current-token" });
-        var replayResponse = await _controller.Refresh(new AuthController.RefreshTokenDto { RefreshToken = "current-token" });
+        var firstResponse = await _controller.Refresh(new AuthHandlers.RefreshTokenDto { RefreshToken = "current-token" });
+        var replayResponse = await _controller.Refresh(new AuthHandlers.RefreshTokenDto { RefreshToken = "current-token" });
 
-        Assert.IsType<OkObjectResult>(firstResponse);
-        var replayResult = Assert.IsType<UnauthorizedObjectResult>(replayResponse);
+        ResponseAssert.Status(200, firstResponse);
+        var replayResult = ResponseAssert.Status(401, replayResponse);
         Assert.Equal("AUTH_REFRESH_TOKEN_REPLAYED", replayResult.Value?.GetType().GetProperty("code")?.GetValue(replayResult.Value));
         Assert.True(await _context.RefreshTokens.Where(token => token.TokenHash == RefreshToken.Hash("current-token")).Select(token => token.IsUsed).SingleAsync());
         Assert.True(await _context.RefreshTokens.Where(token => token.TokenFamilyId == familyId).AllAsync(token => token.IsRevoked));
@@ -126,10 +120,10 @@ public class AuthControllerTests : IAsyncLifetime
         _context.Recipes.AddRange(publishedRecipe, draftRecipe, deletedRecipe);
         await _context.SaveChangesAsync();
 
-        var controller = new SearchController(_context);
+        var controller = new SearchHandlers(_context);
         var result = await controller.SearchRecipes(q: "bún", page: 1, pageSize: 10);
 
-        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var ok = ResponseAssert.Status(200, result);
         var total = (int?)ok.Value?.GetType().GetProperty("total")?.GetValue(ok.Value) ?? 0;
         var items = (IEnumerable<RecipeDto>)ok.Value?.GetType().GetProperty("items")?.GetValue(ok.Value)!;
 
@@ -153,12 +147,12 @@ public class AuthControllerTests : IAsyncLifetime
         _context.RefreshTokens.AddRange(current, rotated, otherToken);
         await _context.SaveChangesAsync();
 
-        var result = await _controller.Logout(new AuthController.RefreshTokenDto
+        var result = await _controller.Logout(new AuthHandlers.RefreshTokenDto
         {
             RefreshToken = "current-token"
         });
 
-        Assert.IsType<NoContentResult>(result);
+        ResponseAssert.Status(204, result);
         Assert.True(await _context.RefreshTokens.Where(token => token.Id == current.Id).Select(token => token.IsRevoked).SingleAsync());
         Assert.True(await _context.RefreshTokens.Where(token => token.Id == rotated.Id).Select(token => token.IsRevoked).SingleAsync());
         Assert.False(await _context.RefreshTokens.Where(token => token.Id == otherToken.Id).Select(token => token.IsRevoked).SingleAsync());
@@ -174,12 +168,12 @@ public class AuthControllerTests : IAsyncLifetime
         _context.RefreshTokens.Add(otherUser);
         await _context.SaveChangesAsync();
 
-        var result = await _controller.Logout(new AuthController.RefreshTokenDto
+        var result = await _controller.Logout(new AuthHandlers.RefreshTokenDto
         {
             RefreshToken = "other-user-token"
         });
 
-        Assert.IsType<NoContentResult>(result);
+        ResponseAssert.Status(204, result);
         Assert.False(otherUser.IsRevoked);
     }
 

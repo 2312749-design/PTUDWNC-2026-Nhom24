@@ -25,17 +25,23 @@ public sealed class LocalFileStorageService : IFileStorageService
 
     private async Task<string> UploadFileAsync(Stream content, string fileName, CancellationToken cancellationToken)
     {
-        var folder = Path.Combine(_root, Path.GetFileName(Path.GetDirectoryName(fileName)) ?? "");
-        Directory.CreateDirectory(folder);
-        var path = Path.Combine(_root, fileName);
+        var relativePath = fileName.Replace('\\', '/').TrimStart('/');
+        var path = Path.GetFullPath(Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
+        var root = Path.GetFullPath(_root) + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Đường dẫn tệp không hợp lệ.");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await using var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None);
         await content.CopyToAsync(output, cancellationToken);
-        return $"/uploads/{fileName.Replace('\\', '/') }";
+        return $"/uploads/{relativePath}";
     }
 
     public Task DeleteAsync(string objectKey, CancellationToken cancellationToken = default)
     {
-        var path = Path.Combine(_root, objectKey.Replace('/', Path.DirectorySeparatorChar));
+        var path = Path.GetFullPath(Path.Combine(_root, objectKey.TrimStart('/', '\\').Replace('/', Path.DirectorySeparatorChar)));
+        var root = Path.GetFullPath(_root) + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Đường dẫn tệp không hợp lệ.");
         if (File.Exists(path)) File.Delete(path);
         return Task.CompletedTask;
     }

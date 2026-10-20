@@ -1,3 +1,9 @@
 
 .vs/
 frontend/.next/
+frontend/.next-dev/
+frontend/.next-culinary/
+.env
+.run-logs/
+frontend/test-results/
+frontend/playwright-report/

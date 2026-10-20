@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toast, ToastContainer } from 'react-toastify'
+import { toast } from 'react-toastify'
 import { register } from '../../src/api/auth'
+import { saveSession } from '../../src/api/session.js'
 
 function generateCaptcha() {
   const left = Math.floor(Math.random() * 9) + 1
@@ -16,13 +17,14 @@ export default function RegisterClient() {
   const router = useRouter()
   const [captcha, setCaptcha] = useState({ question: '2 + 3 = ?', answer: '5' })
   const [form, setForm] = useState({
-    fullName: '',
+    displayName: '',
     username: '',
     email: '',
     password: '',
     confirmPassword: '',
     captchaInput: '',
   })
+  const [submitting, setSubmitting] = useState(false)
   const captchaReady = form.captchaInput.trim() === captcha.answer
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function RegisterClient() {
   const handleSubmit = async (event) => {
     event.preventDefault()
 
-    if (!form.fullName.trim() || !form.username.trim() || !form.email.trim()) {
+    if (!form.displayName.trim() || !form.username.trim() || !form.email.trim()) {
       toast.error('Vui lòng nhập họ tên, username và email.')
       return
     }
@@ -57,8 +59,9 @@ export default function RegisterClient() {
       return
     }
 
+    setSubmitting(true)
     const result = await register({
-      fullName: form.fullName.trim(),
+      displayName: form.displayName.trim(),
       username: form.username.trim(),
       email: form.email.trim(),
       password: form.password,
@@ -66,26 +69,20 @@ export default function RegisterClient() {
       captchaQuestion: captcha.question,
       captchaAnswer: form.captchaInput.trim(),
     })
+    setSubmitting(false)
 
     if (!result.ok) {
       toast.error(result.message)
       return
     }
 
+    saveSession(result.data)
     toast.success(result.message || 'Đăng ký thành công!')
-    window.setTimeout(() => router.push('/login'), 1000)
+    window.setTimeout(() => router.push('/community'), 700)
   }
 
   return (
     <>
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        pauseOnHover
-      />
       <div className="page-shell">
         <div className="auth-card">
           <h1>Đăng ký</h1>
@@ -97,8 +94,8 @@ export default function RegisterClient() {
                 type="text"
                 autoComplete="name"
                 placeholder="Tên hiển thị của bạn"
-                value={form.fullName}
-                onChange={(event) => setForm({ ...form, fullName: event.target.value })}
+                value={form.displayName}
+                onChange={(event) => setForm({ ...form, displayName: event.target.value })}
               />
             </div>
             <div className="form-group">
@@ -160,8 +157,8 @@ export default function RegisterClient() {
                 Làm mới captcha
               </button>
             </div>
-            <button type="submit" className="primary-btn" disabled={!captchaReady}>
-              Đăng ký
+            <button type="submit" className="primary-btn" disabled={!captchaReady || submitting}>
+              {submitting ? 'Đang tạo tài khoản...' : 'Đăng ký'}
             </button>
           </form>
           <p className="switch-text">

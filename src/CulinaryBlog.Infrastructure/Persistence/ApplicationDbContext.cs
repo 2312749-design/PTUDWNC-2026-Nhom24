@@ -8,13 +8,14 @@ namespace CulinaryBlog.Infrastructure.Persistence;
 
 public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplicationDbContext // 2. Thêm , IApplicationDbContext vào đây
 {
-    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+    public ApplicationDbContext(DbContextOptions options) : base(options)
     {
     }
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Recipe> Recipes => Set<Recipe>();
+    public DbSet<RecipeImage> RecipeImages => Set<RecipeImage>();
     public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
     public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
     public DbSet<CommunityPost> CommunityPosts => Set<CommunityPost>();
@@ -211,7 +212,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<Category>(entity => {
             entity.ToTable(name: "Categories");
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Slug).HasMaxLength(160).IsRequired();
             entity.Property(e => e.ImageUrl).HasMaxLength(2048);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.HasIndex(e => e.Slug).IsUnique();
         });
 
         // Cấu hình bảng Recipe và các mối quan hệ khóa ngoại
@@ -269,6 +274,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.Unit).HasMaxLength(50);
             entity.Property(e => e.Notes).HasMaxLength(500);
             entity.HasIndex(e => new { e.RecipeId, e.OrderIndex }).IsUnique();
+        });
+
+        builder.Entity<RecipeImage>(entity => {
+            entity.ToTable("RecipeImages");
+            entity.HasKey(image => image.Id);
+            entity.Property(image => image.Url).HasMaxLength(2048).IsRequired();
+            entity.Property(image => image.ThumbnailUrl).HasMaxLength(2048).IsRequired();
+            entity.Property(image => image.MediumUrl).HasMaxLength(2048).IsRequired();
+            entity.HasIndex(image => new { image.RecipeId, image.CreatedAt });
+            entity.HasOne(image => image.Recipe).WithMany(recipe => recipe.Images)
+                .HasForeignKey(image => image.RecipeId).OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<RecipeStep>(entity => {

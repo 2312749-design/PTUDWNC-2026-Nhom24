@@ -1,5 +1,4 @@
-import MemberProfileClient from './MemberProfileClient'
+import PageClient from '../../PageClient'
+import { MemberProfilePage } from '../../../src/CommunityPages'
 
-export default function MemberProfileRoute() {
-  return <MemberProfileClient />
-}
+export default function Page() { return <PageClient><MemberProfilePage /></PageClient> }

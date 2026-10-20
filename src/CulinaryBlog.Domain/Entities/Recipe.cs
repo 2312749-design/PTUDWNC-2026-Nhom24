@@ -33,6 +33,7 @@ public class Recipe
     public string Difficulty { get; private set; } = "Medium";
     public bool IsVegetarian { get; private set; }
     public RecipeNutrition? Nutrition { get; private set; }
+    public ICollection<RecipeImage> Images { get; private set; } = new List<RecipeImage>();
 
     [NotMapped]
     public List<string> Steps
@@ -144,6 +145,12 @@ public class Recipe
         Slug = slug.Trim();
     }
 
+    public void SetImageUrl(string? imageUrl)
+    {
+        ImageUrl = NormalizeImageUrl(imageUrl);
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     public void SetNutrition(RecipeNutrition? nutrition)
     {
         if (Nutrition?.Equals(nutrition) == true || (Nutrition == null && nutrition == null))
@@ -192,6 +199,11 @@ public class Recipe
         if (Status == RecipeStatus.Draft)
         {
             return false;
+        }
+
+        if (Status != RecipeStatus.Published)
+        {
+            throw new ValidationException("Chỉ có thể hủy xuất bản công thức đang ở trạng thái Published.");
         }
 
         Status = RecipeStatus.Draft;

@@ -1,28 +1,22 @@
+'use client'
+
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from './navigation.jsx'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useLocale } from './LocaleContext.jsx'
-import { getVersionedApiBaseUrl, readApiResponse } from './api/config.js'
 import { CommunityNav, NextCommunityNav } from './CommunityPages.jsx'
+import { apiRequest, getAccessToken } from './api/session.js'
 import './PlatformFeaturePages.css'
 
-const API_V1 = getVersionedApiBaseUrl()
-const API = API_V1
-const getToken = () => localStorage.getItem('accessToken') || ''
-const headers = (json = false) => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) })
+const getToken = () => getAccessToken()
 
-async function request(path, options = {}) {
-  const response = await fetch(`${API}${path}`, { ...options, headers: { ...headers(Boolean(options.body)), ...options.headers } })
-  const data = await readApiResponse(response)
-  if (!response.ok) throw new Error(data.message || 'Không thể hoàn thành yêu cầu.')
-  return data
-}
+const request = (path, options = {}) => apiRequest(path, options)
 
-function FeatureShell({ eyebrow, title, intro, children, Navigation = CommunityNav }) {
+function FeatureShell({ eyebrow, title, intro, children }) {
   const { t } = useLocale()
-  return <div className="community-app"><Navigation /><main className="community-main feature-page"><header className="feature-heading"><p className="community-kicker">{t(eyebrow)}</p><h1>{t(title)}</h1>{intro && <p>{t(intro)}</p>}</header>{children}</main></div>
+  return <div className="community-app"><main className="community-main feature-page"><header className="feature-heading"><p className="community-kicker">{t(eyebrow)}</p><h1>{t(title)}</h1>{intro && <p>{t(intro)}</p>}</header>{children}</main></div>
 }
 
 function formatCountdown(totalSeconds) {
@@ -869,8 +863,10 @@ export function PrintExportPage() {
 
 export function AIAssistantPage() {
   const [activeProvider, setActiveProvider] = useState('openai')
-  const [openAiApiKey, setOpenAiApiKey] = useState(() => localStorage.getItem('openAiApiKey') || '')
-  const [geminiApiKey, setGeminiApiKey] = useState(() => localStorage.getItem('geminiApiKey') || '')
+  // Client components can still be pre-rendered by Next.js, so browser storage
+  // must be read only after the browser is available.
+  const [openAiApiKey, setOpenAiApiKey] = useState(() => typeof window === 'undefined' ? '' : localStorage.getItem('openAiApiKey') || '')
+  const [geminiApiKey, setGeminiApiKey] = useState(() => typeof window === 'undefined' ? '' : localStorage.getItem('geminiApiKey') || '')
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState([
@@ -932,17 +928,11 @@ export function AIAssistantPage() {
     try {
       let answer = ''
       if (activeProvider === 'openai') {
-        const response = await fetch(`${API}/openai/chat`, {
+        const data = await request('/openai/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           signal: AbortSignal.timeout(50000),
           body: JSON.stringify({ apiKey: key, messages: conversation }),
         })
-
-        const data = await response.json()
-        if (!response.ok) {
-          throw new Error(data?.message || 'OpenAI trả về lỗi. Kiểm tra API key và billing.')
-        }
         answer = data.answer
       } else {
         const modelCandidates = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite']
@@ -1406,7 +1396,7 @@ export function MealPlannerPage() {
   useEffect(() => {
     if (!getToken()) { navigate('/login'); return }
     let active = true
-    Promise.all([request(`/features/meal-plan?weekStart=${weekStart}`), request(`/features/meal-plan/shopping-list?weekStart=${weekStart}`), fetch(`${API_V1}/recipes`).then(readApiResponse)])
+    Promise.all([request(`/features/meal-plan?weekStart=${weekStart}`), request(`/features/meal-plan/shopping-list?weekStart=${weekStart}`), request('/recipes')])
       .then(([plan, list, recipeList]) => { if (active) { setEntries(plan.entries); setShopping(list.items); setRecipes(recipeList) } })
       .catch(error => toast.error(error.message)).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -1444,7 +1434,7 @@ function ChallengesContent({ navigate, Navigation = CommunityNav, useNextLinks =
   const [refresh, setRefresh] = useState(0)
   useEffect(() => {
     let active = true
-    Promise.all([request('/features/challenges'), fetch(`${API_V1}/recipes`).then(readApiResponse), getToken() ? request('/account/me') : Promise.resolve(null)])
+    Promise.all([request('/features/challenges'), request('/recipes'), getToken() ? request('/account/me') : Promise.resolve(null)])
       .then(([items, recipeList, me]) => { if (active) { setChallenges(items); setRecipes(recipeList); setMyId(me?.id || '') } })
       .catch(error => toast.error(error.message)).finally(() => { if (active) setLoading(false) })
     return () => { active = false }

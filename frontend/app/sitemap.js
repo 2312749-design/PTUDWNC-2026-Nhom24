@@ -4,9 +4,9 @@ export const dynamic = 'force-dynamic'
 
 export default async function sitemap() {
   const siteUrl = getSiteUrl()
-  const apiUrl = getVersionedApiBaseUrl()
+  const apiUrl = process.env.API_INTERNAL_URL || getVersionedApiBaseUrl()
   const routes = [
-    '', '/community', '/recipes', '/categories', '/challenges', '/creator',
+    '', '/community', '/recipes', '/categories', '/challenges',
   ]
 
   const staticRoutes = routes.map((route) => ({

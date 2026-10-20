@@ -1,20 +1,14 @@
-# React + Vite
+# CulinaryBlog — Next.js App Router
 
-## Google OAuth
+Chạy `npm ci`, rồi `npm run dev -- --port 3000`. Backend local: http://localhost:5152.
 
-Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in the frontend environment and `Google__ClientId` in the API environment to the same Google OAuth web client ID. Add `http://localhost:3000` to the authorized JavaScript origins in Google Cloud Console. Rebuild the frontend after changing its public client ID. The API returns `503` for Google sign-in until its client ID is configured.
+Tất cả URL được định nghĩa bằng thư mục trong `app/`. Không còn BrowserRouter, ClientApp fallback hoặc Vite. `src/navigation.jsx` dùng Next Link và hook của Next.
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+- `npm run build`: build production.
+- `npm test`: kiểm thử định dạng API và JSON-LD.
+- `npx playwright install chromium` rồi `npx playwright test`: kiểm thử giao diện. Build trước; Playwright tự bật frontend nếu cần. Các ca quản trị giả lập API; phân quyền thật được kiểm tra bằng backend TestServer.
+- `/admin`: trang quản trị, API yêu cầu JWT role Admin.
 
-Currently, two official plugins are available:
+Biến môi trường: `NEXT_PUBLIC_API_URL` mặc định http://localhost:5152/api; `NEXT_PUBLIC_SITE_URL` mặc định http://localhost:3000; `API_INTERNAL_URL` gồm `/api/v1` cho SSR/sitemap trong Docker.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+Google OAuth cần `NEXT_PUBLIC_GOOGLE_CLIENT_ID` khớp `Google__ClientId` ở backend và origin frontend được khai báo trong Google Cloud Console. Build lại sau khi đổi biến `NEXT_PUBLIC_*`.

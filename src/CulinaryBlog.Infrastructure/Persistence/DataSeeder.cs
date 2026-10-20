@@ -49,6 +49,47 @@ public static class DataSeeder
 
         await context.SaveChangesAsync();
 
+        var demoUsers = new[]
+        {
+            new { FullName = "Nguyễn Thị Lan Anh", UserName = "lananh01", Email = "lananh01@culinaryblog.test", Password = "LanAnh@123" },
+            new { FullName = "Trần Minh Hoàng", UserName = "minhhoang02", Email = "minhhoang02@culinaryblog.test", Password = "MinhHoang@123" },
+            new { FullName = "Lê Thị Hồng Nhung", UserName = "hongnhung03", Email = "hongnhung03@culinaryblog.test", Password = "HongNhung@123" },
+            new { FullName = "Phạm Văn Dũng", UserName = "vandung04", Email = "vandung04@culinaryblog.test", Password = "VanDung@123" },
+            new { FullName = "Võ Thị Thu Hà", UserName = "thuha05", Email = "thuha05@culinaryblog.test", Password = "ThuHa@123" },
+            new { FullName = "Đặng Quốc Nam", UserName = "quocnam06", Email = "quocnam06@culinaryblog.test", Password = "QuocNam@123" },
+            new { FullName = "Ngô Bích Ngọc", UserName = "bichngoc07", Email = "bichngoc07@culinaryblog.test", Password = "BichNgoc@123" },
+            new { FullName = "Huỳnh Thanh Tùng", UserName = "thanhtung08", Email = "thanhtung08@culinaryblog.test", Password = "ThanhTung@123" },
+            new { FullName = "Bùi Thị Mỹ Linh", UserName = "mylinh09", Email = "mylinh09@culinaryblog.test", Password = "MyLinh@123" },
+            new { FullName = "Cao Văn Khoa", UserName = "vankhoa10", Email = "vankhoa10@culinaryblog.test", Password = "VanKhoa@123" },
+            new { FullName = "Mai Xuân Thảo", UserName = "xuanthao11", Email = "xuanthao11@culinaryblog.test", Password = "XuanThao@123" },
+            new { FullName = "Lý Đức Huy", UserName = "duchuy12", Email = "duchuy12@culinaryblog.test", Password = "DucHuy@123" },
+            new { FullName = "Nguyễn Thảo Vy", UserName = "thaovy13", Email = "thaovy13@culinaryblog.test", Password = "ThaoVy@123" },
+            new { FullName = "Phan Hữu Long", UserName = "huulong14", Email = "huulong14@culinaryblog.test", Password = "HuuLong@123" },
+            new { FullName = "Trương Kim Chi", UserName = "kimchi15", Email = "kimchi15@culinaryblog.test", Password = "KimChi@123" },
+            new { FullName = "Hồ Nhật Minh", UserName = "nhatminh16", Email = "nhatminh16@culinaryblog.test", Password = "NhatMinh@123" },
+            new { FullName = "Đỗ Thị Yến Nhi", UserName = "yennhi17", Email = "yennhi17@culinaryblog.test", Password = "YenNhi@123" },
+            new { FullName = "Kiều Anh Tú", UserName = "anhtu18", Email = "anhtu18@culinaryblog.test", Password = "AnhTu@123" },
+            new { FullName = "Tạ Văn Hưng", UserName = "vanhung19", Email = "vanhung19@culinaryblog.test", Password = "VanHung@123" },
+            new { FullName = "Nguyễn Thanh Trúc", UserName = "thanhtruc20", Email = "thanhtruc20@culinaryblog.test", Password = "ThanhTruc@123" }
+        };
+
+        foreach (var seed in demoUsers)
+        {
+            var exists = await context.Users.AnyAsync(u => u.Email == seed.Email || u.UserName == seed.UserName);
+            if (exists)
+            {
+                continue;
+            }
+
+            var newUser = ApplicationUser.Create(seed.FullName, seed.Email, seed.UserName);
+            newUser.Role = "User";
+            newUser.EmailConfirmed = true;
+            newUser.PasswordHash = passwordHasher.HashPassword(newUser, seed.Password);
+            await context.Users.AddAsync(newUser);
+        }
+
+        await context.SaveChangesAsync();
+
         defaultUser = await context.Users.FirstAsync(u => u.Email == "admin@culinaryblog.com" || u.UserName == "chefdemo");
 
         var hasCategories = await context.Categories.AnyAsync();
@@ -84,12 +125,7 @@ public static class DataSeeder
         };
 
         var categories = categorySeed
-            .Select(c => new Category
-            {
-                Id = Guid.NewGuid(),
-                Name = c.Name,
-                Description = c.Description
-            })
+            .Select(c => Category.Create(c.Name, c.Description, null))
             .ToList();
 
         await context.Categories.AddRangeAsync(categories);

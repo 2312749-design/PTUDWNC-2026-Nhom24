@@ -52,7 +52,23 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Test frontend contracts and structured data
+        working-directory: frontend
+        run: npm test
+
+      - name: Install browser for UI tests
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser tests
+        working-directory: frontend
+        run: npx playwright test
+
       - name: Validate Docker Compose file
+        env:
+          # This value is used only to expand the required Compose variable.
+          # Production deployments must provide their own JWT_SECRET.
+          JWT_SECRET: ci-compose-validation-placeholder-not-a-deployment-secret
         run: docker compose config
 
   docker:

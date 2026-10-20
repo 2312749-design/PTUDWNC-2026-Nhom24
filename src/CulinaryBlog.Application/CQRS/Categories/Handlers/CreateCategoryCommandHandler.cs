@@ -3,6 +3,7 @@ using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces; // Dùng Interface chuẩn Clean Architecture
 using CulinaryBlog.Domain.Entities;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Application.CQRS.Categories.Handlers;
 
@@ -19,13 +20,15 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
 
     public async Task<CategoryDto> Handle(CreateCategoryCommand request, CancellationToken cancellationToken)
     {
-        var category = new Category
+        var name = request.Name?.Trim() ?? string.Empty;
+        var slug = Category.CreateSlug(name);
+        if (await _context.Categories.AnyAsync(category =>
+            category.Name.ToUpper() == name.ToUpper() || category.Slug == slug, cancellationToken))
         {
-            Id = Guid.NewGuid(),
-            Name = request.Name.Trim(),
-            Description = request.Description?.Trim() ?? string.Empty,
-            ImageUrl = request.ImageUrl
-        };
+            throw new CulinaryBlog.Domain.Exceptions.ConflictException("Tên hoặc slug danh mục đã tồn tại.");
+        }
+
+        var category = Category.Create(name, request.Description, request.ImageUrl);
 
         _context.Categories.Add(category);
         await _context.SaveChangesAsync(cancellationToken);
@@ -35,6 +38,7 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
         {
             Id = category.Id,
             Name = category.Name,
+            Slug = category.Slug,
             Description = category.Description,
             ImageUrl = category.ImageUrl
         };

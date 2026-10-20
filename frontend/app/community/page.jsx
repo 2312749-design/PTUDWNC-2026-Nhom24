@@ -1,5 +1,4 @@
-import ClientApp from '../ClientApp'
+import PageClient from '../PageClient'
+import { FeedPage } from '../../src/CommunityPages'
 
-export default function CommunityPage() {
-  return <ClientApp />
-}
+export default function Page() { return <PageClient><FeedPage /></PageClient> }

@@ -1,8 +1,11 @@
+using Asp.Versioning;
 using CulinaryBlog.API.Middleware;
-using CulinaryBlog.API.Filters;
+using CulinaryBlog.API.Endpoints;
+using CulinaryBlog.API.Health;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Application.Models;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Jobs;
 using CulinaryBlog.Infrastructure.Services;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -11,8 +14,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -92,7 +93,7 @@ healthChecks.AddCheck("database", () =>
     {
         return HealthCheckResult.Unhealthy("PostgreSQL is unavailable.", exception);
     }
-});
+}, ["ready"]);
 healthChecks.AddCheck("redis", () =>
 {
     if (redisConnection is null)
@@ -103,34 +104,10 @@ healthChecks.AddCheck("redis", () =>
     return redisConnection.IsConnected
         ? HealthCheckResult.Healthy("Redis is reachable.")
         : HealthCheckResult.Unhealthy("Redis is unavailable.");
-});
+}, ["ready"]);
+healthChecks.AddCheck<MinioReadinessHealthCheck>("minio", tags: ["ready"]);
 
-builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = builder.Configuration.GetValue("RateLimiting:DefaultPermitLimit", 200),
-                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:DefaultWindowMinutes", 1)),
-                QueueLimit = 0,
-                AutoReplenishment = true
-            }));
-    options.AddFixedWindowLimiter("auth", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = builder.Configuration.GetValue("RateLimiting:LoginPermitLimit", 5);
-        limiterOptions.Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:LoginWindowMinutes", 1));
-        limiterOptions.QueueLimit = 0;
-    });
-    options.AddFixedWindowLimiter("registration", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = builder.Configuration.GetValue("RateLimiting:RegistrationPermitLimit", 3);
-        limiterOptions.Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:RegistrationWindowMinutes", 1));
-        limiterOptions.QueueLimit = 0;
-    });
-});
+builder.Services.AddApiSecurity(builder.Configuration);
 
 var openTelemetry = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService(
@@ -163,7 +140,9 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 
 // 4. Cấu hình Authentication & JWT Bearer
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
-var key = Encoding.UTF8.GetBytes(jwtSettings!.Secret);
+if (string.IsNullOrWhiteSpace(jwtSettings?.Secret) || jwtSettings.Secret.Length < 32)
+    throw new InvalidOperationException("JwtSettings:Secret must be supplied through user secrets or the JwtSettings__Secret environment variable and contain at least 32 characters.");
+var key = Encoding.UTF8.GetBytes(jwtSettings.Secret);
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -182,45 +161,31 @@ builder.Services.AddAuthentication(options =>
 });
 
 // 5. Cấu hình CORS cho Frontend React chạy ở localhost:3000
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("FrontendPolicy", policy =>
-    {
-        policy.SetIsOriginAllowed(origin =>
-                origin.StartsWith("http://localhost:") ||
-                origin.StartsWith("http://127.0.0.1:") ||
-                origin.StartsWith("https://localhost:") ||
-                origin.StartsWith("https://127.0.0.1:"))
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
-
 // Đăng ký MediatR tự động quét các Handler trong tầng Application
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.CategoryDto).Assembly));
 
-builder.Services.AddControllers(options => options.Filters.Add<ApiContractFilter>());
-builder.Services.AddApiVersioning(options =>
-{
-    options.DefaultApiVersion = new ApiVersion(1, 0);
-    options.AssumeDefaultVersionWhenUnspecified = true;
-    options.ReportApiVersions = true;
-    options.ApiVersionReader = ApiVersionReader.Combine(
-        new UrlSegmentApiVersionReader(),
-        new HeaderApiVersionReader("X-Version"));
-});
-
-builder.Services.AddVersionedApiExplorer(options =>
-{
-    options.GroupNameFormat = "'v'VVV";
-    options.SubstituteApiVersionInUrl = true;
-});
+builder.Services.AddApplicationHandlers();
+builder.Services.AddScoped<IGoogleIdentityVerifier, GoogleIdentityVerifier>();
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
+builder.Services.AddAuthorization();
 
 builder.Services.AddHttpClient("OpenAI", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(45);
 });
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddApiVersioning(options =>
+{
+    options.DefaultApiVersion = new ApiVersion(1, 0);
+    options.AssumeDefaultVersionWhenUnspecified = true;
+    options.ReportApiVersions = true;
+    options.ApiVersionReader = new UrlSegmentApiVersionReader();
+})
+.AddApiExplorer(options =>
+{
+    options.GroupNameFormat = "'v'VVV";
+    options.SubstituteApiVersionInUrl = true;
+});
 
 builder.Services.AddHangfire(config =>
 {
@@ -231,7 +196,7 @@ builder.Services.AddHangfire(config =>
               options.UseNpgsqlConnection(builder.Configuration.GetConnectionString("DefaultConnection"));
           });
 });
-
+GlobalJobFilters.Filters.Add(new AutomaticRetryAttribute { Attempts = 3 });
 builder.Services.AddHangfireServer();
 
 // 6. Cấu hình Swagger kèm nút Authorize chuẩn
@@ -273,15 +238,10 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-var apiVersionProvider = app.Services.GetRequiredService<IApiVersionDescriptionProvider>();
-
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
-    foreach (var description in apiVersionProvider.ApiVersionDescriptions)
-    {
-        options.SwaggerEndpoint($"/swagger/{description.GroupName}/swagger.json", description.GroupName.ToUpperInvariant());
-    }
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "V1");
 });
 
 static string GetWebFilePath(IWebHostEnvironment env, string fileName)
@@ -319,16 +279,36 @@ app.UseStatusCodePages(async (StatusCodeContext statusContext) =>
     var problem = new ProblemDetails
     {
         Status = statusCode,
-        Title = Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(statusCode)
+        Title = Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(statusCode),
+        Detail = Microsoft.AspNetCore.WebUtilities.ReasonPhrases.GetReasonPhrase(statusCode)
     };
     await response.WriteAsync(JsonSerializer.Serialize(problem, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 });
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseHangfireDashboard();
 
 // 7. Kích hoạt CORS Middleware
 app.UseCors("FrontendPolicy");
+
+// Keep pre-versioned links working during the migration without maintaining a
+// second active API contract. Clients are served exclusively by /api/v1/...
+// endpoints that carry Asp.Versioning metadata.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value;
+    if (path is not null && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) &&
+        !path.StartsWith("/api/v", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status308PermanentRedirect;
+        context.Response.Headers.Location = $"/api/v1{path[4..]}{context.Request.QueryString}";
+        return;
+    }
+
+    await next();
+});
 
 // 7.1. Kích hoạt Rate Limiting Middleware để ràng buộc request thực sự
 app.UseRateLimiter();
@@ -344,24 +324,44 @@ app.MapGet("/home", () => Results.File(GetWebFilePath(app.Environment, "home.htm
 app.MapGet("/categories", () => Results.File(GetWebFilePath(app.Environment, "categories.html"), "text/html"));
 app.MapGet("/recipes", () => Results.File(GetWebFilePath(app.Environment, "recipes.html"), "text/html"));
 
-app.MapHealthChecks("/health", new HealthCheckOptions
+static Task WriteHealthResponse(HttpContext context, HealthReport report) => WriteHealthResponseAsync(context, report);
+static async Task WriteHealthResponseAsync(HttpContext context, HealthReport report)
 {
-    ResponseWriter = async (context, report) =>
+    context.Response.ContentType = "application/json";
+    await context.Response.WriteAsJsonAsync(new
     {
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(new
+        status = report.Status.ToString(),
+        checks = report.Entries.ToDictionary(entry => entry.Key, entry => new
         {
-            status = report.Status.ToString(),
-            checks = report.Entries.ToDictionary(entry => entry.Key, entry => new
-            {
-                status = entry.Value.Status.ToString(),
-                description = entry.Value.Description,
-                data = entry.Value.Data
-            })
-        });
-    }
+            status = entry.Value.Status.ToString(),
+            description = entry.Value.Description,
+            data = entry.Value.Data
+        })
+    });
+}
+app.MapHealthChecks("/health", new HealthCheckOptions { ResponseWriter = WriteHealthResponse });
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("live"),
+    ResponseWriter = WriteHealthResponse
 });
-app.MapControllers();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = WriteHealthResponse
+});
+var apiVersionSet = app.NewApiVersionSet("CulinaryBlog API")
+    .HasApiVersion(new ApiVersion(1, 0))
+    .ReportApiVersions()
+    .Build();
+
+// All API endpoints belong to one formal v1 contract. Existing /api/v1 URLs
+// remain stable for the frontend while endpoint metadata and version headers
+// are supplied by Asp.Versioning.
+var apiV1 = app.MapGroup(string.Empty)
+    .WithApiVersionSet(apiVersionSet)
+    .MapToApiVersion(1, 0);
+apiV1.MapApplicationEndpoints();
 
 // --- ĐOẠN CODE GỌI SEEDER TỰ ĐỘNG ---
 using (var scope = app.Services.CreateScope())
@@ -375,11 +375,15 @@ using (var scope = app.Services.CreateScope())
     await DataSeeder.SeedDataAsync(dbContext);
     var seedAuthor = await dbContext.Users.FirstAsync(user => user.Email == "admin@culinaryblog.com");
     await RecipeCatalogSeeder.SeedDataAsync(dbContext, seedAuthor);
+    await DemoActivitySeeder.SeedAsync(dbContext, seedAuthor);
 }
+
+RecurringJob.AddOrUpdate<SitemapGenerationJob>("sitemap-generation", job => job.GenerateAsync(), Cron.Daily);
+RecurringJob.AddOrUpdate<StorageMaintenanceJob>("storage-maintenance", job => job.InspectAsync(), Cron.Weekly);
 
 app.Run();
 
 static void ConfigureOtlpExporter(OtlpExporterOptions options, string endpoint)
 {
     options.Endpoint = new Uri(endpoint);
-}  
+}

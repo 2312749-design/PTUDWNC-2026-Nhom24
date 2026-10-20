@@ -10,3 +10,8 @@
 **/*.log
 Dockerfile
 docker-compose*.yml
+.run-logs/
+.dbcheck/
+**/test-results/
+**/TestResults/
+*.rar

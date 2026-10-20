@@ -1,14 +1,15 @@
+'use client'
+
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from './navigation.jsx'
 import NextLink from 'next/link'
 import { useParams as useNextParams, usePathname, useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useLocale } from './LocaleContext.jsx'
-import { getVersionedApiBaseUrl, readApiResponse } from './api/config.js'
+import { apiRequest, clearSession, getAccessToken } from './api/session.js'
+import { useAuthStore } from './store/auth-store'
 import './CommunityPages.css'
 
-const API_V1 = getVersionedApiBaseUrl()
-const API = API_V1
 const EDITORIAL_STARTERS = [
   {
     id: 'starter-vietnamese-table',
@@ -42,61 +43,7 @@ const EDITORIAL_STARTERS = [
   },
 ]
 
-const token = () => {
-  const value = localStorage.getItem('accessToken') || ''
-  if (!value) return ''
-  try {
-    const payload = JSON.parse(atob(value.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
-    if (!payload.exp || payload.exp * 1000 <= Date.now()) throw new Error('Token expired')
-    return value
-  } catch {
-    localStorage.removeItem('accessToken')
-    return ''
-  }
-}
-const authHeaders = (json = false) => ({
-  ...(json ? { 'Content-Type': 'application/json' } : {}),
-  ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
-})
-
-let refreshRequest
-
-async function refreshAccessToken() {
-  if (!refreshRequest) {
-    refreshRequest = fetch(`${API_V1}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: localStorage.getItem('refreshToken') || '' }),
-    }).then(async response => {
-      const data = await readApiResponse(response)
-      if (!response.ok || !data.accessToken || !data.refreshToken) throw new Error('Phiên đăng nhập đã hết hạn.')
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
-      return data.accessToken
-    }).catch(error => {
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
-      throw error
-    }).finally(() => { refreshRequest = null })
-  }
-  return refreshRequest
-}
-
-async function apiRequest(path, options = {}) {
-  const sendRequest = () => fetch(`${API}${path}`, { ...options, headers: { ...authHeaders(Boolean(options.body)), ...options.headers } })
-  let response = await sendRequest()
-  if (response.status === 401 && localStorage.getItem('refreshToken')) {
-    try {
-      await refreshAccessToken()
-      response = await sendRequest()
-    } catch {
-      throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
-    }
-  }
-  const data = await readApiResponse(response)
-  if (!response.ok) throw new Error(data.message || 'Không thể hoàn thành yêu cầu.')
-  return data
-}
+const token = () => getAccessToken()
 
 function Avatar({ user, size = 'normal' }) {
   const initials = (user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()
@@ -109,11 +56,14 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
   const { t } = useLocale()
   const [me, setMe] = useState(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const sessionUser = useAuthStore((state) => state.user)
+  const setSessionUser = useAuthStore((state) => state.setUser)
   useEffect(() => {
     const loadAccount = () => {
       if (!token() && !localStorage.getItem('refreshToken')) return
       Promise.all([apiRequest('/account/me'), apiRequest('/features/notifications')]).then(([user, notifications]) => {
       setMe(user)
+      setSessionUser(user)
       setUnreadCount(notifications.unreadCount)
       }).catch(() => setMe(null))
     }
@@ -125,17 +75,15 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
     const refreshToken = localStorage.getItem('refreshToken')
     try {
       if (refreshToken) {
-        await fetch(`${API_V1}/auth/logout`, {
+        await apiRequest('/auth/logout', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` },
           body: JSON.stringify({ refreshToken }),
         })
       }
     } catch {
       // The local session is always cleared; the backend may be unavailable.
     }
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
+    clearSession()
     navigate('/community')
     window.location.reload()
   }
@@ -173,6 +121,7 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
     },
   ]
   const isActive = (path) => pathname === path || (path !== '/community' && pathname.startsWith(`${path}/`))
+  const currentUser = me || sessionUser
   const AppLink = ({ to, ...props }) => useNextLinks
     ? <NextLink href={to} {...props} />
     : <Link to={to} {...props} />
@@ -196,8 +145,9 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
         ))}
       </nav>
       <div className="community-nav-account">
-        {me ? <>
-          <AppLink to={`/members/${encodeURIComponent(me.username)}`} className="nav-profile"><Avatar user={me} size="small" /><span>{me.fullName || me.username}</span></AppLink>
+        {currentUser ? <>
+          {currentUser.role === 'Admin' && <AppLink to="/admin">Quản trị</AppLink>}
+          <AppLink to={`/members/${encodeURIComponent(currentUser.username)}`} className="nav-profile"><Avatar user={currentUser} size="small" /><span>{currentUser.fullName || currentUser.displayName || currentUser.username}</span></AppLink>
           <button type="button" onClick={logout}>{t('Đăng xuất')}</button>
         </> : <>
           <AppLink to="/login" className="nav-login">{t('Đăng nhập')}</AppLink>
@@ -220,8 +170,8 @@ export function NextCommunityNav() {
   return <CommunityNavContent navigate={(path) => router.push(path)} pathname={pathname} useNextLinks />
 }
 
-function CommunityLayout({ children, Navigation = CommunityNav }) {
-  return <div className="community-app"><Navigation />{children}</div>
+function CommunityLayout({ children }) {
+  return <div className="community-app">{children}</div>
 }
 
 function PostMedia({ mediaUrl, mediaType }) {
@@ -384,10 +334,8 @@ export function FeedPage() {
   const uploadMedia = async event => {
     const file = event.target.files?.[0]
     if (!file) return
-    const isVideo = file.type.startsWith('video/')
-    const maxSize = isVideo ? 50 * 1024 * 1024 : 8 * 1024 * 1024
-    if (file.size > maxSize) {
-      toast.error(isVideo ? 'Video tối đa 50 MB.' : 'Ảnh tối đa 8 MB.')
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      toast.error('Chọn ảnh JPG, PNG, WebP hoặc AVIF không quá 5 MB.')
       event.target.value = ''
       return
     }
@@ -395,9 +343,7 @@ export function FeedPage() {
     formData.append('file', file)
     setUploadingMedia(true)
     try {
-      const response = await fetch(`${API}/community/upload-media`, { method: 'POST', headers: authHeaders(), body: formData })
-      const data = await readApiResponse(response)
-      if (!response.ok) throw new Error(data.message || 'Tải tệp lên thất bại.')
+      const data = await apiRequest('/community/upload-media', { method: 'POST', body: formData })
       setMedia(data)
       toast.success(isVideo ? 'Video đã sẵn sàng.' : 'Ảnh đã sẵn sàng.')
     } catch (error) { toast.error(error.message) }
@@ -433,7 +379,7 @@ export function FeedPage() {
       <section className="feed-column">
         <div className="feed-heading"><div><p className="community-kicker">{t('BẾP NHÀ · CỘNG ĐỒNG')}</p><h1>{t('Bảng tin')}</h1></div><span className="feed-live"><i /> {t('MỌI NGƯỜI ĐANG CHIA SẺ')}</span></div>
         <div className="feed-control-row"><div className="feed-tabs" role="tablist" aria-label={t('Nguồn bài viết')}><button type="button" className={scope === 'discover' ? 'active' : ''} onClick={() => changeScope('discover')}>{t('Dành cho bạn')}</button><button type="button" className={scope === 'following' ? 'active' : ''} onClick={() => changeScope('following')}>{t('Đang theo dõi')}</button></div><select aria-label={t('Sắp xếp bài viết')} value={sort} onChange={event => { setLoading(true); setSort(event.target.value) }}><option value="recent">{t('Mới nhất')}</option><option value="popular">{t('Nổi bật')}</option></select></div>
-        {me ? <form className="composer" onSubmit={publish}><div className="composer-top"><Avatar user={me} /><textarea value={content} onChange={event => setContent(event.target.value)} placeholder={t('Hôm nay bạn vừa nấu món gì? Chia sẻ với mọi người...')} maxLength={3000} /></div>{media && <div className="composer-media"><PostMedia mediaUrl={media.mediaUrl} mediaType={media.mediaType} /><button type="button" onClick={() => setMedia(null)}>{t('Gỡ tệp')}</button></div>}<div className="composer-bottom"><label className="composer-attach">{uploadingMedia ? t('Đang tải...') : t('Ảnh/video')}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm" onChange={uploadMedia} disabled={uploadingMedia || saving} /></label><label className="draft-toggle"><input type="checkbox" checked={isDraft} onChange={event => setIsDraft(event.target.checked)} /> {t('Lưu bản nháp')}</label><span>{content.length}/3000</span><button type="submit" disabled={(!content.trim() && !media) || saving || uploadingMedia}>{saving ? t('Đang lưu...') : isDraft ? t('Lưu nháp') : t('Đăng bài')} <b>↗</b></button></div></form> : <div className="guest-invite"><div><strong>{t('Bếp vui hơn khi có bạn.')}</strong><p>{t('Tạo tài khoản để chia sẻ câu chuyện, lưu kết nối và trò chuyện cùng cộng đồng.')}</p></div><Link to="/register">{t('Tham gia Bếp Nhà')} <span>→</span></Link></div>}
+        {me ? <form className="composer" onSubmit={publish}><div className="composer-top"><Avatar user={me} /><textarea value={content} onChange={event => setContent(event.target.value)} placeholder={t('Hôm nay bạn vừa nấu món gì? Chia sẻ với mọi người...')} maxLength={3000} /></div>{media && <div className="composer-media"><PostMedia mediaUrl={media.mediaUrl} mediaType={media.mediaType} /><button type="button" onClick={() => setMedia(null)}>{t('Gỡ tệp')}</button></div>}<div className="composer-bottom"><label className="composer-attach">{uploadingMedia ? t('Đang tải...') : t('Ảnh')}<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={uploadMedia} disabled={uploadingMedia || saving} /></label><label className="draft-toggle"><input type="checkbox" checked={isDraft} onChange={event => setIsDraft(event.target.checked)} /> {t('Lưu bản nháp')}</label><span>{content.length}/3000</span><button type="submit" disabled={(!content.trim() && !media) || saving || uploadingMedia}>{saving ? t('Đang lưu...') : isDraft ? t('Lưu nháp') : t('Đăng bài')} <b>↗</b></button></div></form> : <div className="guest-invite"><div><strong>{t('Bếp vui hơn khi có bạn.')}</strong><p>{t('Tạo tài khoản để chia sẻ câu chuyện, lưu kết nối và trò chuyện cùng cộng đồng.')}</p></div><Link to="/register">{t('Tham gia Bếp Nhà')} <span>→</span></Link></div>}
         <div className="feed-list">{loading ? <div className="feed-empty">{t('Đang tải bảng tin...')}</div> : posts.length ? posts.map(post => <FeedPost key={post.id} post={post} me={me} onChanged={refresh} />) : <div className="feed-empty"><span>✳</span><h2>{t('Bảng tin đang chờ câu chuyện đầu tiên')}</h2><p>{t('Hãy chia sẻ món ăn, mẹo bếp hoặc một khoảnh khắc đáng nhớ.')}</p></div>}</div>
       </section>
       <aside className="editorial-column" aria-label="Bài báo và chuyên đề">
@@ -705,15 +651,13 @@ function AccountAvatarEditor({ form, setForm }) {
     body.append('file', file)
     setUploading(true)
     try {
-      const response = await fetch(`${API}/account/avatar`, { method: 'POST', headers: authHeaders(), body })
-      const data = await readApiResponse(response)
-      if (!response.ok) throw new Error(data.message || 'Không thể cập nhật ảnh đại diện.')
+      const data = await apiRequest('/account/avatar', { method: 'POST', body })
       setForm(current => ({ ...current, avatarUrl: data.avatarUrl }))
       toast.success(data.message)
     } catch (error) { toast.error(error.message) }
     finally { setUploading(false); event.target.value = '' }
   }
-  return <div className="avatar-upload-row"><Avatar user={form} size="large" /><div><label className="avatar-upload-button">{uploading ? 'Đang tải ảnh...' : 'Tải avatar lên'}<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={uploadAvatar} disabled={uploading} /></label><small>JPG, PNG, WebP hoặc GIF · tối đa 5 MB</small></div></div>
+  return <div className="avatar-upload-row"><Avatar user={form} size="large" /><div><label className="avatar-upload-button">{uploading ? 'Đang tải ảnh...' : 'Tải avatar lên'}<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={uploadAvatar} disabled={uploading} /></label><small>JPG, PNG, WebP hoặc AVIF · tối đa 5 MB</small></div></div>
 }
 
 export function AccountPage() {
