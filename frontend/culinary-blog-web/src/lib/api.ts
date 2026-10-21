@@ -1,10 +1,13 @@
 import type { ApiResponse, PaginatedResult } from "@/types/api";
 import type {
   AuthResponse,
+  ChangePasswordRequest,
+  Profile,
   LoginRequest,
   RegisterRequest,
+  UpdateProfileRequest,
 } from "@/types/auth";
-import type { Recipe, RecipeDetail } from "@/types/recipe";
+import type { Category, Recipe, RecipeDetail } from "@/types/recipe";
 import { ApiClientError } from "@/lib/api-error";
 
 const apiBaseUrl =
@@ -121,5 +124,76 @@ export function login(request: LoginRequest): Promise<AuthResponse> {
   return apiFetch("auth/login", {
     method: "POST",
     body: JSON.stringify(request),
+  });
+}
+
+export function getCategories(): Promise<ApiResponse<Category[]>> {
+  return apiFetch("categories");
+}
+
+export function getCategoryRecipes(
+  categoryId: string,
+  page = 1,
+  pageSize = 12,
+): Promise<PaginatedResult<Recipe>> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    pageSize: pageSize.toString(),
+  });
+
+  return apiFetch<{
+    data: Recipe[];
+    pagination: { page: number; total: number; totalPages: number };
+  }>(`categories/${encodeURIComponent(categoryId)}/recipes?${params}`).then(
+    (result) => ({
+      items: result.data,
+      totalCount: result.pagination.total,
+      page: result.pagination.page,
+      totalPages: result.pagination.totalPages,
+    }),
+  );
+}
+
+export function getProfile(accessToken: string): Promise<ApiResponse<Profile>> {
+  return apiFetch("auth/profile", undefined, accessToken);
+}
+
+export function updateProfile(
+  request: UpdateProfileRequest,
+  accessToken: string,
+): Promise<ApiResponse<Profile>> {
+  return apiFetch(
+    "auth/profile",
+    { method: "PUT", body: JSON.stringify(request) },
+    accessToken,
+  );
+}
+
+export function changePassword(
+  request: ChangePasswordRequest,
+  accessToken: string,
+): Promise<{ message: string }> {
+  return apiFetch(
+    "auth/change-password",
+    { method: "POST", body: JSON.stringify(request) },
+    accessToken,
+  );
+}
+
+export function requestPasswordReset(email: string): Promise<{ message: string }> {
+  return apiFetch("auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function resetPassword(
+  email: string,
+  token: string,
+  newPassword: string,
+): Promise<{ message: string }> {
+  return apiFetch("auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, token, newPassword }),
   });
 }

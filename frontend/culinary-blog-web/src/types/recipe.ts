@@ -13,6 +13,14 @@ export interface Recipe {
   updatedAt: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  recipeCount: number;
+}
+
 export interface RecipeIngredient {
   id: string;
   recipeId: string;

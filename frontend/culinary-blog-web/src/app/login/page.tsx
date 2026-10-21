@@ -83,6 +83,14 @@ export default function LoginPage() {
               />
             </span>
           </label>
+          <div>
+            <Link
+              href="/forgot-password"
+              className="mt-2 block text-right text-sm font-semibold text-orange-700 hover:text-orange-900"
+            >
+              Quên mật khẩu?
+            </Link>
+          </div>
           {error && (
             <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm leading-6 text-red-800">
               {error}
@@ -96,6 +104,12 @@ export default function LoginPage() {
             {isSubmitting ? "Đang đăng nhập..." : "Đăng nhập"}
           </button>
         </form>
+        <p className="mt-6 text-center text-sm text-stone-500">
+          Chưa có tài khoản?{" "}
+          <Link href="/register" className="font-bold text-orange-700 hover:text-orange-900">
+            Đăng ký ngay
+          </Link>
+        </p>
       </section>
     </main>
   );

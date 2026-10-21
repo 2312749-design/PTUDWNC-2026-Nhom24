@@ -15,15 +15,8 @@ import { useState, type FormEvent } from "react";
 import ErrorState from "@/components/common/error-state";
 import LoadingState from "@/components/common/loading-state";
 import RecipeCard from "@/components/common/recipe-card";
-import { getRecipes } from "@/lib/api";
+import { getCategories, getRecipes } from "@/lib/api";
 import { useRouter } from "next/navigation";
-
-const categories = [
-  { title: "Món Việt", note: "Đậm đà hương vị quê nhà", emoji: "🍜", query: "món Việt" },
-  { title: "Bữa sáng", note: "Khởi đầu ngày mới ngon lành", emoji: "🥞", query: "bữa sáng" },
-  { title: "Món chay", note: "Thanh nhẹ và đủ dinh dưỡng", emoji: "🥑", query: "món chay" },
-  { title: "Tráng miệng", note: "Ngọt ngào cho phút cuối", emoji: "🍰", query: "tráng miệng" },
-];
 
 export default function Home() {
   const router = useRouter();
@@ -32,6 +25,10 @@ export default function Home() {
   const recipesQuery = useQuery({
     queryKey: ["recipes", "latest"],
     queryFn: getRecipes,
+  });
+  const categoriesQuery = useQuery({
+    queryKey: ["categories"],
+    queryFn: getCategories,
   });
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -167,30 +164,39 @@ export default function Home() {
             </h2>
           </div>
           <Link
-            href="/search"
+            href="/categories"
             className="inline-flex items-center gap-2 text-sm font-bold text-orange-700 transition hover:text-orange-900"
           >
             Xem tất cả
             <ArrowRight className="size-4" aria-hidden="true" />
           </Link>
         </div>
+        {categoriesQuery.isPending && <LoadingState message="Đang tải danh mục..." />}
+        {categoriesQuery.isError && (
+          <ErrorState
+            message={categoriesQuery.error.message || "Không thể tải danh mục."}
+            onRetry={() => void categoriesQuery.refetch()}
+          />
+        )}
+        {categoriesQuery.isSuccess && (
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {categories.map((category) => (
+          {categoriesQuery.data.data.map((category) => (
             <Link
-              key={category.title}
-              href={`/search?q=${encodeURIComponent(category.query)}`}
+              key={category.id}
+              href={`/categories/${category.id}`}
               className="group flex items-center gap-4 rounded-2xl border border-stone-200/80 bg-white p-5 transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-900/5"
             >
               <span className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-3xl transition group-hover:scale-105">
-                {category.emoji}
+                <ChefHat className="size-7 text-orange-700" aria-hidden="true" />
               </span>
               <span>
-                <span className="block font-bold text-stone-900">{category.title}</span>
-                <span className="mt-1 block text-xs leading-5 text-stone-500">{category.note}</span>
+                <span className="block font-bold text-stone-900">{category.name}</span>
+                <span className="mt-1 block text-xs leading-5 text-stone-500">{category.description}</span>
               </span>
             </Link>
           ))}
         </div>
+        )}
       </section>
 
       <section className="bg-[#f7f4ef]">
@@ -213,7 +219,35 @@ export default function Home() {
             </Link>
           </div>
 
-          <div className="mt-9">
+          <div className="mt-9 grid gap-8 lg:grid-cols-[240px_1fr]">
+            <aside className="h-fit rounded-3xl border border-stone-200 bg-white p-5">
+              <h3 className="font-extrabold text-stone-900">Danh mục món ăn</h3>
+              {categoriesQuery.isPending && (
+                <p className="mt-4 text-sm text-stone-500">Đang tải...</p>
+              )}
+              {categoriesQuery.isError && (
+                <p className="mt-4 text-sm text-red-700">Không thể tải danh mục.</p>
+              )}
+              {categoriesQuery.data && (
+                <ul className="mt-3 space-y-1">
+                  {categoriesQuery.data.data.map((category) => (
+                    <li key={category.id}>
+                      <Link
+                        href={`/categories/${category.id}`}
+                        className="flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-stone-600 transition hover:bg-orange-50 hover:text-orange-800"
+                      >
+                        <span>{category.name}</span>
+                        <span className="text-xs text-stone-400">{category.recipeCount}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link href="/categories" className="mt-4 block border-t border-stone-100 pt-4 text-sm font-bold text-orange-700 hover:text-orange-900">
+                Xem tất cả danh mục
+              </Link>
+            </aside>
+            <div>
             {recipesQuery.isPending && <LoadingState message="Đang chuẩn bị những công thức mới nhất..." />}
             {recipesQuery.isError && (
               <ErrorState
@@ -234,6 +268,7 @@ export default function Home() {
                 ))}
               </div>
             )}
+            </div>
           </div>
         </div>
       </section>

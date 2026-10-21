@@ -2,6 +2,8 @@ using CulinaryBlog.Api.Endpoints.Requests;
 using CulinaryBlog.Application.Abstractions;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
+using CulinaryBlog.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace CulinaryBlog.Api.Endpoints;
@@ -182,9 +184,17 @@ public static class RecipeEndpoints
         recipes.MapPost("/", async (
             CreateRecipeRequest request,
             IUnitOfWork unitOfWork,
+            ApplicationDbContext dbContext,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            if (!await dbContext.Categories.AnyAsync(
+                    category => category.Id == request.CategoryId,
+                    cancellationToken))
+            {
+                return Results.BadRequest(new { message = "Danh mục không tồn tại." });
+            }
+
             var recipe = new Recipe
             {
                 Id = Guid.NewGuid(),
@@ -209,9 +219,17 @@ public static class RecipeEndpoints
             Guid id,
             UpdateRecipeRequest request,
             IUnitOfWork unitOfWork,
+            ApplicationDbContext dbContext,
             ClaimsPrincipal user,
             CancellationToken cancellationToken) =>
         {
+            if (!await dbContext.Categories.AnyAsync(
+                    category => category.Id == request.CategoryId,
+                    cancellationToken))
+            {
+                return Results.BadRequest(new { message = "Danh mục không tồn tại." });
+            }
+
             var recipe = await GetOwnedRecipeOrThrowAsync(
                 unitOfWork,
                 id,

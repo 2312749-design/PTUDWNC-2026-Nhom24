@@ -4,7 +4,7 @@ using CulinaryBlog.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Infrastructure.Persistence.Repositories;
-
+    
 public sealed class RecipeRepository(ApplicationDbContext dbContext) : IRecipeRepository
 {
     public async Task<IReadOnlyList<Recipe>> GetAllAsync(

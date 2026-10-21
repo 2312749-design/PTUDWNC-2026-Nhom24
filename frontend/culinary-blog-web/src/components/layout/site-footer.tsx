@@ -23,6 +23,9 @@ export default function SiteFooter() {
           <Link href="/search" className="transition hover:text-orange-300">
             Khám phá công thức
           </Link>
+          <Link href="/categories" className="transition hover:text-orange-300">
+            Tất cả danh mục
+          </Link>
           <Link href="/login" className="transition hover:text-orange-300">
             Tham gia cộng đồng
           </Link>

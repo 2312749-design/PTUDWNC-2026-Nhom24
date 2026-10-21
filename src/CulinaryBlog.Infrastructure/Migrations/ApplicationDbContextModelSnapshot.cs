@@ -29,6 +29,15 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Bio")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -57,6 +66,95 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("BlogUsers");
+                });
+
+            modelBuilder.Entity("CulinaryBlog.Domain.Entities.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Categories");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000001"),
+                            Description = "Những món ăn đậm đà hương vị Việt Nam.",
+                            Name = "Món Việt",
+                            Slug = "mon-viet"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000002"),
+                            Description = "Món ăn khởi đầu ngày mới.",
+                            Name = "Bữa sáng",
+                            Slug = "bua-sang"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000003"),
+                            Description = "Các món ăn thanh nhẹ từ thực vật.",
+                            Name = "Món chay",
+                            Slug = "mon-chay"
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-0000-0000-000000000004"),
+                            Description = "Món ngọt cho phần cuối bữa ăn.",
+                            Name = "Tráng miệng",
+                            Slug = "trang-mieng"
+                        });
+                });
+
+            modelBuilder.Entity("CulinaryBlog.Domain.Entities.PasswordResetToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ExpiresAt");
+
+                    b.ToTable("PasswordResetTokens");
                 });
 
             modelBuilder.Entity("CulinaryBlog.Domain.Entities.Recipe", b =>
@@ -113,6 +211,8 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
 
                     b.HasIndex("SearchVector");
 
@@ -192,6 +292,17 @@ namespace CulinaryBlog.Infrastructure.Migrations
                     b.ToTable("RecipeSteps");
                 });
 
+            modelBuilder.Entity("CulinaryBlog.Domain.Entities.Recipe", b =>
+                {
+                    b.HasOne("CulinaryBlog.Domain.Entities.Category", "Category")
+                        .WithMany("Recipes")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("CulinaryBlog.Domain.Entities.RecipeIngredient", b =>
                 {
                     b.HasOne("CulinaryBlog.Domain.Entities.Recipe", "Recipe")
@@ -212,6 +323,11 @@ namespace CulinaryBlog.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Recipe");
+                });
+
+            modelBuilder.Entity("CulinaryBlog.Domain.Entities.Category", b =>
+                {
+                    b.Navigation("Recipes");
                 });
 
             modelBuilder.Entity("CulinaryBlog.Domain.Entities.Recipe", b =>

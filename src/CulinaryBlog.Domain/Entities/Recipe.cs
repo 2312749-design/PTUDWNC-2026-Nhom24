@@ -20,6 +20,8 @@ public class Recipe
 
     public Guid CategoryId { get; set; }
 
+    public Category? Category { get; set; }
+
     public Guid AuthorId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

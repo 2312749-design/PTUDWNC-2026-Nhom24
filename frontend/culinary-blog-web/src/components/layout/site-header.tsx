@@ -1,21 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LogIn, LogOut, Menu, UtensilsCrossed } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
 
 const navigation = [
   { href: "/", label: "Trang chủ" },
   { href: "/search", label: "Công thức" },
-  { href: "/#categories", label: "Danh mục" },
+  { href: "/categories", label: "Danh mục" },
   { href: "/#about", label: "Giới thiệu" },
 ];
 
 export default function SiteHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const signOut = useAuthStore((state) => state.signOut);
+
+  function handleSignOut() {
+    signOut();
+    router.replace("/");
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-stone-200/80 bg-[#fffdf9]/95 backdrop-blur">
@@ -36,13 +42,15 @@ export default function SiteHeader() {
               href={item.href}
               aria-current={
                 (item.href === "/" && pathname === "/") ||
-                (item.href === "/search" && pathname.startsWith("/search"))
+                (item.href === "/search" && pathname.startsWith("/search")) ||
+                (item.href === "/categories" && pathname.startsWith("/categories"))
                   ? "page"
                   : undefined
               }
               className={`text-sm font-semibold transition ${
                 (item.href === "/" && pathname === "/") ||
-                (item.href === "/search" && pathname.startsWith("/search"))
+                (item.href === "/search" && pathname.startsWith("/search")) ||
+                (item.href === "/categories" && pathname.startsWith("/categories"))
                   ? "text-orange-700"
                   : "text-stone-600 hover:text-orange-700"
               }`}
@@ -55,12 +63,16 @@ export default function SiteHeader() {
         <div className="flex items-center gap-3">
           {user ? (
             <>
-              <span className="hidden text-sm font-semibold text-stone-700 sm:inline">
+              <Link
+                href="/profile"
+                className="hidden text-sm font-semibold text-stone-700 transition hover:text-orange-700 sm:inline"
+              >
                 Xin chào, {user.displayName}
-              </span>
+              </Link>
               <button
                 type="button"
-                onClick={signOut}
+                onClick={handleSignOut}
+                aria-label="Đăng xuất"
                 className="inline-flex items-center gap-2 rounded-full border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:border-orange-300 hover:text-orange-700"
               >
                 <LogOut className="size-4" aria-hidden="true" />
@@ -84,6 +96,14 @@ export default function SiteHeader() {
               <Menu className="size-5" aria-hidden="true" />
             </summary>
             <nav className="absolute right-0 top-12 flex w-48 flex-col gap-1 rounded-2xl border border-stone-200 bg-white p-2 shadow-xl">
+              {user && (
+                <Link
+                  href="/profile"
+                  className="rounded-xl px-3 py-2.5 text-sm font-medium text-stone-700 hover:bg-orange-50 hover:text-orange-700"
+                >
+                  Hồ sơ của tôi
+                </Link>
+              )}
               {navigation.map((item) => (
                 <Link
                   key={item.href}

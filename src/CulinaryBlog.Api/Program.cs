@@ -27,6 +27,7 @@ builder.Services.AddScoped<IRecipeIngredientRepository, RecipeIngredientReposito
 builder.Services.AddScoped<IRecipeStepRepository, RecipeStepRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<IPasswordHasher<BlogUser>, PasswordHasher<BlogUser>>();
+builder.Services.AddScoped<CulinaryBlog.Api.Services.SmtpEmailSender>();
 
 var issuer = builder.Configuration["Jwt:Issuer"] ?? "CulinaryBlog.Api";
 var audience = builder.Configuration["Jwt:Audience"] ?? "CulinaryBlog.Web";
@@ -163,6 +164,7 @@ var apiVersionSet = app.NewApiVersionSet()
 var apiV1 = app.MapGroup("/api/v{version:apiVersion}")
     .WithApiVersionSet(apiVersionSet);
 apiV1.MapRecipeEndpoints();
+apiV1.MapCategoryEndpoints();
 apiV1.MapAuthEndpoints(
     issuer,
     audience,

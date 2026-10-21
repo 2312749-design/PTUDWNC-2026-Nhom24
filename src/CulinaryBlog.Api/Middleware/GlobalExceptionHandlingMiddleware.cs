@@ -26,6 +26,10 @@ public sealed class GlobalExceptionHandlingMiddleware(
                     StatusCodes.Status403Forbidden,
                     "Forbidden",
                     exception.Message),
+                UnauthorizedException => (
+                    StatusCodes.Status401Unauthorized,
+                    "Unauthorized",
+                    exception.Message),
                 NotFoundException => (
                     StatusCodes.Status404NotFound,
                     "Resource not found",

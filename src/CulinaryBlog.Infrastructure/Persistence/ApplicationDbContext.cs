@@ -15,6 +15,10 @@ public class ApplicationDbContext : DbContext
 
     public DbSet<BlogUser> BlogUsers => Set<BlogUser>();
 
+    public DbSet<Category> Categories => Set<Category>();
+
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
+
     public DbSet<RecipeIngredient> RecipeIngredients => Set<RecipeIngredient>();
 
     public DbSet<RecipeStep> RecipeSteps => Set<RecipeStep>();
@@ -38,12 +42,87 @@ public class ApplicationDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(100);
 
+            entity.Property(x => x.Bio)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.Property(x => x.AvatarUrl)
+                .HasMaxLength(500);
+
             entity.Property(x => x.PasswordHash)
                 .IsRequired();
 
             entity.Property(x => x.Role)
                 .IsRequired()
                 .HasMaxLength(50);
+        });
+
+        modelBuilder.Entity<Category>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.Name)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(x => x.Slug)
+                .IsRequired()
+                .HasMaxLength(120);
+
+            entity.Property(x => x.Description)
+                .IsRequired()
+                .HasMaxLength(500);
+
+            entity.HasIndex(x => x.Slug)
+                .IsUnique();
+
+            entity.HasMany(x => x.Recipes)
+                .WithOne(x => x.Category)
+                .HasForeignKey(x => x.CategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        modelBuilder.Entity<Category>().HasData(
+            new Category
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000001"),
+                Name = "Món Việt",
+                Slug = "mon-viet",
+                Description = "Những món ăn đậm đà hương vị Việt Nam."
+            },
+            new Category
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+                Name = "Bữa sáng",
+                Slug = "bua-sang",
+                Description = "Món ăn khởi đầu ngày mới."
+            },
+            new Category
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000003"),
+                Name = "Món chay",
+                Slug = "mon-chay",
+                Description = "Các món ăn thanh nhẹ từ thực vật."
+            },
+            new Category
+            {
+                Id = Guid.Parse("00000000-0000-0000-0000-000000000004"),
+                Name = "Tráng miệng",
+                Slug = "trang-mieng",
+                Description = "Món ngọt cho phần cuối bữa ăn."
+            });
+
+        modelBuilder.Entity<PasswordResetToken>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+
+            entity.Property(x => x.TokenHash)
+                .IsRequired()
+                .HasMaxLength(64);
+
+            entity.HasIndex(x => x.TokenHash)
+                .IsUnique();
+
+            entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
         });
 
         modelBuilder.Entity<Recipe>(entity =>

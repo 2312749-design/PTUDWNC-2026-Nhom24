@@ -37,6 +37,22 @@ Prerequisites: .NET 10 SDK, Node.js/npm, and PostgreSQL.
    dotnet run --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
    ```
 
+   Password recovery uses SMTP. Configure these values in User Secrets or
+   environment variables before requesting a reset link:
+
+   ```powershell
+   dotnet user-secrets set "Frontend:BaseUrl" "http://localhost:3000" --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
+   dotnet user-secrets set "Email:Smtp:Host" "<smtp-host>" --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
+   dotnet user-secrets set "Email:Smtp:Port" "587" --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
+   dotnet user-secrets set "Email:Smtp:FromAddress" "<sender-email>" --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
+   dotnet user-secrets set "Email:Smtp:Username" "<smtp-username>" --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
+   dotnet user-secrets set "Email:Smtp:Password" "<smtp-password>" --project src\CulinaryBlog.Api\CulinaryBlog.Api.csproj
+   ```
+
+   `Email:Smtp:EnableSsl` defaults to `true`. Omit SMTP username/password for
+   relays that do not require authentication. `Frontend:BaseUrl` must be the
+   public frontend origin so recovery links lead to the correct application.
+
 4. Start the frontend in a second terminal:
 
    ```powershell
@@ -58,11 +74,16 @@ Next.js server-side fetches and its `/api/*` rewrite.
 - `POST /api/v1/auth/register` creates an author account; `POST
   /api/v1/auth/login` returns a short-lived JWT bearer token. Passwords are
   hashed with ASP.NET Core's versioned password hasher.
+- Authenticated account routes provide profile retrieval/update and password
+  changes. `POST /api/v1/auth/forgot-password` sends a one-time, 30-minute
+  password reset link by SMTP; reset tokens are stored as hashes.
 - Recipe reads remain public. All recipe, ingredient, and step writes require an
   `Author` bearer token and are restricted to the recipe's author. The author ID
   is taken from the token, not the request body.
+- `GET /api/v1/categories` lists categories and published recipe counts;
+  `GET /api/v1/categories/{id}/recipes` returns a paginated category listing.
 - CORS is origin-allowlisted. A per-IP global limiter allows 120 requests/minute;
-  registration and login additionally allow 5 requests/minute per IP. Rejected
+  authentication endpoints additionally allow 5 requests/minute per IP. Rejected
   requests return HTTP 429.
 - In the Development environment, Swagger UI is available at `/swagger` and the
   versioned OpenAPI document at `/swagger/v1/swagger.json`.
