@@ -73,9 +73,18 @@
 | Bảo mật | Không commit `.env`, JWT secret, password, Google Client Secret, MinIO Secret Key hoặc token. |
 | Báo cáo | Mỗi thành viên lưu link commit/PR, ảnh giao diện, endpoint và kết quả test của phần mình. |
 
-# ⚠️ HẠNG MỤC CẦN THEO DÕI THÊM
+# ✅ PHẠM VI ĐỒ ÁN ĐÃ ĐƯỢC BAO PHỦ
 
-Các chức năng như Recipe Core CRUD, Category CRUD, Logout/Profile, Redis Cache, Health Check, Serilog, OpenTelemetry, Sitemap, Thumbnail, Swagger, Rate Limiting, Docker Compose, CI/CD và Automated Tests cần được ghi rõ trong backlog tiếp theo hoặc đính kèm link commit nếu nhóm đã hoàn thành.
+Các hạng mục còn lại của Culinary Blog đã được bổ sung và phân công tại **Sprint 3 & 4** bên dưới, gồm:
+
+- CRUD công thức, danh mục, nguyên liệu và bước thực hiện.
+- Phân quyền, hồ sơ cá nhân, đăng xuất và thu hồi refresh token.
+- Tìm kiếm Full-Text Search, phân trang và Redis cache.
+- Upload ảnh MinIO, thumbnail WebP, sitemap và SEO.
+- Hangfire, gửi email chào mừng, logging, health check.
+- Docker Compose, CI/CD và automated tests.
+
+Trong quá trình thực hiện, mỗi thành viên cập nhật tiến độ, commit/PR và link minh chứng tương ứng với Task ID được giao.
 
 ---
 
@@ -159,3 +168,26 @@ Các chức năng như Recipe Core CRUD, Category CRUD, Logout/Profile, Redis Ca
 - [ ] Có test backend và build frontend thành công.
 - [ ] Docker Compose chạy được PostgreSQL, Redis, MinIO, Backend và Frontend.
 - [ ] README có hướng dẫn chạy dự án từ repository sạch.
+
+
+# Thành viên nhóm
+
+| Thành viên | Vai trò chính | GitHub |
+|---|---|---|
+| Nguyễn Đức Thành | Backend Lead, Authentication & Security | Link GitHub |
+| Minh Long | Recipe, Search & Cache | Link GitHub |
+| Oven | Category, Validation & Frontend Integration | Link GitHub |
+| Kina | Media, SEO, DevOps & Observability | Link GitHub |
+
+# Công nghệ sử dụng
+
+- Backend: ASP.NET Core, Entity Framework Core, PostgreSQL.
+- Frontend: Next.js, React, TypeScript, Zustand, Radix UI.
+- Authentication: ASP.NET Identity, JWT, Refresh Token, Google OAuth.
+- Hạ tầng: Docker Compose, Nginx, Redis, MinIO, Hangfire.
+- Chất lượng: Swagger/OpenAPI, Serilog, OpenTelemetry, CI/CD, automated tests.
+
+# Cách chạy dự án
+
+```bash
+docker compose up -d --build
