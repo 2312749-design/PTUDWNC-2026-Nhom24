@@ -76,3 +76,86 @@
 # ⚠️ HẠNG MỤC CẦN THEO DÕI THÊM
 
 Các chức năng như Recipe Core CRUD, Category CRUD, Logout/Profile, Redis Cache, Health Check, Serilog, OpenTelemetry, Sitemap, Thumbnail, Swagger, Rate Limiting, Docker Compose, CI/CD và Automated Tests cần được ghi rõ trong backlog tiếp theo hoặc đính kèm link commit nếu nhóm đã hoàn thành.
+
+---
+
+# 🚀 SPRINT 3 & 4 — HOÀN THIỆN TOÀN BỘ ĐỒ ÁN
+
+> Mục tiêu: Hoàn thiện các chức năng còn thiếu, tích hợp frontend–backend, kiểm thử và chuẩn bị Docker demo.  
+> Các task bên dưới **bổ sung cho phân công cũ**, không thay đổi phần công việc đã giao ở Sprint 1 & 2.
+
+## 👤 1. Nguyễn Đức Thành — Auth, Security & API Platform
+
+| Mã Task | Nhiệm vụ chi tiết | Tiến độ |
+|---|---|---|
+| **TH-07** | **Logout & Profile Management**<br>- Tạo endpoint logout, thu hồi Refresh Token của phiên hiện tại.<br>- Tạo API xem hồ sơ cá nhân.<br>- Tạo API cập nhật `displayName`, `avatarUrl`, `bio`.<br>- Hoàn thiện UI Profile và xử lý xóa session sau logout. | ⬜ 0% |
+| **TH-08** | **API Versioning, Swagger & Global Error Handling**<br>- Chuẩn hóa endpoint dưới `/api/v1`.<br>- Cấu hình Swagger hoặc Scalar với JWT Bearer Authorization.<br>- Tạo Global Exception Middleware trả về RFC 7807 Problem Details.<br>- Chuẩn hóa mã lỗi: `AUTH_*`, `RECIPE_*`, `CATEGORY_*`, `VALIDATION_*`.<br>- Cấu hình Rate Limiting cho Login, Register và Upload. | ⬜ 0% |
+| **TH-09** | **Seed Data & Security Tests**<br>- Seed role `Admin`, `Author` và tài khoản demo.<br>- Phối hợp seed tối thiểu 20 Category, 100 Recipe, mỗi Recipe có tối thiểu 10 Ingredient và 5 Step.<br>- Viết test Register, Login, Refresh Token, Logout, Profile, Authorization và Rate Limiting. | ⬜ 0% |
+
+---
+
+## 👤 2. Minh Long — Recipe Core, Cache & Backend Tests
+
+| Mã Task | Nhiệm vụ chi tiết | Tiến độ |
+|---|---|---|
+| **ML-06** | **Recipe Core CRUD & Lifecycle**<br>- Xây dựng API danh sách Recipe và Recipe Detail.<br>- Xây dựng API Create, Update và Soft Delete Recipe.<br>- Xây dựng Publish, Unpublish, Archive và Restore Recipe.<br>- Recipe mới ở trạng thái `Draft`.<br>- Chỉ Recipe `Published` được hiển thị công khai, xuất hiện trong Search và Sitemap.<br>- Hỗ trợ optimistic concurrency bằng RowVersion hoặc Version. | ⬜ 0% |
+| **ML-07** | **Redis Cache & Cache Invalidation**<br>- Cache danh sách Recipe và Recipe Detail bằng Redis.<br>- Thiết lập TTL phù hợp cho dữ liệu công khai.<br>- Xóa cache khi Recipe, Category, Ingredient, Step hoặc Image thay đổi.<br>- Có fallback khi Redis không khả dụng. | ⬜ 0% |
+| **ML-08** | **Recipe/Search Automated Tests**<br>- Test Recipe CRUD, Publish, Archive, Restore và Soft Delete.<br>- Test Ingredient/Step CRUD và tự đánh lại thứ tự Step.<br>- Test Search tiếng Việt có dấu/không dấu, Filter, Sort và Pagination.<br>- Test Redis cache và cache invalidation. | ⬜ 0% |
+
+---
+
+## 👤 3. Oven — Category, Author Dashboard & Frontend Integration
+
+| Mã Task | Nhiệm vụ chi tiết | Tiến độ |
+|---|---|---|
+| **OV-06** | **Category CRUD & Category UI**<br>- Xây dựng API xem danh sách và chi tiết Category.<br>- Xây dựng API Admin Create, Update, Soft Delete Category.<br>- Không cho xóa Category khi còn Recipe chưa bị xóa mềm thuộc Category.<br>- Xây dựng trang Category và giao diện quản lý Category cho Admin. | ⬜ 0% |
+| **OV-07** | **Author Recipe Dashboard**<br>- Xây dựng trang quản lý Recipe của Author.<br>- Hiển thị trạng thái Draft, Published và Archived.<br>- Thêm thao tác Edit, Publish, Unpublish, Archive, Restore và Delete.<br>- Tích hợp phân quyền và thông báo Toast cho từng thao tác. | ⬜ 0% |
+| **OV-08** | **Frontend Common Components & Integration Tests**<br>- Chuẩn hóa Header, Footer, App Layout, Loading State, Error State, Empty State và Pagination.<br>- Hoàn thiện Auth Store và Protected Route.<br>- Kiểm tra luồng frontend: Register → Login → Create Recipe → Publish → Search → Logout.<br>- Kiểm tra responsive cho trang Login, Recipe Form, Recipe Detail và Dashboard. | ⬜ 0% |
+
+---
+
+## 👤 4. Kina Niê — Image Processing, SEO, Observability & Deployment
+
+| Mã Task | Nhiệm vụ chi tiết | Tiến độ |
+|---|---|---|
+| **KN-06** | **Image Processing & Thumbnail Job**<br>- Tạo Background Job resize ảnh sau khi upload.<br>- Tạo ảnh thumbnail WebP cho Recipe Image.<br>- Lưu metadata ảnh: original URL, thumbnail URL, size và content type.<br>- Cập nhật UI sử dụng thumbnail ở Recipe Card và ảnh gốc ở Recipe Detail. | ⬜ 0% |
+| **KN-07** | **Sitemap & SEO Completion**<br>- Tạo sitemap động chỉ chứa Recipe `Published` chưa bị xóa mềm.<br>- Hoàn thiện Open Graph metadata cho Home, Category và Recipe Detail.<br>- Hoàn thiện Schema.org JSON-LD cho Recipe.<br>- Kiểm tra ảnh MinIO hiển thị đúng qua `next/image`. | ⬜ 0% |
+| **KN-08** | **Health Check, Logging, Docker & CI/CD**<br>- Cấu hình Health Check cho API, PostgreSQL, Redis và MinIO.<br>- Cấu hình Serilog structured logging và Correlation ID.<br>- Cấu hình OpenTelemetry tracing và metrics.<br>- Hoàn thiện `Dockerfile`, `docker-compose.yml` và Nginx nếu sử dụng.<br>- Tạo GitHub Actions: build backend, test backend, build frontend và validate Docker Compose. | ⬜ 0% |
+
+---
+
+# 🧩 QUY TẮC DỮ LIỆU VÀ TÍCH HỢP
+
+| Nội dung | Quy tắc áp dụng |
+|---|---|
+| Recipe Status | Recipe mới là `Draft`; chỉ `Published` được xem công khai, Search và Sitemap. |
+| Soft Delete | Recipe và Category dùng `IsDeleted`; dữ liệu bị xóa mềm không xuất hiện ở API công khai. |
+| Category Delete | Không xóa Category khi còn Recipe chưa bị xóa mềm đang sử dụng. |
+| Recipe Delete | Soft delete Recipe không được xóa Ingredient, Step, Nutrition hoặc ảnh trên MinIO. |
+| Image Delete | Chỉ xóa vật lý file MinIO khi xóa riêng ảnh không còn được tham chiếu hoặc khi dọn orphan file. |
+| Published Recipe | Muốn Publish phải có ít nhất một Ingredient và một Step. |
+| API | Endpoint dùng `/api/v1`; lỗi trả về RFC 7807 Problem Details. |
+| Pagination | Kết quả danh sách trả về `items`, `totalCount`, `page`, `pageSize`, `totalPages`. |
+| Cache | Cache phải bị invalidation khi Recipe, Category, Ingredient, Step hoặc Image thay đổi. |
+| Security | Không commit `.env`, JWT Secret, Google Client Secret, database password hay MinIO Secret Key. |
+
+---
+
+# ✅ CHECKLIST NGHIỆM THU CUỐI KỲ
+
+- [ ] Có Clean Architecture và build backend thành công.
+- [ ] Database có migration và dữ liệu mẫu tối thiểu 20 Category, 100 Recipe.
+- [ ] Mỗi Recipe mẫu có ít nhất 10 Ingredient và 5 Step.
+- [ ] Register, Login, Google Login, Refresh Token, Logout và Profile hoạt động.
+- [ ] Author chỉ quản lý Recipe của mình; Admin quản lý toàn hệ thống.
+- [ ] Category CRUD hoạt động đúng quyền Admin.
+- [ ] Recipe CRUD, Ingredient, Step, Image và lifecycle hoạt động.
+- [ ] Search, Filter, Sort và Pagination hoạt động.
+- [ ] Redis cache và cache invalidation hoạt động.
+- [ ] Hangfire Welcome Email, Thumbnail và Sitemap hoạt động.
+- [ ] Health Check, Serilog và OpenTelemetry hoạt động.
+- [ ] Frontend có Layout, Loading, Error, Empty State, Pagination và Toast.
+- [ ] Swagger/Scalar hiển thị API có JWT Authorization.
+- [ ] Có test backend và build frontend thành công.
+- [ ] Docker Compose chạy được PostgreSQL, Redis, MinIO, Backend và Frontend.
+- [ ] README có hướng dẫn chạy dự án từ repository sạch.
