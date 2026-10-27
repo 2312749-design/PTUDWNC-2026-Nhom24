@@ -1,20 +1,20 @@
-﻿using CulinaryBlog.Application.CQRS.Categories.Commands;
+using CulinaryBlog.Application.CQRS.Categories.Commands;
 using CulinaryBlog.Application.DTOs;
-using CulinaryBlog.Application.Interfaces; // Dùng Interface chuẩn Clean Architecture
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Domain.Exceptions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Application.CQRS.Categories.Handlers;
 
-public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryCommand, CategoryDto>
+public sealed class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryCommand, CategoryDto>
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ICacheService _cache;
 
-    public CreateCategoryCommandHandler(IApplicationDbContext context, ICacheService cache)
+    public CreateCategoryCommandHandler(IUnitOfWork unitOfWork, ICacheService cache)
     {
-        _context = context;
+        _unitOfWork = unitOfWork;
         _cache = cache;
     }
 
@@ -22,17 +22,17 @@ public class CreateCategoryCommandHandler : IRequestHandler<CreateCategoryComman
     {
         var name = request.Name?.Trim() ?? string.Empty;
         var slug = Category.CreateSlug(name);
-        if (await _context.Categories.AnyAsync(category =>
+        var categories = _unitOfWork.Repository<Category>();
+        if (await categories.ExistsAsync(category =>
             category.Name.ToUpper() == name.ToUpper() || category.Slug == slug, cancellationToken))
         {
-            throw new CulinaryBlog.Domain.Exceptions.ConflictException("Tên hoặc slug danh mục đã tồn tại.");
+            throw new ConflictException("Tên hoặc slug danh mục đã tồn tại.");
         }
 
         var category = Category.Create(name, request.Description, request.ImageUrl);
-
-        _context.Categories.Add(category);
-        await _context.SaveChangesAsync(cancellationToken);
-        await _cache.RemoveAsync(CacheKeys.Categories, cancellationToken);
+        await categories.AddAsync(category, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
+        await CategoryCacheInvalidator.InvalidateAsync(_cache, category.Id, cancellationToken);
 
         return new CategoryDto
         {

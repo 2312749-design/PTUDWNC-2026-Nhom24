@@ -2,6 +2,9 @@
 **/obj/
 **/.vs/
 **/.git/
+**/.env
+**/.env.*
+!**/.env.example
 **/node_modules/
 **/.next/
 **/.DS_Store

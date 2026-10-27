@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Encodings.Web;
 using CulinaryBlog.API.Endpoints;
+using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
@@ -19,6 +20,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
+using System.Security.Cryptography;
 using Xunit;
 
 namespace CulinaryBlog.API.Tests;
@@ -44,10 +46,13 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("Test", _ => { });
         builder.Services.AddAuthorization();
         builder.Services.AddApplicationHandlers();
+        builder.Services.AddDataProtection();
+        builder.Services.AddScoped<AccountSecurityService>();
         builder.Services.AddDbContext<SqliteApplicationDbContext>(options => options.UseSqlite(_connection));
         builder.Services.AddScoped<ApplicationDbContext>(provider => provider.GetRequiredService<SqliteApplicationDbContext>());
         builder.Services.AddSingleton<ITokenService, TestTokenService>();
         builder.Services.AddSingleton(Mock.Of<IBackgroundJobClient>());
+        builder.Services.AddSingleton(Mock.Of<IFileStorageService>());
 
         _app = builder.Build();
         _app.UseRouting();
@@ -56,6 +61,7 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         _app.UseAuthentication();
         _app.UseAuthorization();
         _app.MapAuth();
+        _app.MapAccount();
         using (var scope = _app.Services.CreateScope())
             await scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.EnsureCreatedAsync();
         await _app.StartAsync();
@@ -70,7 +76,7 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Register_UsesVersionedContractAndReturnsTokenBundle()
+    public async Task Register_UsesVersionedContractAndStoresRefreshTokenInHttpOnlyCookie()
     {
         var response = await RegisterAsync("register@example.com", "registerchef");
 
@@ -78,7 +84,8 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         using var document = await ReadJsonAsync(response);
         var data = document.RootElement.GetProperty("data");
         Assert.True(data.TryGetProperty("accessToken", out _));
-        Assert.True(data.TryGetProperty("refreshToken", out _));
+        Assert.False(data.TryGetProperty("refreshToken", out _));
+        Assert.Contains(response.Headers.GetValues("Set-Cookie"), value => value.StartsWith($"{AuthHandlers.RefreshTokenCookieName}=", StringComparison.Ordinal) && value.Contains("httponly", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Người nấu thử", data.GetProperty("user").GetProperty("displayName").GetString());
     }
 
@@ -117,14 +124,12 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
     public async Task Refresh_RotatesTokenAndReplayRevokesItsFamily()
     {
         var registration = await RegisterAsync("refresh@example.com", "refreshchef");
-        using var registrationBody = await ReadJsonAsync(registration);
-        var initialRefreshToken = registrationBody.RootElement.GetProperty("data").GetProperty("refreshToken").GetString()!;
+        var initialRefreshToken = ReadRefreshCookie(registration);
 
-        var refresh = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = initialRefreshToken });
-        using var refreshBody = await ReadJsonAsync(refresh);
-        var rotatedRefreshToken = refreshBody.RootElement.GetProperty("data").GetProperty("refreshToken").GetString()!;
-        var replay = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = initialRefreshToken });
-        var familyAfterReplay = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = rotatedRefreshToken });
+        var refresh = await PostWithRefreshCookieAsync("/api/v1/auth/refresh", initialRefreshToken);
+        var rotatedRefreshToken = ReadRefreshCookie(refresh);
+        var replay = await PostWithRefreshCookieAsync("/api/v1/auth/refresh", initialRefreshToken);
+        var familyAfterReplay = await PostWithRefreshCookieAsync("/api/v1/auth/refresh", rotatedRefreshToken);
 
         Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
         Assert.NotEqual(initialRefreshToken, rotatedRefreshToken);
@@ -136,14 +141,72 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
     public async Task Logout_RevokesThePresentedSession()
     {
         var registration = await RegisterAsync("logout@example.com", "logoutchef");
-        using var registrationBody = await ReadJsonAsync(registration);
-        var refreshToken = registrationBody.RootElement.GetProperty("data").GetProperty("refreshToken").GetString()!;
+        var refreshToken = ReadRefreshCookie(registration);
 
-        var logout = await _client.PostAsJsonAsync("/api/v1/auth/logout", new { refreshToken });
-        var refreshAfterLogout = await _client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken });
+        var logout = await PostWithRefreshCookieAsync("/api/v1/auth/logout", refreshToken);
+        var refreshAfterLogout = await PostWithRefreshCookieAsync("/api/v1/auth/refresh", refreshToken);
 
         Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, refreshAfterLogout.StatusCode);
+    }
+
+    [Fact]
+    public async Task TwoFactorSetup_RequiresAuthenticatorCodeForLaterLogin_AndReturnsTenRecoveryCodes()
+    {
+        const string email = "two-factor@example.com";
+        const string password = "Password1!";
+        const string userId = "two-factor-user";
+        using (var scope = _app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var user = ApplicationUser.Create("Người nấu 2FA", email, "twofactor");
+            user.Id = userId;
+            user.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<ApplicationUser>().HashPassword(user, password);
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        using var setupRequest = JsonRequest(HttpMethod.Post, "/api/v1/account/2fa/setup", new { currentPassword = password }, userId);
+        var setupResponse = await _client.SendAsync(setupRequest);
+        Assert.Equal(HttpStatusCode.OK, setupResponse.StatusCode);
+        using var setupJson = await ReadJsonAsync(setupResponse);
+        var manualKey = setupJson.RootElement.GetProperty("data").GetProperty("manualKey").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(manualKey));
+
+        using var enableRequest = JsonRequest(HttpMethod.Post, "/api/v1/account/2fa/enable", new { code = CreateCurrentTotp(manualKey!) }, userId);
+        var enableResponse = await _client.SendAsync(enableRequest);
+        Assert.Equal(HttpStatusCode.OK, enableResponse.StatusCode);
+        using var enableJson = await ReadJsonAsync(enableResponse);
+        var enableData = enableJson.RootElement.GetProperty("data");
+        Assert.Equal(10, enableData.GetProperty("recoveryCodes").GetArrayLength());
+        var recoveryCode = enableData.GetProperty("recoveryCodes")[0].GetString();
+
+        var missingCode = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
+        Assert.Equal(HttpStatusCode.Unauthorized, missingCode.StatusCode);
+        using var missingCodeJson = await ReadJsonAsync(missingCode);
+        Assert.Equal("AUTH_2FA_REQUIRED", missingCodeJson.RootElement.GetProperty("code").GetString());
+
+        var verifiedLogin = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, twoFactorCode = CreateCurrentTotp(manualKey!) });
+        Assert.Equal(HttpStatusCode.OK, verifiedLogin.StatusCode);
+
+        var recoveryLogin = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, recoveryCode });
+        Assert.Equal(HttpStatusCode.OK, recoveryLogin.StatusCode);
+        var reusedRecoveryCode = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, recoveryCode });
+        Assert.Equal(HttpStatusCode.Unauthorized, reusedRecoveryCode.StatusCode);
+
+        using var overviewRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/account/security");
+        overviewRequest.Headers.Add("X-Test-User", userId);
+        var overviewResponse = await _client.SendAsync(overviewRequest);
+        Assert.Equal(HttpStatusCode.OK, overviewResponse.StatusCode);
+        using var overviewJson = await ReadJsonAsync(overviewResponse);
+        var overviewData = overviewJson.RootElement.GetProperty("data");
+        Assert.True(overviewData.GetProperty("sessions").GetArrayLength() >= 2);
+        Assert.Contains(overviewData.GetProperty("activities").EnumerateArray(), item => item.GetProperty("activityType").GetString() == "two_factor.enabled");
+
+        var sessionId = overviewData.GetProperty("sessions")[0].GetProperty("id").GetGuid();
+        using var revokeRequest = JsonRequest(HttpMethod.Delete, $"/api/v1/account/sessions/{sessionId}", new { }, userId);
+        var revokeResponse = await _client.SendAsync(revokeRequest);
+        Assert.Equal(HttpStatusCode.NoContent, revokeResponse.StatusCode);
     }
 
     private Task<HttpResponseMessage> RegisterAsync(string email, string username) =>
@@ -152,6 +215,52 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
             displayName = "Người nấu thử", username, email,
             password = "Password1!", confirmPassword = "Password1!"
         });
+
+    private async Task<HttpResponseMessage> PostWithRefreshCookieAsync(string path, string refreshToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(new { })
+        };
+        request.Headers.TryAddWithoutValidation("Cookie", $"{AuthHandlers.RefreshTokenCookieName}={refreshToken}");
+        return await _client.SendAsync(request);
+    }
+
+    private static HttpRequestMessage JsonRequest(HttpMethod method, string path, object payload, string userId)
+    {
+        var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(payload) };
+        request.Headers.Add("X-Test-User", userId);
+        return request;
+    }
+
+    private static string CreateCurrentTotp(string base32Secret)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var buffer = 0;
+        var bits = 0;
+        var secret = new List<byte>();
+        foreach (var character in base32Secret)
+        {
+            buffer = (buffer << 5) | alphabet.IndexOf(character);
+            bits += 5;
+            if (bits >= 8) { secret.Add((byte)(buffer >> (bits - 8))); bits -= 8; }
+        }
+        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        var counterBytes = BitConverter.GetBytes(counter);
+        if (BitConverter.IsLittleEndian) Array.Reverse(counterBytes);
+        using var hmac = new HMACSHA1(secret.ToArray());
+        var hash = hmac.ComputeHash(counterBytes);
+        var offset = hash[^1] & 0x0f;
+        var binary = ((hash[offset] & 0x7f) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
+        return (binary % 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static string ReadRefreshCookie(HttpResponseMessage response)
+    {
+        var prefix = $"{AuthHandlers.RefreshTokenCookieName}=";
+        var cookie = response.Headers.GetValues("Set-Cookie").Single(value => value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+        return cookie[prefix.Length..].Split(';', 2)[0];
+    }
 
     private static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
@@ -170,7 +279,7 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 

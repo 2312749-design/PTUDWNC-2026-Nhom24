@@ -1,5 +1,6 @@
-import { redirect } from 'next/navigation'
+import PageClient from './PageClient'
+import HomePageContent from '../src/HomePage'
 
 export default function HomePage() {
-  redirect('/community')
+  return <PageClient><HomePageContent /></PageClient>
 }

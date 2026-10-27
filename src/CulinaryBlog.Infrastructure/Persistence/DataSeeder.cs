@@ -7,6 +7,12 @@ namespace CulinaryBlog.Infrastructure.Persistence;
 
 public static class DataSeeder
 {
+    private static readonly string[] SupplementalIngredientNames =
+    [
+        "Muối", "Đường", "Tiêu xay", "Dầu ăn", "Hành tím",
+        "Tỏi băm", "Rau thơm", "Nước lọc", "Nước cốt chanh", "Gia vị nêm"
+    ];
+
     public static async Task SeedDataAsync(ApplicationDbContext context)
     {
         var passwordHasher = new PasswordHasher<ApplicationUser>();
@@ -97,6 +103,11 @@ public static class DataSeeder
 
         if (hasCategories || hasRecipes)
         {
+            // Existing databases used to return here, leaving legacy recipes with
+            // only JSON/string arrays. Always normalize before exiting so the
+            // structured Ingredient/Step APIs can render every older recipe.
+            await EnsureStructuredRecipeContentAsync(context);
+            await context.SaveChangesAsync();
             return;
         }
 
@@ -205,6 +216,7 @@ public static class DataSeeder
             }
         };
 
+        var recipeNumber = 0;
         var recipeFaker = new Faker<Recipe>("vi")
             .CustomInstantiator(f =>
             {
@@ -212,7 +224,7 @@ public static class DataSeeder
                 var ingredientList = template.Ingredients.ToList();
                 var instructionList = template.Instructions.ToList();
 
-                return Recipe.Create(
+                var recipe = Recipe.Create(
                     title: template.Title,
                     description: template.Description,
                     ingredients: ingredientList,
@@ -220,10 +232,243 @@ public static class DataSeeder
                     categoryId: f.PickRandom(categories).Id,
                     authorId: defaultUser.Id
                 );
+
+                // Titles intentionally repeat so RecipeCatalogSeeder can later
+                // replace legacy duplicates. Keep their URL slugs unique from
+                // the very first save, otherwise a fresh database violates the
+                // unique Slug index before that catalog pass can run.
+                recipe.SetSlug($"{recipe.Slug}-{++recipeNumber:D3}");
+                return recipe;
             });
 
         var recipes = recipeFaker.Generate(100);
         await context.Recipes.AddRangeAsync(recipes);
         await context.SaveChangesAsync();
+
+        await EnsureStructuredRecipeContentAsync(context);
+        await context.SaveChangesAsync();
     }
+
+    /// <summary>
+    /// Migrates legacy recipe string arrays into the structured recipe-content
+    /// tables without duplicating data on subsequent application starts.
+    /// </summary>
+    public static async Task EnsureStructuredRecipeContentAsync(ApplicationDbContext context)
+    {
+        var persistedRecipes = await context.Recipes
+            .Where(recipe => !recipe.IsDeleted)
+            .ToListAsync();
+        var addedRecipes = context.ChangeTracker.Entries<Recipe>()
+            .Where(entry => entry.State == EntityState.Added && !entry.Entity.IsDeleted)
+            .Select(entry => entry.Entity)
+            .ToList();
+        var recipes = persistedRecipes
+            .Concat(addedRecipes)
+            .GroupBy(recipe => recipe.Id)
+            .Select(group => group.First())
+            .ToList();
+
+        if (recipes.Count == 0)
+        {
+            return;
+        }
+
+        var recipeIds = recipes.Select(recipe => recipe.Id).ToHashSet();
+        var persistedIngredients = await context.RecipeIngredients
+            .Where(ingredient => recipeIds.Contains(ingredient.RecipeId))
+            .OrderBy(ingredient => ingredient.OrderIndex)
+            .ToListAsync();
+        var addedIngredients = context.ChangeTracker.Entries<RecipeIngredient>()
+            .Where(entry => entry.State == EntityState.Added && recipeIds.Contains(entry.Entity.RecipeId))
+            .Select(entry => entry.Entity)
+            .ToList();
+        var ingredientsByRecipe = persistedIngredients
+            .Concat(addedIngredients)
+            .GroupBy(ingredient => ingredient.Id)
+            .Select(group => group.First())
+            .GroupBy(ingredient => ingredient.RecipeId)
+            .ToDictionary(group => group.Key, group => group.OrderBy(ingredient => ingredient.OrderIndex).ToList());
+
+        var persistedSteps = await context.RecipeSteps
+            .Where(step => recipeIds.Contains(step.RecipeId))
+            .OrderBy(step => step.StepNumber)
+            .ToListAsync();
+        var addedSteps = context.ChangeTracker.Entries<RecipeStep>()
+            .Where(entry => entry.State == EntityState.Added && recipeIds.Contains(entry.Entity.RecipeId))
+            .Select(entry => entry.Entity)
+            .ToList();
+        var stepsByRecipe = persistedSteps
+            .Concat(addedSteps)
+            .GroupBy(step => step.Id)
+            .Select(group => group.First())
+            .GroupBy(step => step.RecipeId)
+            .ToDictionary(group => group.Key, group => group.OrderBy(step => step.StepNumber).ToList());
+
+        foreach (var recipe in recipes)
+        {
+            var legacyIngredients = NormalizeLines(recipe.Ingredients);
+            var legacyInstructions = NormalizeLines(recipe.Instructions);
+
+            EnsureLegacyMinimums(legacyIngredients, legacyInstructions);
+            EnsureStructuredIngredients(context, recipe, legacyIngredients,
+                ingredientsByRecipe.GetValueOrDefault(recipe.Id) ?? []);
+            EnsureStructuredSteps(context, recipe, legacyInstructions,
+                stepsByRecipe.GetValueOrDefault(recipe.Id) ?? []);
+
+            // Keep the original arrays valid too, because older callers and
+            // search indexing still read these persisted columns.
+            if (!recipe.Ingredients.SequenceEqual(legacyIngredients) || !recipe.Instructions.SequenceEqual(legacyInstructions))
+            {
+                var existingSlug = recipe.Slug;
+                recipe.Update(
+                    recipe.Title,
+                    recipe.Description,
+                    legacyIngredients,
+                    legacyInstructions,
+                    recipe.CategoryId,
+                    recipe.ImageUrl,
+                    recipe.CookingTimeMinutes,
+                    recipe.Difficulty,
+                    recipe.IsVegetarian,
+                    recipe.PrepTimeMinutes,
+                    recipe.CookTimeMinutes,
+                    recipe.Servings);
+
+                // Recipe.Update derives a title slug. Preserve a previously
+                // unique slug when legacy seed records intentionally share a
+                // title so the normalizer never violates the unique index.
+                if (!string.IsNullOrWhiteSpace(existingSlug))
+                {
+                    recipe.SetSlug(existingSlug);
+                }
+            }
+        }
+    }
+
+    private static void EnsureStructuredIngredients(
+        ApplicationDbContext context,
+        Recipe recipe,
+        IReadOnlyCollection<string> legacyIngredients,
+        IReadOnlyCollection<RecipeIngredient> existingIngredients)
+    {
+        var validIngredients = existingIngredients
+            .Where(ingredient => !string.IsNullOrWhiteSpace(ingredient.Name))
+            .ToList();
+        var names = validIngredients
+            .Select(ingredient => ingredient.Name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var nextOrderIndex = existingIngredients.Count == 0
+            ? 1
+            : existingIngredients.Max(ingredient => ingredient.OrderIndex) + 1;
+
+        void AddIngredient(string name, string? quantity = null, string? unit = null, string? notes = null)
+        {
+            var ingredient = RecipeIngredient.Create(
+                recipe.Id,
+                name,
+                quantity,
+                unit,
+                notes,
+                nextOrderIndex++);
+            context.RecipeIngredients.Add(ingredient);
+            names.Add(name.Trim());
+            validIngredients.Add(ingredient);
+        }
+
+        foreach (var legacyIngredient in legacyIngredients)
+        {
+            if (names.Add(legacyIngredient))
+            {
+                AddIngredient(legacyIngredient, notes: "Nội dung được chuyển từ công thức cũ.");
+            }
+        }
+
+        var supplementIndex = 0;
+        while (validIngredients.Count < Recipe.MinimumIngredientCount)
+        {
+            var baseName = SupplementalIngredientNames[supplementIndex % SupplementalIngredientNames.Length];
+            var name = baseName;
+            var duplicateNumber = 2;
+            while (names.Contains(name))
+            {
+                name = $"{baseName} ({duplicateNumber++})";
+            }
+
+            AddIngredient(name, "vừa đủ", notes: "Nguyên liệu bổ sung cho công thức đầy đủ.");
+            supplementIndex++;
+        }
+    }
+
+    private static void EnsureStructuredSteps(
+        ApplicationDbContext context,
+        Recipe recipe,
+        IReadOnlyCollection<string> legacyInstructions,
+        IReadOnlyCollection<RecipeStep> existingSteps)
+    {
+        var validSteps = existingSteps
+            .Where(step => !string.IsNullOrWhiteSpace(step.Description))
+            .ToList();
+        var descriptions = validSteps
+            .Select(step => step.Description.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var nextStepNumber = existingSteps.Count == 0
+            ? 1
+            : existingSteps.Max(step => step.StepNumber) + 1;
+
+        void AddStep(string description, string? title = null)
+        {
+            var step = RecipeStep.Create(
+                recipe.Id,
+                title ?? $"Bước {nextStepNumber}",
+                description,
+                nextStepNumber++,
+                null,
+                null);
+            context.RecipeSteps.Add(step);
+            descriptions.Add(description.Trim());
+            validSteps.Add(step);
+        }
+
+        foreach (var legacyInstruction in legacyInstructions)
+        {
+            if (descriptions.Add(legacyInstruction))
+            {
+                AddStep(legacyInstruction, $"Bước {nextStepNumber}");
+            }
+        }
+
+        while (validSteps.Count < Recipe.MinimumStepCount)
+        {
+            var description = $"Hoàn thiện món ở bước {nextStepNumber}: nêm nếm vừa ăn, trình bày đẹp mắt và dùng khi còn nóng.";
+            AddStep(description);
+        }
+    }
+
+    private static void EnsureLegacyMinimums(List<string> ingredients, List<string> instructions)
+    {
+        var supplementIndex = 0;
+        while (ingredients.Count < Recipe.MinimumIngredientCount)
+        {
+            var baseName = SupplementalIngredientNames[supplementIndex % SupplementalIngredientNames.Length];
+            var ingredient = baseName;
+            var duplicateNumber = 2;
+            while (ingredients.Contains(ingredient, StringComparer.OrdinalIgnoreCase))
+            {
+                ingredient = $"{baseName} ({duplicateNumber++})";
+            }
+
+            ingredients.Add(ingredient);
+            supplementIndex++;
+        }
+
+        while (instructions.Count < Recipe.MinimumStepCount)
+        {
+            instructions.Add($"Bước {instructions.Count + 1}: Hoàn thiện món, nêm nếm vừa ăn và trình bày trước khi dùng.");
+        }
+    }
+
+    private static List<string> NormalizeLines(IEnumerable<string>? values) => values?
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value.Trim())
+        .ToList() ?? [];
 }

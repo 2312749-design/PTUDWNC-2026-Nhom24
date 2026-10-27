@@ -24,7 +24,6 @@ export interface UserProfile {
 
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
   expiresAt?: string;
   user?: UserProfile;
 }
@@ -46,12 +45,12 @@ export interface RegisterRequest {
 }
 
 export interface RefreshRequest {
-  refreshToken: string;
+  /** Only used to migrate an old localStorage session; new sessions use an HttpOnly cookie. */
+  refreshToken?: string;
 }
 
 export interface AppState {
   isAuthenticated: boolean;
   accessToken: string | null;
-  refreshToken: string | null;
   user: UserProfile | null;
 }

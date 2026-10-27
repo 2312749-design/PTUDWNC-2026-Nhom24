@@ -84,7 +84,7 @@ public class ArticlesHandlers : EndpointHandler
         var authorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var article = await _context.BlogArticles.FirstOrDefaultAsync(candidate => candidate.Id == id);
         if (article == null) return NotFound(new { message = "Không tìm thấy bài viết." });
-        if (article.AuthorId != authorId) return Forbid();
+        if (!User.IsInRole("Admin") && article.AuthorId != authorId) return Forbid();
 
         article.Update(request.Title, await CreateUniqueSlugAsync(request.Title, id), request.Summary, request.Content, request.CoverImageUrl);
         await _context.SaveChangesAsync();
@@ -95,7 +95,7 @@ public class ArticlesHandlers : EndpointHandler
         var authorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var article = await _context.BlogArticles.FirstOrDefaultAsync(candidate => candidate.Id == id);
         if (article == null) return NotFound(new { message = "Không tìm thấy bài viết." });
-        if (article.AuthorId != authorId) return Forbid();
+        if (!User.IsInRole("Admin") && article.AuthorId != authorId) return Forbid();
 
         _context.BlogArticles.Remove(article);
         await _context.SaveChangesAsync();

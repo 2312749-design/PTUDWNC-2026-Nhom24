@@ -2,7 +2,7 @@ using CulinaryBlog.Application.Interfaces;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
 
-public class UnitOfWork : IUnitOfWork
+public class UnitOfWork : IUnitOfWork, IDisposable
 {
     private readonly ApplicationDbContext _context;
     private readonly Dictionary<Type, object> _repositories = new();
@@ -31,4 +31,11 @@ public class UnitOfWork : IUnitOfWork
 
     public ValueTask DisposeAsync()
         => _context.DisposeAsync();
+
+    // DI scopes may be disposed synchronously (for example in validation
+    // failures and conventional request pipelines). Supporting both disposal
+    // forms prevents an otherwise successful request from throwing on scope
+    // teardown.
+    public void Dispose()
+        => _context.Dispose();
 }

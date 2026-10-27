@@ -6,8 +6,6 @@ public static class SearchEndpoints
 {
     public static void MapSearch(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/search/recipes", Search)
-            .WithTags("Search").AddEndpointFilter<RequestValidationFilter>().AllowAnonymous();
         app.MapGet("/api/v1/search/recipes", Search)
             .WithTags("Search").AddEndpointFilter<RequestValidationFilter>().AllowAnonymous();
     }

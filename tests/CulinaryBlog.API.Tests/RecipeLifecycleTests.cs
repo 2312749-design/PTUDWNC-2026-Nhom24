@@ -76,11 +76,13 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<ValidationException>(() => controller.PublishRecipe(recipe.Id));
 
-        _context.RecipeIngredients.Add(RecipeIngredient.Create(recipe.Id, "Tomato", "2", "pcs", null, 1));
+        _context.RecipeIngredients.AddRange(Enumerable.Range(1, Recipe.MinimumIngredientCount)
+            .Select(index => RecipeIngredient.Create(recipe.Id, $"Ingredient {index}", "1", "pcs", null, index)));
         await _context.SaveChangesAsync();
         await Assert.ThrowsAsync<ValidationException>(() => controller.PublishRecipe(recipe.Id));
 
-        _context.RecipeSteps.Add(RecipeStep.Create(recipe.Id, null, "Roast until tender", 1, 20, null));
+        _context.RecipeSteps.AddRange(Enumerable.Range(1, Recipe.MinimumStepCount)
+            .Select(index => RecipeStep.Create(recipe.Id, null, $"Step {index}: roast until tender", index, 20, null)));
         await _context.SaveChangesAsync();
         ResponseAssert.Status(200, await controller.PublishRecipe(recipe.Id));
         Assert.Equal(RecipeStatus.Published, recipe.Status);
@@ -176,10 +178,11 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
     {
         var recipe = CreateRecipe();
         _context.Recipes.Add(recipe);
-        var first = RecipeStep.Create(recipe.Id, null, "First", 1, null, null);
-        var removed = RecipeStep.Create(recipe.Id, null, "Remove", 2, null, null);
-        var third = RecipeStep.Create(recipe.Id, null, "Third", 3, null, null);
-        _context.RecipeSteps.AddRange(first, removed, third);
+        var steps = Enumerable.Range(1, Recipe.MinimumStepCount + 1)
+            .Select(index => RecipeStep.Create(recipe.Id, null, $"Step {index}", index, null, null))
+            .ToList();
+        var removed = steps[1];
+        _context.RecipeSteps.AddRange(steps);
         await _context.SaveChangesAsync();
         var controller = new RecipeStepsHandlers(_context)
         {
@@ -189,8 +192,8 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         ResponseAssert.Status(200, await controller.DeleteStep(recipe.Id, removed.Id));
         var remaining = await _context.RecipeSteps.Where(step => step.RecipeId == recipe.Id)
             .OrderBy(step => step.StepNumber).ToListAsync();
-        Assert.Equal([1, 2], remaining.Select(step => step.StepNumber).ToArray());
-        Assert.Equal(["First", "Third"], remaining.Select(step => step.Description).ToArray());
+        Assert.Equal([1, 2, 3, 4, 5], remaining.Select(step => step.StepNumber).ToArray());
+        Assert.Equal(["Step 1", "Step 3", "Step 4", "Step 5", "Step 6"], remaining.Select(step => step.Description).ToArray());
     }
 
     [Fact]
@@ -260,7 +263,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 

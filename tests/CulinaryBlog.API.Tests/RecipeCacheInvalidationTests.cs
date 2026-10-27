@@ -59,7 +59,9 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
         var result = await _controller.UpdateRecipe(recipe.Id, new UpdateRecipeDto
         {
             Title = "Updated title",
-            CategoryId = recipe.CategoryId
+            CategoryId = recipe.CategoryId,
+            Ingredients = Enumerable.Range(1, Recipe.MinimumIngredientCount).Select(index => $"Ingredient {index}").ToList(),
+            Instructions = Enumerable.Range(1, Recipe.MinimumStepCount).Select(index => $"Step {index}").ToList()
         });
 
         ResponseAssert.Status(200, result);
@@ -159,7 +161,7 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 }

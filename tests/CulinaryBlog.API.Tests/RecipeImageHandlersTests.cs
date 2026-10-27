@@ -86,7 +86,7 @@ public sealed class RecipeImageHandlersTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 
@@ -96,6 +96,7 @@ public sealed class RecipeImageHandlersTests : IAsyncLifetime
         public Task<string> UploadAsync(Stream content, string fileName, string contentType, CancellationToken cancellationToken = default) => Task.FromResult($"/uploads/{fileName}");
         public Task<string> UploadThumbnailAsync(Stream content, string fileName, string contentType, CancellationToken cancellationToken = default) => Task.FromResult($"/uploads/{fileName}");
         public Task DeleteAsync(string objectKey, CancellationToken cancellationToken = default) { DeletedKeys.Add(objectKey); return Task.CompletedTask; }
+        public Task<IReadOnlyList<string>> ListKeysAsync(string prefix, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<string>>([]);
         public string GetPublicUrl(string objectKey) => $"/uploads/{objectKey}";
     }
 

@@ -67,7 +67,7 @@ public class SearchHandlers : EndpointHandler
             .AsNoTracking()
             .Where(recipe => !recipe.IsDeleted && recipe.Status == RecipeStatus.Published)
             .Include(recipe => recipe.Category)
-            .Where(recipe => !recipe.Category.IsDeleted)
+            .Where(recipe => !recipe.Category.IsDeleted && recipe.Category.IsVisible)
             .AsQueryable();
 
         if (categoryId.HasValue)
@@ -85,8 +85,11 @@ public class SearchHandlers : EndpointHandler
         if (!string.IsNullOrWhiteSpace(searchText) && _context.Database.IsNpgsql())
         {
             // The trigger stores unaccented terms, so normalize the query before PostgreSQL FTS.
-            NpgsqlTsQuery searchQuery = EF.Functions.WebSearchToTsQuery("simple", NormalizeForSearch(searchText));
-            query = query.Where(recipe => recipe.SearchVector.Matches(searchQuery));
+            var normalizedSearchText = NormalizeForSearch(searchText);
+            // Provider-only functions must stay inside the expression tree so
+            // Npgsql can translate them into SQL instead of invoking them in C#.
+            query = query.Where(recipe => EF.Property<NpgsqlTsVector>(recipe, "SearchVector")
+                .Matches(EF.Functions.WebSearchToTsQuery("simple", normalizedSearchText)));
         }
 
         if (!string.IsNullOrWhiteSpace(searchText) && !_context.Database.IsNpgsql())
@@ -121,6 +124,7 @@ public class SearchHandlers : EndpointHandler
                 CategoryName = recipe.Category.Name,
                 AuthorId = recipe.AuthorId,
                 Status = recipe.Status,
+                CreatedAt = recipe.CreatedAt,
                 UpdatedAt = recipe.UpdatedAt,
                 PrepTimeMinutes = recipe.PrepTimeMinutes,
                 CookTimeMinutes = recipe.CookTimeMinutes,
@@ -207,6 +211,7 @@ public class SearchHandlers : EndpointHandler
         CategoryName = recipe.Category?.Name ?? string.Empty,
         AuthorId = recipe.AuthorId,
         Status = recipe.Status,
+        CreatedAt = recipe.CreatedAt,
         UpdatedAt = recipe.UpdatedAt,
         PrepTimeMinutes = recipe.PrepTimeMinutes,
         CookTimeMinutes = recipe.CookTimeMinutes,

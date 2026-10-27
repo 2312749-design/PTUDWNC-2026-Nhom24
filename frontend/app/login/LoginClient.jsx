@@ -11,7 +11,7 @@ import { saveSession } from '../../src/api/session.js'
 
 function LoginForm() {
   const router = useRouter()
-  const [form, setForm] = useState({ username: '', password: '' })
+  const [form, setForm] = useState({ username: '', password: '', twoFactorCode: '', recoveryCode: '' })
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (event) => {
@@ -24,6 +24,8 @@ function LoginForm() {
 
     const request = {
       password: form.password,
+      ...(form.twoFactorCode.trim() ? { twoFactorCode: form.twoFactorCode.trim() } : {}),
+      ...(form.recoveryCode.trim() ? { recoveryCode: form.recoveryCode.trim() } : {}),
       ...(form.username.includes('@')
         ? { email: form.username.trim() }
         : { username: form.username.trim() }),
@@ -52,10 +54,14 @@ function LoginForm() {
     try {
       const data = await requestJson('/auth/google', {
         method: 'POST',
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({
+          idToken,
+          ...(form.twoFactorCode.trim() ? { twoFactorCode: form.twoFactorCode.trim() } : {}),
+          ...(form.recoveryCode.trim() ? { recoveryCode: form.recoveryCode.trim() } : {}),
+        }),
       })
 
-      if (!data.refreshToken || !saveSession(data)) throw new Error('Máy chủ không trả về phiên đăng nhập hợp lệ.')
+      if (!saveSession(data)) throw new Error('Máy chủ không trả về phiên đăng nhập hợp lệ.')
       toast.success(data.message || 'Đăng nhập Google thành công!')
       router.push('/community')
     } catch (error) {
@@ -80,6 +86,14 @@ function LoginForm() {
             />
           </div>
           <div className="form-group">
+            <label htmlFor="login-2fa">Mã xác thực 2 lớp <small>(nếu đã bật)</small></label>
+            <input id="login-2fa" inputMode="numeric" autoComplete="one-time-code" placeholder="Mã 6 số từ Authenticator" value={form.twoFactorCode} onChange={(event) => setForm({ ...form, twoFactorCode: event.target.value })} />
+          </div>
+          <div className="form-group">
+            <label htmlFor="login-recovery">Hoặc mã khôi phục</label>
+            <input id="login-recovery" autoComplete="off" placeholder="Ví dụ: ABCDE-12345" value={form.recoveryCode} onChange={(event) => setForm({ ...form, recoveryCode: event.target.value })} />
+          </div>
+          <div className="form-group">
             <label htmlFor="login-password">Mật khẩu</label>
             <input
               id="login-password"
@@ -91,6 +105,7 @@ function LoginForm() {
             />
           </div>
           <button type="submit" className="primary-btn" disabled={submitting}>{submitting ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
+          <p className="cookie-login-note">🔒 Đăng nhập an toàn: phiên của bạn được lưu bằng cookie HttpOnly, không hiển thị cho JavaScript.</p>
         </form>
 
         {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
@@ -105,7 +120,7 @@ function LoginForm() {
         )}
 
         <p className="switch-text">
-          Chưa có tài khoản? <Link href="/register">Đăng ký ngay</Link>
+          <Link href="/forgot-password">Quên mật khẩu?</Link><br />Chưa có tài khoản? <Link href="/register">Đăng ký ngay</Link>
         </p>
       </div>
     </div>

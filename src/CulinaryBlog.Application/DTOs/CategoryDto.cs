@@ -11,4 +11,8 @@ public class CategoryDto
     public string Slug { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? ImageUrl { get; set; }
+    /// <summary>Total active recipes assigned to this category.</summary>
+    public int RecipeCount { get; set; }
+    /// <summary>Recipes visitors can open without administrator privileges.</summary>
+    public int PublishedRecipeCount { get; set; }
 }

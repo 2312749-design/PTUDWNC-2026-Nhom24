@@ -108,6 +108,8 @@
   font-weight: 700;
 }
 
+.cookie-login-note { margin: .7rem 0 0; color: #4f6f60; font-size: .78rem; line-height: 1.45; text-align: center; }
+
 .captcha-box {
   padding: 10px 12px;
   border: 1px solid #fed7aa;
@@ -1304,6 +1306,16 @@ td {
 .category-recipe-list a:hover { color: #ad5d3e; }
 .category-recipe-list small { flex: 0 0 auto; color: #89938a; font: 9px 'Segoe UI', sans-serif; }
 .category-recipe-list b { margin-left: 7px; color: #bb704e; }
+
+/* Avoid the serif fallback that splits Vietnamese combining accents in some
+   Chromium-based browsers. These are the high-visibility catalogue labels. */
+.category-tile-content h3,
+.category-recipe-list a,
+.category-recipes-dialog-header h2 {
+  font-family: var(--bep-nha-display-font);
+  letter-spacing: normal;
+  font-kerning: normal;
+}
 
 .category-recipes-backdrop {
   position: fixed;

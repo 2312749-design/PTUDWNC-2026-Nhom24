@@ -19,6 +19,31 @@ public static class DemoActivitySeeder
         "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=1200&q=85"
     ];
 
+    // Keep the generated demo catalog valid against the Lab 2 minimums as
+    // well as the normal recipe publish workflow.
+    private static readonly string[] DemoIngredients =
+    [
+        "Nguyên liệu chính 300g",
+        "Rau củ theo mùa 200g",
+        "Tỏi băm 2 tép",
+        "Hành tím 1 củ",
+        "Dầu ăn 1 muỗng canh",
+        "Nước mắm 1 muỗng cà phê",
+        "Nước tương 1 muỗng cà phê",
+        "Muối 1/2 muỗng cà phê",
+        "Tiêu xay 1/4 muỗng cà phê",
+        "Rau thơm để trang trí"
+    ];
+
+    private static readonly string[] DemoInstructions =
+    [
+        "Sơ chế nguyên liệu, rửa sạch và chuẩn bị gia vị.",
+        "Làm nóng chảo hoặc nồi rồi nấu phần nguyên liệu chính.",
+        "Thêm rau củ, đảo hoặc nấu đến khi vừa chín.",
+        "Nêm nếm lại cho phù hợp với khẩu vị gia đình.",
+        "Trình bày món ăn, thêm rau thơm và dùng khi còn nóng."
+    ];
+
     private static readonly (string Title, string Category, string Diet)[] DemoRecipes =
     [
         ("Cơm gà xé rau răm cho ngày bận rộn", "Món Việt", "cân bằng"),
@@ -112,8 +137,8 @@ public static class DemoActivitySeeder
             var recipe = Recipe.Create(
                 demo.Title,
                 $"Công thức {demo.Diet} với nguyên liệu dễ tìm, hướng dẫn rõ ràng và phù hợp cho bữa ăn hằng ngày.",
-                ["Nguyên liệu chính 300g", "Rau củ theo mùa", "Tỏi, hành và gia vị", "Dầu ăn hoặc dầu ô liu"],
-                ["Sơ chế nguyên liệu và chuẩn bị gia vị.", "Làm nóng chảo hoặc nồi, nấu phần nguyên liệu chính.", "Thêm rau củ, nêm vừa ăn rồi trình bày."],
+                DemoIngredients.ToList(),
+                DemoInstructions.ToList(),
                 category.Id,
                 admin.Id,
                 FoodImages[index % FoodImages.Length],
@@ -125,10 +150,10 @@ public static class DemoActivitySeeder
                 servings: 2 + index % 4);
 
             recipe.SetNutrition(new RecipeNutrition(260 + index * 12, 10 + index % 18, 18 + index % 28, 6 + index % 15, 3 + index % 8, 180 + index * 10));
-            if (index % 3 == 1) recipe.Publish(true, true);
+            if (index % 3 == 1) recipe.Publish(DemoIngredients.Length, DemoInstructions.Length);
             if (index % 3 == 2)
             {
-                recipe.Publish(true, true);
+                recipe.Publish(DemoIngredients.Length, DemoInstructions.Length);
                 recipe.Archive();
             }
             context.Recipes.Add(recipe);
@@ -172,7 +197,11 @@ public static class DemoActivitySeeder
         foreach (var post in seededPosts)
         {
             var postIndex = seededPosts.IndexOf(post);
-            for (var likeOffset = 1; likeOffset <= 3; likeOffset++)
+            // A development database can legitimately contain only the admin
+            // account. Do not create duplicate (PostId, UserId) likes in that
+            // case; with the normal demo members this still creates three.
+            var likeCount = Math.Min(3, Math.Max(0, users.Count - 1));
+            for (var likeOffset = 1; likeOffset <= likeCount; likeOffset++)
             {
                 var user = users[(postIndex + likeOffset) % users.Count];
                 context.PostLikes.Add(new PostLike { PostId = post.Id, UserId = user.Id, CreatedAt = post.CreatedAt.AddMinutes(likeOffset * 12) });
@@ -187,6 +216,9 @@ public static class DemoActivitySeeder
             });
         }
 
+        // Demo recipes are created from legacy arrays above. Normalize them as
+        // structured rows before the startup seed operation is complete.
+        await DataSeeder.EnsureStructuredRecipeContentAsync(context);
         await context.SaveChangesAsync();
     }
 }

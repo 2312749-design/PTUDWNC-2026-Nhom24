@@ -1,9 +1,33 @@
 
 .vs/
+.idea/
+**/bin/
+**/obj/
+**/logs/
+*.log
+*.trx
+*.coverage
+*.coveragexml
+*.tsbuildinfo
+*.csproj.user
+TestResults/
+.dbcheck/
+.pdf_extract/
 frontend/.next/
 frontend/.next-dev/
 frontend/.next-culinary/
 .env
+.env.*
+!.env.example
 .run-logs/
+.artifacts/
+.testbuild/
+artifacts/
 frontend/test-results/
 frontend/playwright-report/
+frontend/response.txt
+src/CulinaryBlog.API/wwwroot/uploads/
+CulinaryBlog.rar
+
+# Runtime-generated sitemap content
+src/CulinaryBlog.API/wwwroot/sitemap-recipes.xml

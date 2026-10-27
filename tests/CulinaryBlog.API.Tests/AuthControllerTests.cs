@@ -183,7 +183,7 @@ public class AuthHandlersTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 }

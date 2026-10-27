@@ -1,7 +1,9 @@
 using Asp.Versioning;
+using CulinaryBlog.API.Configuration;
 using CulinaryBlog.API.Middleware;
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.API.Health;
+using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Application.Models;
 using CulinaryBlog.Infrastructure.Persistence;
@@ -11,8 +13,10 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +33,7 @@ using OpenTelemetry.Trace;
 using Serilog;
 using StackExchange.Redis;
 using System.Diagnostics;
+using System.Net;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -36,6 +41,10 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 var serviceName = builder.Configuration["OpenTelemetry:ServiceName"] ?? "culinary-blog-api";
+var databaseInitialization = builder.Configuration
+    .GetSection("DatabaseInitialization")
+    .Get<DatabaseInitializationOptions>()
+    ?? new DatabaseInitializationOptions();
 
 builder.Host.UseSerilog((context, services) =>
     services
@@ -124,12 +133,13 @@ var openTelemetry = builder.Services.AddOpenTelemetry()
         .AddHttpClientInstrumentation());
 
 var otlpEndpoint = builder.Configuration["OpenTelemetry:OtlpEndpoint"];
+var otlpHeaders = builder.Configuration["OpenTelemetry:Headers"];
 if (!string.IsNullOrWhiteSpace(otlpEndpoint))
 {
     openTelemetry.WithTracing(tracing => tracing.AddOtlpExporter(options =>
-        ConfigureOtlpExporter(options, otlpEndpoint)));
+        ConfigureOtlpExporter(options, otlpEndpoint, otlpHeaders)));
     openTelemetry.WithMetrics(metrics => metrics.AddOtlpExporter(options =>
-        ConfigureOtlpExporter(options, otlpEndpoint)));
+        ConfigureOtlpExporter(options, otlpEndpoint, otlpHeaders)));
 }
 
 // 2. Bind JwtSettings từ appsettings.json
@@ -137,11 +147,24 @@ builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSet
 
 // 3. Đăng ký TokenService vào DI Container
 builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.Configure<SmtpEmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<StorageMaintenanceJob>();
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("CulinaryBlog");
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    Directory.CreateDirectory(dataProtectionKeysPath);
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+}
+builder.Services.AddScoped<AccountSecurityService>();
 
 // 4. Cấu hình Authentication & JWT Bearer
 var jwtSettings = builder.Configuration.GetSection("JwtSettings").Get<JwtSettings>();
 if (string.IsNullOrWhiteSpace(jwtSettings?.Secret) || jwtSettings.Secret.Length < 32)
     throw new InvalidOperationException("JwtSettings:Secret must be supplied through user secrets or the JwtSettings__Secret environment variable and contain at least 32 characters.");
+if (string.IsNullOrWhiteSpace(jwtSettings.Issuer) || string.IsNullOrWhiteSpace(jwtSettings.Audience))
+    throw new InvalidOperationException("JwtSettings:Issuer and JwtSettings:Audience must be configured.");
 var key = Encoding.UTF8.GetBytes(jwtSettings.Secret);
 builder.Services.AddAuthentication(options =>
 {
@@ -154,9 +177,25 @@ builder.Services.AddAuthentication(options =>
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = false,
-        ValidateAudience = false,
+        ValidateIssuer = true,
+        ValidIssuer = jwtSettings.Issuer,
+        ValidateAudience = true,
+        ValidAudience = jwtSettings.Audience,
         ClockSkew = TimeSpan.Zero
+    };
+    // Bearer remains supported for existing clients. Browser sessions can
+    // also use the HttpOnly access cookie, which is not readable by page JS.
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            if (string.IsNullOrWhiteSpace(context.Token)
+                && context.Request.Cookies.TryGetValue(AuthHandlers.AccessTokenCookieName, out var cookieToken))
+            {
+                context.Token = cookieToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -168,6 +207,19 @@ builder.Services.AddApplicationHandlers();
 builder.Services.AddScoped<IGoogleIdentityVerifier, GoogleIdentityVerifier>();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddAuthorization();
+var trustForwardedHeaders = builder.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedHeaders");
+if (trustForwardedHeaders)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        // Docker's private bridge range covers the internal Nginx container.
+        // Keep the framework defaults too, so a public client cannot forge
+        // forwarded headers when it reaches the API port directly.
+        options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
+        options.ForwardLimit = 1;
+    });
+}
 
 builder.Services.AddHttpClient("OpenAI", client =>
 {
@@ -256,6 +308,7 @@ if (app.Environment.IsDevelopment())
     // Swagger UI is enabled globally so API version metadata remains visible across environments.
 }
 
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging(options =>
 {
     options.IncludeQueryInRequestPath = false;
@@ -264,11 +317,6 @@ app.UseSerilogRequestLogging(options =>
         context.Set("RequestId", Activity.Current?.TraceId.ToString() ?? "");
         context.Set("ExceptionType", exception?.GetType().Name);
     };
-});
-app.Use(async (context, next) =>
-{
-    context.Response.Headers["X-Request-Id"] = context.TraceIdentifier;
-    await next(context);
 });
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseStatusCodePages(async (StatusCodeContext statusContext) =>
@@ -286,29 +334,13 @@ app.UseStatusCodePages(async (StatusCodeContext statusContext) =>
 });
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
+if (trustForwardedHeaders)
+    app.UseForwardedHeaders();
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-app.UseHangfireDashboard();
 
 // 7. Kích hoạt CORS Middleware
 app.UseCors("FrontendPolicy");
-
-// Keep pre-versioned links working during the migration without maintaining a
-// second active API contract. Clients are served exclusively by /api/v1/...
-// endpoints that carry Asp.Versioning metadata.
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path.Value;
-    if (path is not null && path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) &&
-        !path.StartsWith("/api/v", StringComparison.OrdinalIgnoreCase))
-    {
-        context.Response.StatusCode = StatusCodes.Status308PermanentRedirect;
-        context.Response.Headers.Location = $"/api/v1{path[4..]}{context.Request.QueryString}";
-        return;
-    }
-
-    await next();
-});
 
 // 7.1. Kích hoạt Rate Limiting Middleware để ràng buộc request thực sự
 app.UseRateLimiter();
@@ -316,6 +348,10 @@ app.UseRateLimiter();
 // 8. Thêm Authentication & Authorization Middleware
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseHangfireDashboard("/hangfire", new DashboardOptions
+{
+    Authorization = [new HangfireDashboardAuthorizationFilter()]
+});
 
 app.MapGet("/", () => Results.Redirect("/login"));
 app.MapGet("/login", () => Results.File(GetWebFilePath(app.Environment, "login.html"), "text/html"));
@@ -363,19 +399,26 @@ var apiV1 = app.MapGroup(string.Empty)
     .MapToApiVersion(1, 0);
 apiV1.MapApplicationEndpoints();
 
-// --- ĐOẠN CODE GỌI SEEDER TỰ ĐỘNG ---
-using (var scope = app.Services.CreateScope())
+// Local and Docker demos initialize themselves by default. Production can
+// disable either operation after running its deployment migration/seed step.
+if (databaseInitialization.ApplyMigrationsOnStartup || databaseInitialization.SeedDemoDataOnStartup)
 {
+    using var scope = app.Services.CreateScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-    // Tự động Apply Migration nếu chưa có bảng
-    await dbContext.Database.MigrateAsync();
+    if (databaseInitialization.ApplyMigrationsOnStartup)
+    {
+        await dbContext.Database.MigrateAsync();
+    }
 
-    // Nhồi 20 Category và 100 Recipe vào Database
-    await DataSeeder.SeedDataAsync(dbContext);
-    var seedAuthor = await dbContext.Users.FirstAsync(user => user.Email == "admin@culinaryblog.com");
-    await RecipeCatalogSeeder.SeedDataAsync(dbContext, seedAuthor);
-    await DemoActivitySeeder.SeedAsync(dbContext, seedAuthor);
+    if (databaseInitialization.SeedDemoDataOnStartup)
+    {
+        await DataSeeder.SeedDataAsync(dbContext);
+        var seedAuthor = await dbContext.Users.FirstAsync(user => user.Email == "admin@culinaryblog.com");
+        await RecipeCatalogSeeder.SeedDataAsync(dbContext, seedAuthor);
+        await DemoActivitySeeder.SeedAsync(dbContext, seedAuthor);
+        await ExpandedDemoDataSeeder.SeedAsync(dbContext, seedAuthor);
+    }
 }
 
 RecurringJob.AddOrUpdate<SitemapGenerationJob>("sitemap-generation", job => job.GenerateAsync(), Cron.Daily);
@@ -383,7 +426,11 @@ RecurringJob.AddOrUpdate<StorageMaintenanceJob>("storage-maintenance", job => jo
 
 app.Run();
 
-static void ConfigureOtlpExporter(OtlpExporterOptions options, string endpoint)
+static void ConfigureOtlpExporter(OtlpExporterOptions options, string endpoint, string? headers)
 {
     options.Endpoint = new Uri(endpoint);
+    if (!string.IsNullOrWhiteSpace(headers))
+    {
+        options.Headers = headers;
+    }
 }

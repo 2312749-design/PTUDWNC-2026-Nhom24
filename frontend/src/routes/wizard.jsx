@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { toast } from 'react-toastify'
-import { useNavigate } from '../navigation.jsx'
+import { useNavigate } from '../navigation-hooks.js'
 import { apiRequest, getFreshAccessToken } from '../api/session.js'
 
 function CreateRecipeWizard() {
@@ -31,9 +31,7 @@ function CreateRecipeWizard() {
       try {
         const data = await apiRequest('/categories')
         setCategories(data)
-        if (data[0] && !form.categoryId) {
-          setForm((current) => ({ ...current, categoryId: data[0].id }))
-        }
+        if (data[0]) setForm((current) => current.categoryId ? current : { ...current, categoryId: data[0].id })
       } catch (error) {
         toast.error(error.message)
       } finally {
@@ -50,14 +48,26 @@ function CreateRecipeWizard() {
       return
     }
 
-    if (step === 2 && form.ingredients.some((item) => !item.name.trim())) {
-      toast.error('Tên nguyên liệu không được để trống.')
-      return
+    if (step === 2) {
+      if (form.ingredients.some((item) => !item.name.trim())) {
+        toast.error('Tên nguyên liệu không được để trống.')
+        return
+      }
+      if (form.ingredients.length < 10) {
+        toast.error('Mỗi công thức cần ít nhất 10 nguyên liệu.')
+        return
+      }
     }
 
-    if (step === 3 && form.steps.some((item) => !item.description.trim())) {
-      toast.error('Mỗi bước làm cần có mô tả.')
-      return
+    if (step === 3) {
+      if (form.steps.some((item) => !item.description.trim())) {
+        toast.error('Mỗi bước làm cần có mô tả.')
+        return
+      }
+      if (form.steps.length < 5) {
+        toast.error('Mỗi công thức cần ít nhất 5 bước làm.')
+        return
+      }
     }
 
     setStep((current) => Math.min(current + 1, 3))
@@ -134,7 +144,7 @@ function CreateRecipeWizard() {
         })
         .filter(Boolean),
       instructions: form.steps
-        .map((item, index) => {
+        .map((item) => {
           const title = item.title.trim()
           const description = item.description.trim()
           if (!description) return ''
@@ -151,7 +161,7 @@ function CreateRecipeWizard() {
         }))
         .filter((item) => item.name),
       recipeSteps: form.steps
-        .map((item, index) => ({
+        .map((item) => ({
           title: item.title.trim(),
           description: item.description.trim(),
           timerMinutes: item.timerMinutes ? Number(item.timerMinutes) : null,

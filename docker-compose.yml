@@ -3,15 +3,17 @@ services:
     image: postgres:16-alpine
     container_name: culinaryblog-db
     environment:
-      POSTGRES_DB: CulinaryBlogDb
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # These defaults are for a local development machine only.  Override
+      # them in .env before sharing the stack or exposing it outside localhost.
+      POSTGRES_DB: ${POSTGRES_DB:-CulinaryBlogDb}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env file before starting Docker Compose.}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d CulinaryBlogDb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-CulinaryBlogDb}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -21,35 +23,36 @@ services:
     image: redis:7-alpine
     container_name: culinaryblog-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     command: ["redis-server", "--appendonly", "yes"]
 
-  minio-init:
-    image: busybox:1.36
-    container_name: culinaryblog-minio-init
-    user: "0:0"
-    command: ["sh", "-c", "chown -R 65532:65532 /data"]
-    volumes:
-      - minio-data:/data
-    restart: "no"
-
   minio:
-    image: cleanstart/minio:latest
+    # MinIO no longer publishes a public Docker Hub image. Build a pinned,
+    # official source release locally instead of falling back to an unverified
+    # third-party mirror or a floating `latest` tag.
+    build:
+      context: ./docker/minio
+      args:
+        MINIO_RELEASE: ${MINIO_RELEASE:-RELEASE.2025-10-15T17-29-55Z}
     container_name: culinaryblog-minio
-    depends_on:
-      minio-init:
-        condition: service_completed_successfully
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      # Local development defaults; use unique values outside a local machine.
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in your environment or .env file before starting Docker Compose.}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in your environment or .env file before starting Docker Compose.}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.123.0
@@ -101,7 +104,7 @@ services:
   grafana:
     image: grafana/grafana:11.6.0
     environment:
-      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-culinary-local-admin}
     volumes:
       - grafana-data:/var/lib/grafana
@@ -120,42 +123,65 @@ services:
       redis:
         condition: service_started
       minio:
-        condition: service_started
+        condition: service_healthy
       otel-collector:
         condition: service_started
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=CulinaryBlogDb;Username=postgres;Password=postgres;SSL Mode=Disable;
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB:-CulinaryBlogDb};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env file before starting Docker Compose.};SSL Mode=Disable;"
       ConnectionStrings__Redis: redis:6379,abortConnect=false
       Minio__Enabled: "true"
       Minio__Endpoint: http://minio:9000
-      Minio__AccessKey: minioadmin
-      Minio__SecretKey: minioadmin
+      Minio__AccessKey: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in your environment or .env file before starting Docker Compose.}
+      Minio__SecretKey: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in your environment or .env file before starting Docker Compose.}
       Minio__Bucket: culinary-blog
-      Minio__PublicBaseUrl: http://localhost:9000
+      Minio__PublicBaseUrl: ${MINIO_PUBLIC_BASE_URL:-http://localhost:9000}
       JwtSettings__Secret: ${JWT_SECRET:?Set JWT_SECRET in your environment or .env file before starting Docker Compose.}
-      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+      JwtSettings__Issuer: ${JWT_ISSUER:-CulinaryBlog}
+      JwtSettings__Audience: ${JWT_AUDIENCE:-CulinaryBlogFrontend}
+      AuthCookies__Secure: ${AUTH_COOKIES_SECURE:-false}
+      AuthCookies__SameSite: ${AUTH_COOKIE_SAME_SITE:-Lax}
+      Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Email__Enabled: ${SMTP_ENABLED:-false}
+      Email__Host: ${SMTP_HOST:-}
+      Email__Port: ${SMTP_PORT:-587}
+      Email__EnableSsl: ${SMTP_ENABLE_SSL:-true}
+      Email__Username: ${SMTP_USERNAME:-}
+      Email__Password: ${SMTP_PASSWORD:-}
+      Email__FromAddress: ${SMTP_FROM_ADDRESS:-}
+      Email__FromName: ${SMTP_FROM_NAME:-Bep Nha}
+      DataProtection__KeysPath: /app/data-protection-keys
+      Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost}
+      ReverseProxy__TrustForwardedHeaders: "true"
+      OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-http://otel-collector:4317}
+      OpenTelemetry__Headers: ${OTLP_HEADERS:-}
+      DatabaseInitialization__ApplyMigrationsOnStartup: ${APPLY_MIGRATIONS_ON_STARTUP:-true}
+      DatabaseInitialization__SeedDemoDataOnStartup: ${SEED_DEMO_DATA_ON_STARTUP:-true}
     expose:
       - "8080"
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    volumes:
+      - api-data-protection-keys:/app/data-protection-keys
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_SITE_URL: http://localhost
-        NEXT_PUBLIC_API_URL: http://localhost/api
+        NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     container_name: culinaryblog-frontend
     depends_on:
       - api
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_SITE_URL: http://localhost
-      NEXT_PUBLIC_API_URL: http://localhost/api
-      API_INTERNAL_URL: http://api:8080/api/v1
+      NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080/api/v1}
     expose:
       - "3000"
 
@@ -166,7 +192,7 @@ services:
       - api
       - frontend
     ports:
-      - "80:80"
+      - "127.0.0.1:${WEB_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
@@ -178,3 +204,4 @@ volumes:
   jaeger-data:
   prometheus-data:
   grafana-data:
+  api-data-protection-keys:

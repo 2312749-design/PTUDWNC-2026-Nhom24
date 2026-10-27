@@ -4,8 +4,11 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using CulinaryBlog.API.Endpoints;
+using CulinaryBlog.Application.CQRS.Recipes.Commands;
+using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Domain.Exceptions;
 using CulinaryBlog.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
@@ -48,6 +51,7 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
         builder.Services.AddDbContext<SqliteApplicationDbContext>(options => options.UseSqlite(_connection));
         builder.Services.AddScoped<ApplicationDbContext>(provider => provider.GetRequiredService<SqliteApplicationDbContext>());
         builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
+        builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
         builder.Services.AddSingleton<ICacheService, TestCacheService>();
 
         _app = builder.Build();
@@ -106,20 +110,37 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
             servings = 2,
             difficulty = "Easy",
             isVegetarian = true,
-            recipeIngredients = new[] { new { name = "Tomato", quantity = "4", unit = "pcs", orderIndex = 1 } },
-            recipeSteps = new[] { new { description = "Cook until tender." } }
+            recipeIngredients = Enumerable.Range(1, 10).Select(index => new { name = $"Ingredient {index}", quantity = "1", unit = "pcs", orderIndex = index }),
+            recipeSteps = Enumerable.Range(1, 5).Select(index => new { description = $"Step {index}: cook until tender." })
         }, "recipe-author", "User");
         Assert.Equal(HttpStatusCode.Created, createRecipe.StatusCode);
         var recipeId = await DataIdAsync(createRecipe);
+        using (var createdJson = JsonDocument.Parse(await createRecipe.Content.ReadAsStringAsync()))
+        {
+            Assert.NotEqual(default, createdJson.RootElement.GetProperty("data").GetProperty("createdAt").GetDateTime());
+        }
 
         var publish = await SendAsAsync(HttpMethod.Post, $"/api/v1/recipes/{recipeId}/publish", null, "recipe-author", "User");
         Assert.Equal(HttpStatusCode.OK, publish.StatusCode);
+
+        // The category page must use the persisted CategoryId relationship,
+        // rather than trying to assemble its own stale client-side list.
+        var categoryDetail = await _client.GetAsync($"/api/v1/categories/{categoryId}");
+        Assert.Equal(HttpStatusCode.OK, categoryDetail.StatusCode);
+        using (var categoryJson = JsonDocument.Parse(await categoryDetail.Content.ReadAsStringAsync()))
+        {
+            var data = categoryJson.RootElement.GetProperty("data");
+            Assert.Equal(categoryId, data.GetProperty("category").GetProperty("id").GetGuid().ToString());
+            var recipe = Assert.Single(data.GetProperty("recipes").EnumerateArray(), item => item.GetProperty("id").GetGuid().ToString() == recipeId);
+            Assert.NotEqual(default, recipe.GetProperty("createdAt").GetDateTime());
+        }
 
         var search = await _client.GetAsync("/api/v1/search/recipes?q=tomato&sortBy=title&sortOrder=asc");
         Assert.Equal(HttpStatusCode.OK, search.StatusCode);
         using (var searchJson = JsonDocument.Parse(await search.Content.ReadAsStringAsync()))
         {
-            Assert.Contains(searchJson.RootElement.GetProperty("data").EnumerateArray(), item => item.GetProperty("id").GetGuid().ToString() == recipeId);
+            var recipe = Assert.Single(searchJson.RootElement.GetProperty("data").EnumerateArray(), item => item.GetProperty("id").GetGuid().ToString() == recipeId);
+            Assert.NotEqual(default, recipe.GetProperty("createdAt").GetDateTime());
         }
 
         var deleteRecipe = await SendAsAsync(HttpMethod.Delete, $"/api/v1/recipes/{recipeId}", null, "recipe-author", "User");
@@ -131,6 +152,89 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
         var categories = await _client.GetAsync("/api/v1/categories");
         using var categoriesJson = JsonDocument.Parse(await categories.Content.ReadAsStringAsync());
         Assert.DoesNotContain(categoriesJson.RootElement.GetProperty("data").EnumerateArray(), item => item.GetProperty("id").GetGuid().ToString() == categoryId);
+    }
+
+    [Fact]
+    public async Task PublicRecipeList_OrdersByCreationTimeAndRefreshesLegacyCachedDates()
+    {
+        using var scope = _app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var category = Category.Create("Newest recipes", "A category for the home page", null);
+        context.Categories.Add(category);
+        var oldDate = new DateTime(2026, 10, 1, 12, 0, 0, DateTimeKind.Utc);
+        var newDate = oldDate.AddDays(5);
+        var latestEdit = oldDate.AddDays(20);
+
+        Recipe AddRecipe(string title, DateTime createdAt, DateTime updatedAt, bool published = true)
+        {
+            var recipe = Recipe.Create(title, "A complete recipe for the home page.",
+                Enumerable.Range(1, 10).Select(index => $"Ingredient {index}").ToList(),
+                Enumerable.Range(1, 5).Select(index => $"Step {index}: cook until tender.").ToList(),
+                category.Id, "recipe-author", cookingTimeMinutes: 30);
+            if (published) recipe.Publish(10, 5);
+            context.Recipes.Add(recipe);
+            context.Entry(recipe).Property(item => item.CreatedAt).CurrentValue = createdAt;
+            context.Entry(recipe).Property(item => item.UpdatedAt).CurrentValue = updatedAt;
+            return recipe;
+        }
+
+        var older = AddRecipe("Older soup with a recent edit", oldDate, latestEdit);
+        var newer = AddRecipe("Newer tomato soup", newDate, newDate);
+        var tied = AddRecipe("Another newer soup", newDate, newDate);
+        AddRecipe("Newest private draft", latestEdit, latestEdit, published: false);
+        await context.SaveChangesAsync();
+
+        var cache = scope.ServiceProvider.GetRequiredService<ICacheService>();
+        await cache.SetAsync<IEnumerable<RecipeDto>>(CacheKeys.Recipes,
+            [new RecipeDto { Id = older.Id, Status = RecipeStatus.Published }]);
+        await cache.SetAsync(CacheKeys.Recipe(older.Id),
+            new RecipeDto { Id = older.Id, Status = RecipeStatus.Published });
+        var expectedIds = new[] { newer.Id, tied.Id }.OrderBy(id => id).Append(older.Id).ToArray();
+
+        // Cover both a pre-upgrade cache entry and the newly populated cache.
+        for (var request = 0; request < 2; request++)
+        {
+            var response = await _client.GetAsync("/api/v1/recipes");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            var recipes = json.RootElement.GetProperty("data").EnumerateArray().ToArray();
+            Assert.Equal(expectedIds, recipes.Select(item => item.GetProperty("id").GetGuid()));
+            Assert.Equal(new[] { newDate, newDate, oldDate }, recipes.Select(item => item.GetProperty("createdAt").GetDateTime()));
+            Assert.Equal(latestEdit, recipes[^1].GetProperty("updatedAt").GetDateTime());
+        }
+
+        var detail = await _client.GetAsync($"/api/v1/recipes/{older.Id}");
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+        using var detailJson = JsonDocument.Parse(await detail.Content.ReadAsStringAsync());
+        Assert.Equal(oldDate, detailJson.RootElement.GetProperty("data").GetProperty("createdAt").GetDateTime());
+    }
+
+    [Fact]
+    public async Task CreateRecipe_WithExplicitNullCollections_ReturnsValidationException()
+    {
+        using var scope = _app.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var category = Category.Create($"Null-safe-{Guid.NewGuid():N}", "", null);
+        context.Categories.Add(category);
+        await context.SaveChangesAsync();
+
+        var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
+        var exception = await Assert.ThrowsAsync<ValidationException>(() => mediator.Send(new CreateRecipeCommand
+        {
+            Title = "Recipe with null collections",
+            Description = "The handler should return a validation error instead of a server error.",
+            CategoryId = category.Id,
+            AuthorId = "recipe-author",
+            PrepTimeMinutes = 10,
+            CookTimeMinutes = 15,
+            Servings = 2,
+            Ingredients = null!,
+            Instructions = null!,
+            RecipeIngredients = null!,
+            RecipeSteps = null!
+        }));
+
+        Assert.Contains("ít nhất", exception.Message);
     }
 
     private async Task<HttpResponseMessage> SendAsAsync(HttpMethod method, string path, object? body, string userId, string role)
@@ -153,15 +257,28 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 
     private sealed class TestCacheService : ICacheService
     {
-        public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default) => Task.FromResult(default(T));
-        public Task SetAsync<T>(string key, T value, TimeSpan? expiry = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task RemoveAsync(string key, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _values = new();
+
+        public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_values.TryGetValue(key, out var value) && value is T typed ? typed : default);
+
+        public Task SetAsync<T>(string key, T value, TimeSpan? expiry = null, CancellationToken cancellationToken = default)
+        {
+            if (value is not null) _values[key] = value;
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(string key, CancellationToken cancellationToken = default)
+        {
+            _values.TryRemove(key, out _);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class TestAuthentication(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)

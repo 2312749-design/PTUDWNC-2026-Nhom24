@@ -1,59 +1,47 @@
-# Báo cáo đối chiếu yêu cầu
+# Báo cáo đối chiếu chức năng — 25/10/2026
 
-Ngày đối chiếu: 19/10/2026. Báo cáo này chỉ ghi nhận các chức năng đã có trong mã nguồn hoặc đã được kiểm thử; các hạng mục còn phụ thuộc dịch vụ bên ngoài được nêu rõ ở cuối tài liệu.
+## 1. Phạm vi đã hoàn thành
 
-## 1. Bảng mapping chức năng
+| Mã | Trạng thái | Nội dung |
+| --- | --- | --- |
+| FR-AUTH | Đạt cho local | Đăng ký, đăng nhập, profile, đổi mật khẩu, refresh-token rotation/replay detection, logout/revoke. Refresh token dùng cookie `HttpOnly`; Google login chờ Client ID thật. |
+| FR-RCP | Đạt | CRUD công thức, ownership, Draft/Published/Archived, soft delete/restore, nutrition, nguyên liệu/bước theo thứ tự, upload và chọn ảnh chính. |
+| FR-CAT | Đạt | Danh mục có slug, chống trùng, quyền Admin, soft delete và không xóa khi còn recipe hoạt động. CRUD category dùng Repository/Unit of Work. |
+| FR-SRCH | Đạt | PostgreSQL Full-Text Search có/không dấu, filter, sort, pagination và Problem Details cho input không hợp lệ. |
+| FR-FILE | Đạt trong code | Kiểm tra JPEG/PNG/WebP/AVIF tối đa 5 MB, thumbnail 300×300, medium 800×600 và storage cleanup cho năm namespace dữ liệu. |
+| FR-OPS | Đạt trong code | Health, Serilog, OpenTelemetry, Hangfire, SMTP sender, MinIO abstraction, Docker Compose, Nginx và observability stack. |
+| FE-LAB6 | Đạt | Next.js App Router, API client, error handling, Zustand auth store, UI library Radix/CVA/Lucide, layout và common components. |
 
-| Mã | Trạng thái | Chức năng đã thực hiện | Bằng chứng chính |
-| --- | --- | --- | --- |
-| FR-AUTH | Đã làm; Google cần cấu hình thật để chạy ngoài môi trường kiểm thử | Đăng ký, đăng nhập bằng email hoặc username, thông tin tài khoản, cập nhật hồ sơ, refresh-token rotation, phát hiện replay và logout/revoke token family. API chuẩn là `/api/v1/auth/*`. | `Endpoints/AuthEndpoints.cs`, `Endpoints/AuthHandlers.cs`, `Endpoints/AccountEndpoints.cs`, `AuthEndpointContractTests.cs`, `AuthControllerTests.cs` |
-| FR-RCP | Đã làm | Recipe có Draft/Published/Archived, publish chỉ khi có nguyên liệu và bước hợp lệ, unpublish/archive/restore, soft delete, ownership, nutrition PATCH và tự đánh lại số bước. | `Endpoints/RecipesEndpoints.cs`, `Endpoints/RecipesHandlers.cs`, `Domain/Entities/Recipe.cs`, `RecipeLifecycleTests.cs`, `RecipeWorkflowEndpointTests.cs` |
-| FR-CAT | Đã làm | Danh mục có slug, chống trùng, quyền Admin, xóa mềm; không thể xóa khi còn recipe đang hoạt động và không thể cập nhật danh mục đã xóa. | `Endpoints/CategoriesEndpoints.cs`, `Endpoints/CategoriesHandlers.cs`, `Domain/Entities/Category.cs`, `CategoryLifecycleTests.cs` |
-| FR-SRCH | Đã làm | Tìm kiếm Full-Text PostgreSQL, hỗ trợ có/không dấu, lọc kết hợp, sort hợp lệ, phân trang ổn định và 422 cho tham số không hợp lệ. | `Endpoints/SearchEndpoints.cs`, `Endpoints/SearchHandlers.cs`, migration `20261019190000_ImproveRecipeSearch.cs`, `SearchContractTests.cs` |
-| FR-FILE | Đã làm; MinIO thật cần Docker chạy | Upload JPEG/PNG/WebP/AVIF tối đa 5 MB, kiểm tra nội dung ảnh, thumbnail WebP 300×300, medium WebP 800×600, ảnh chính và xóa từng ảnh. | `Services/ImageUploadValidationService.cs`, `Services/ImageThumbnailService.cs`, `Endpoints/RecipesEndpoints.cs`, `ImageUploadValidationServiceTests.cs`, `ImageThumbnailServiceTests.cs` |
-| FR-OBS | Đã làm; collector/dashboard thật cần Docker chạy | Health `/health`, `/health/live`, `/health/ready`; Redis/PostgreSQL/MinIO checks; Serilog, OpenTelemetry, Hangfire và Docker observability stack. | `Program.cs`, `Health/`, `otel-collector-config.yaml`, `observability/` |
-
-Không có mô-đun FR nào đang viết dở trong mã. Những phần **chưa xác minh trực tiếp** là đăng nhập Google bằng Client ID thật, UI/MinIO/PostgreSQL/Hangfire/telemetry trên stack Docker thực tế và ảnh/video demo.
-
-## 2. API tiêu biểu để trình bày
+## 2. API trình bày
 
 | Nghiệp vụ | Endpoint chuẩn |
 | --- | --- |
-| Đăng ký, đăng nhập, refresh, logout | `POST /api/v1/auth/register`, `/login`, `/refresh`, `/logout` |
-| Người dùng hiện tại | `GET` hoặc `PATCH /api/v1/auth/me` |
-| Công thức | `GET`, `POST /api/v1/recipes`; `PUT`, `PATCH`, `DELETE /api/v1/recipes/{id}` |
-| Lifecycle công thức | `POST /api/v1/recipes/{id}/publish`, `/unpublish`, `/archive`, `/restore` |
-| Ảnh công thức | `POST /api/v1/recipes/{id}/images`; `PUT .../images/{imageId}/primary`; `DELETE .../images/{imageId}` |
-| Danh mục | `GET`, `POST /api/v1/categories`; `PUT`, `DELETE /api/v1/categories/{id}` |
-| Tìm kiếm | `GET /api/v1/search/recipes` |
-| Kiểm tra dịch vụ | `GET /health`, `/health/live`, `/health/ready` |
-
-Các API trả dữ liệu theo dạng `data`; danh sách phân trang có thêm `meta`; lỗi dùng Problem Details. Route `/api/*` cũ vẫn được giữ để tương thích, còn frontend dùng `/api/v1/*`.
+| Auth | `POST /api/v1/auth/register`, `/login`, `/refresh`, `/logout`; `GET/PATCH /api/v1/auth/me` |
+| Recipes | `GET/POST /api/v1/recipes`; `PUT/PATCH/DELETE /api/v1/recipes/{id}` |
+| Recipe lifecycle | `POST /api/v1/recipes/{id}/publish`, `/unpublish`, `/archive`, `/restore` |
+| Recipe image | `POST /api/v1/recipes/{id}/images`; `PUT .../images/{imageId}/primary`; `DELETE .../images/{imageId}` |
+| Category | `GET/POST /api/v1/categories`; `PUT/DELETE /api/v1/categories/{id}` |
+| Search | `GET /api/v1/search/recipes` |
+| Health | `GET /health`, `/health/live`, `/health/ready` |
 
 ## 3. Kết quả kiểm thử
 
 | Phạm vi | Kết quả |
 | --- | --- |
-| Backend unit và integration tests | **48/48 đạt**: auth, token replay/logout, lifecycle recipe, ownership, category soft delete, search, ảnh, CORS, authorization và rate limit. |
-| Frontend contract/unit tests | **6/6 đạt**: response pagination, Problem Details, logout, response guard, recipe payload và JSON-LD. |
-| Frontend production build | Compile và TypeScript đạt. Bước tạo trang tĩnh chưa hoàn tất tại máy này vì Windows trả lỗi quyền `EPERM` khi Next.js tạo thư mục artifact. |
-| Docker Compose | Kiểm tra cấu hình đạt với `JWT_SECRET` giữ chỗ; CI cũng dùng giá trị giữ chỗ chỉ cho bước validate. |
-| Browser tests | Đã có 4 Playwright tests trong `frontend/tests/browser`. Chưa chạy được tại máy này vì một tiến trình Next.js không phản hồi đang chiếm port 3000. |
+| Backend | **57/57 đạt**: auth/cookie, revoke/replay, recipe lifecycle/ownership, category, search, upload, storage cleanup, CORS, rate limit, validation và HTTP integration. |
+| Frontend | **7/7 đạt**: API response, Problem Details, logout, URL upload, recipe payload và JSON-LD. |
+| Lint | Không có lỗi chặn; còn 6 warning React cần dọn tiếp. |
+| Build frontend | Compile/type-check đạt. Prerender bị khóa thư mục `.next` bởi tiến trình dev đang chạy (`EPERM`). |
+| Docker config | Cú pháp Compose hợp lệ với secret demo. Full runtime đang chờ Docker Desktop chạy ổn định. |
 
-## 4. Kịch bản demo đề xuất
+## 4. Kịch bản demo khi Docker hoạt động lại
 
-1. Khởi động Docker Desktop; sao chép `.env.example` thành `.env` và thay `JWT_SECRET` bằng chuỗi riêng tối thiểu 32 ký tự.
-2. Khởi động PostgreSQL, Redis và MinIO qua Docker, sau đó chạy API tại `http://localhost:5152` và frontend tại `http://localhost:3000`.
-3. Mở `/health/ready`, sau đó mở Swagger tại `http://localhost:5152/swagger` để cho thấy API sẵn sàng.
-4. Đăng ký một tài khoản mới, đăng nhập và mở `/recipes/new` để tạo bản nháp có nguyên liệu và bước nấu.
-5. Tải một ảnh JPEG/PNG/WebP/AVIF không quá 5 MB, chọn ảnh chính, sau đó publish công thức.
-6. Tìm công thức theo từ khóa và thử filter/sort/pagination. Dùng một tham số sort sai để trình bày Problem Details 422.
-7. Đăng nhập Admin, tạo hoặc xóa mềm danh mục không còn recipe hoạt động; sau đó xác nhận danh mục không còn xuất hiện.
-8. Logout, thử dùng refresh token cũ và cho thấy token family bị chặn.
+1. Mở `/health/ready` và Swagger.
+2. Đăng ký/đăng nhập, tạo recipe có đủ nguyên liệu và bước, upload ảnh rồi publish.
+3. Tìm kiếm, lọc, phân trang và thử input sai để xem Problem Details.
+4. Dùng Admin tạo/chỉnh danh mục, rồi kiểm tra recipe xuất hiện đúng danh mục.
+5. Mở `/hangfire` bằng Admin đã đăng nhập, và kiểm tra Jaeger/Grafana.
 
-## 5. Điều kiện trước khi quay demo/nộp
+## 5. Điều kiện ngoài mã nguồn
 
-- Docker Desktop phải chạy để PostgreSQL, Redis, MinIO, Hangfire và observability stack có thể khởi động.
-- Port 3000 phải được giải phóng hoặc tiến trình Next.js hiện tại phải được khởi động lại vì nó không phản hồi.
-- Điền Google Client ID thật nếu trình bày Google login.
-- Sau khi stack chạy, chụp ít nhất: trang login, wizard tạo/publish recipe, kết quả search, quản trị danh mục và Swagger/health. Các ảnh này là bằng chứng demo còn thiếu, không phải thiếu chức năng mã nguồn.
+Docker Desktop hiện lỗi `SIGBUS / bus error`, nên không thể trung thực ghi "đã chạy full Docker stack" ở thời điểm này. Google OAuth thật, SMTP gửi ra hộp thư, HTTPS/domain, production secrets và lần chạy GitHub Actions đều cần thông tin/quyền sở hữu của chủ dự án. Hướng dẫn và checklist nằm trong [DEPLOYMENT.md](DEPLOYMENT.md).

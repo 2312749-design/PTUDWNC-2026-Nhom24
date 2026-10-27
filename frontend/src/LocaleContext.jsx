@@ -1,26 +1,14 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { LocaleContext } from './locale-context.js'
 
 const STORAGE_KEY = 'recipeDisplaySettings'
 const DEFAULT_SETTINGS = { language: 'vi', unit: 'g', region: 'VN' }
 
 const englishTranslations = {
-  'Bảng tin': 'Feed',
   'Công thức': 'Recipes',
-  'Nấu cùng tôi': 'Cook with me',
-  'Tủ lạnh': 'My fridge',
   'Khẩu phần': 'Servings',
-  'Nhật ký': 'Cooking journal',
-  'Hỏi đáp': 'Q&A',
-  'Nấu chung': 'Cook together',
-  'Sổ tay': 'Cookbook',
-  'Khẩu vị': 'Taste profile',
   'AI Chat': 'AI chat',
-  'Thử thách': 'Challenges',
-  'Chuẩn quốc tế': 'International standard',
-  'Biên tập': 'Editor picks',
   'Tác giả': 'Authors',
-  'Ngôn ngữ': 'Language',
-  'In ấn': 'Print',
   'Danh mục': 'Categories',
   'Thành viên': 'Members',
   'Đăng nhập': 'Log in',
@@ -40,27 +28,19 @@ const englishTranslations = {
   'Nổi bật': 'Popular',
   'Hôm nay bạn vừa nấu món gì? Chia sẻ với mọi người...': 'What did you cook today? Share it with everyone...',
   'Đang tải...': 'Loading...',
-  'Ảnh/video': 'Photo/video',
   'Lưu bản nháp': 'Save as draft',
   'Lưu nháp': 'Save draft',
-  'Đăng bài': 'Publish',
   'Bếp vui hơn khi có bạn.': 'The kitchen is better with you.',
   'Tạo tài khoản để chia sẻ câu chuyện, lưu kết nối và trò chuyện cùng cộng đồng.': 'Create an account to share stories, connect, and chat with the community.',
   'Tham gia Bếp Nhà': 'Join Bep Nha',
   'Đang tải bảng tin...': 'Loading feed...',
   'Bảng tin đang chờ câu chuyện đầu tiên': 'The feed is waiting for its first story',
   'Hãy chia sẻ món ăn, mẹo bếp hoặc một khoảnh khắc đáng nhớ.': 'Share a dish, a kitchen tip, or a memorable moment.',
-  'BẾP NHÀ CÓ GÌ?': 'WHAT IS BEP NHA?',
   'Không chỉ là công thức.': 'More than recipes.',
   'Nơi những người yêu bếp trao đổi kinh nghiệm, khám phá món mới và kể câu chuyện quanh bàn ăn.': 'A place for food lovers to share experience, discover dishes, and tell stories around the table.',
   'Khám phá cộng đồng': 'Explore the community',
-  'GÓC BẾP CỦA BẠN': 'YOUR KITCHEN',
   'Công thức đã lưu': 'Saved recipes',
-  'Thực đơn tuần': 'Weekly meal plan',
-  'Thử thách nấu ăn': 'Cooking challenges',
   'Thống kê tác giả': 'Creator stats',
-  'Bản nháp': 'Drafts',
-  'An toàn cộng đồng': 'Community safety',
   'Cập nhật hồ sơ': 'Update profile',
   'Cộng đồng ẩm thực': 'Food community',
   'Chia sẻ điều ngon, mỗi ngày.': 'Share something delicious, every day.',
@@ -86,7 +66,6 @@ const englishTranslations = {
   'Thử thách': 'Challenges',
   'Ngôn ngữ': 'Language',
   'Cài đặt hiển thị': 'Display settings',
-  'Đơn vị nguyên liệu': 'Ingredient units',
   'Khu vực': 'Region',
   'Xem trước': 'Preview',
   'Lưu cài đặt': 'Save settings',
@@ -103,13 +82,11 @@ const englishTranslations = {
   'Đọc to': 'Read aloud',
   'Giữ sáng màn hình': 'Keep screen awake',
   'Tắt giữ sáng': 'Release screen wake lock',
-  'Thời lượng': 'Duration',
   'phút': 'min',
   'giây': 'sec',
   'quả': 'pcs',
   'cây': 'stalks',
   'Cài đặt ngôn ngữ, đơn vị và khu vực đã được lưu.': 'Language, units, and region settings saved.',
-  'Thông báo': 'Notifications',
   'Cài đặt tài khoản': 'Account settings',
   'Điều hướng chính': 'Main navigation',
   'Mở menu': 'Open menu',
@@ -122,11 +99,9 @@ const englishTranslations = {
   'Gram / ml': 'Grams / ml',
   'Ounce / tbsp': 'Ounces / tbsp',
   'Cup / cup': 'Cups',
-  'Món hiện tại': 'Current recipe',
   'Chế độ nấu tay': 'Guided cooking mode',
   'NẤU CÙNG TÔI': 'COOK WITH ME',
   'Mỗi bước được phóng to, lời hướng dẫn được đọc thành tiếng, đồng hồ đếm thời gian luôn hiển thị và màn hình được giữ sáng trong lúc bạn nấu.': 'Follow large step-by-step instructions, listen to them aloud, use a timer, and keep your screen awake while cooking.',
-  'Mì xào rau củ chay': 'Vegetarian vegetable stir-fried noodles',
   'Mì hạt sen': 'Lotus seed noodles',
   'Đậu phụ': 'Tofu',
   'Đậu que': 'Green beans',
@@ -143,11 +118,7 @@ const englishTranslations = {
   'Cho mì và đậu phụ vào, đảo đều, thêm nước tương và tiếp tục xào cho các nguyên liệu thấm đều.': 'Add the noodles and tofu. Toss well, add soy sauce, and continue stir-frying until evenly seasoned.',
   'Hoàn thiện': 'Finish the dish',
   'Nếm lại và điều chỉnh gia vị. Món sẵn sàng cho bữa ăn.': 'Taste and adjust the seasoning. The dish is ready to serve.',
-  'Nguyên liệu đang có': 'Ingredients on hand',
-  'Đề xuất món ăn': 'Suggested recipes',
-  'Gợi ý món theo nguyên liệu': 'Find recipes from your ingredients',
   'TỦ LẠNH CÒN GÌ?': "WHAT'S IN YOUR FRIDGE?",
-  'Nhập những gì bạn đang có trong tủ lạnh hoặc tủ đồ, hệ thống sẽ đề xuất món phù hợp và chỉ ra thứ còn thiếu.': 'Enter what you have in your fridge or pantry to find matching recipes and see what is missing.',
   'Đã có:': 'Have:',
   'Còn thiếu:': 'Missing:',
   'Không có nguyên liệu nào trùng': 'No matching ingredients',
@@ -169,7 +140,6 @@ const englishTranslations = {
   'Thay thế': 'Substitutions',
   'Dinh dưỡng': 'Nutrition',
   'Mì xào rau củ chay': 'Vegetarian vegetable stir-fried noodles',
-  'Canh chua cá': 'Vietnamese sweet-and-sour fish soup',
   'Bánh tráng trộn': 'Vietnamese rice paper salad',
   'Gỏi đậu phụ': 'Tofu salad',
   'mì': 'noodles',
@@ -192,10 +162,6 @@ const englishTranslations = {
   'rau thơm': 'fresh herbs',
   'dưa leo': 'cucumber',
   'Bún chả giò rau củ': 'Vegetable spring-roll vermicelli bowl',
-  'Bún chả giò rau củ': 'Vegetable spring-roll vermicelli bowl',
-  'Giò chả': 'Vietnamese sausage',
-  'Rau sống': 'Fresh greens',
-  'Nước chấm': 'Dipping sauce',
   'Đã lưu:': 'Saved:',
   'người': 'people',
   'Đã lưu: {count} người': 'Saved: {count} people',
@@ -205,7 +171,6 @@ const englishTranslations = {
   'Đề xuất món ăn': 'Suggested recipes',
   'Ví dụ: trứng, hành tây, cà chua, mì, bột ngọt, tỏi': 'Example: eggs, onion, tomatoes, noodles, MSG, garlic',
   'Nhập những gì bạn đang có trong tủ lạnh hoặc tủ đồ, hệ thống sẽ đề xuất món phù hợp và chỉ ra thứ còn thiếu.': 'Enter what you have in your fridge or pantry to find matching recipes and see what is missing.',
-  'Chọn chế độ ăn, mức độ cay, độ nhanh, chi phí và yếu tố hạn chế để nhận món phù hợp với bạn.': 'Choose your diet, spice level, prep time, budget, and restrictions to get recipes that suit you.',
   'NHẬT KÝ NẤU RIÊNG': 'PRIVATE COOKING JOURNAL',
   'Ghi chép món đã thử': 'Track dishes you have cooked',
   'Lưu lại nguyên liệu, thay đổi gia vị, thời gian nấu và cảm nhận thực tế để mỗi lần nấu dần tốt hơn.': 'Record ingredients, seasoning changes, cooking time, and your notes to improve each time you cook.',
@@ -307,7 +272,6 @@ const englishTranslations = {
   'Danh mục:': 'Category:',
   'Tác giả:': 'Author:',
   'Độ khó:': 'Difficulty:',
-  'Món chay': 'Vegetarian',
   'Mô tả': 'Description',
   'Chưa có mô tả.': 'No description available.',
   'Nguyên liệu': 'Ingredients',
@@ -411,7 +375,6 @@ const englishTranslations = {
   '1 ít dưa leo': 'A little cucumber',
   '1 thìa nước mắm': '1 tbsp fish sauce',
   '1 thìa mật ong': '1 tbsp honey',
-  '1 ít rau thơm': 'A handful of fresh herbs',
   'Bước 1: Ướp sườn heo với nước mắm, đường, mật ong, tỏi và tiêu.': 'Step 1: Marinate the pork with fish sauce, sugar, honey, garlic, and pepper.',
   'Bước 2: Nướng sườn chín mềm, có màu vàng đẹp.': 'Step 2: Grill the pork until tender and golden.',
   'Bước 3: Chiên trứng ốp la chín vừa.': 'Step 3: Fry the eggs sunny-side up.',
@@ -519,13 +482,6 @@ function readSettings() {
   }
 }
 
-const LocaleContext = createContext({
-  settings: DEFAULT_SETTINGS,
-  applySettings: () => {},
-  t: (value) => value,
-  normalizeInput: (value) => value,
-})
-
 export function LocaleProvider({ children }) {
   const [settings, setSettings] = useState(readSettings)
 
@@ -554,8 +510,4 @@ export function LocaleProvider({ children }) {
       {children}
     </LocaleContext.Provider>
   )
-}
-
-export function useLocale() {
-  return useContext(LocaleContext)
 }

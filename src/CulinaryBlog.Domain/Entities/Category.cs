@@ -13,6 +13,8 @@ namespace CulinaryBlog.Domain.Entities
         public string Description { get; set; } = string.Empty;
         public string? ImageUrl { get; set; }
         public bool IsDeleted { get; set; }
+        public bool IsVisible { get; set; } = true;
+        public int DisplayOrder { get; set; }
         public DateTime? DeletedAt { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -16,6 +16,9 @@ public class RefreshToken
     public DateTime ExpiresAt { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime? RevokedAt { get; private set; }
+    public string? IpAddress { get; private set; }
+    public string? UserAgent { get; private set; }
+    public DateTime? LastUsedAt { get; private set; }
 
     public ApplicationUser? User { get; private set; }
 
@@ -36,8 +39,18 @@ public class RefreshToken
     }
 
     public bool IsValid() => !IsRevoked && !IsUsed && ExpiresAt > DateTime.UtcNow;
-    public void MarkUsed() { IsUsed = true; }
+    public void MarkUsed()
+    {
+        IsUsed = true;
+        LastUsedAt = DateTime.UtcNow;
+    }
     public void Revoke() { IsRevoked = true; RevokedAt = DateTime.UtcNow; }
+    public void SetSessionMetadata(string? ipAddress, string? userAgent)
+    {
+        IpAddress = string.IsNullOrWhiteSpace(ipAddress) ? null : ipAddress[..Math.Min(ipAddress.Length, 64)];
+        UserAgent = string.IsNullOrWhiteSpace(userAgent) ? null : userAgent[..Math.Min(userAgent.Length, 512)];
+        LastUsedAt = DateTime.UtcNow;
+    }
 
     public static string Hash(string tokenValue)
     {

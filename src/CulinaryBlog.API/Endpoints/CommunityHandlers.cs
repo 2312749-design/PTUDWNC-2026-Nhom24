@@ -3,6 +3,8 @@ using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Services;
+using CulinaryBlog.Infrastructure.Jobs;
+using Hangfire;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,16 +14,18 @@ public class CommunityHandlers : EndpointHandler
 {
     private readonly ApplicationDbContext _context;
     private readonly IFileStorageService _fileStorageService;
+    private readonly IBackgroundJobClient _backgroundJobs;
 
-    public CommunityHandlers(ApplicationDbContext context, IFileStorageService fileStorageService)
+    public CommunityHandlers(ApplicationDbContext context, IFileStorageService fileStorageService, IBackgroundJobClient backgroundJobs)
     {
         _context = context;
         _fileStorageService = fileStorageService;
+        _backgroundJobs = backgroundJobs;
     }
     public async Task<ApiResponseResult> Feed([FromQuery] string? username = null, [FromQuery] string scope = "discover", [FromQuery] string sort = "recent")
     {
         var viewerId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var query = _context.CommunityPosts.AsNoTracking().Where(post => !post.IsDraft).AsQueryable();
+        var query = _context.CommunityPosts.AsNoTracking().Where(post => !post.IsDraft && !post.IsHidden).AsQueryable();
         if (!string.IsNullOrWhiteSpace(username))
             query = query.Where(post => post.Author.UserName == username);
         if (viewerId != null)
@@ -108,7 +112,7 @@ public class CommunityHandlers : EndpointHandler
             (block.BlockerId == viewerId && block.BlockedId == user.Id) ||
             (block.BlockedId == viewerId && block.BlockerId == user.Id)))
             return NotFound(new { message = "Không tìm thấy thành viên." });
-        var posts = await _context.CommunityPosts.AsNoTracking().Where(post => post.AuthorId == user.Id && (!post.IsDraft || viewerId == user.Id))
+        var posts = await _context.CommunityPosts.AsNoTracking().Where(post => post.AuthorId == user.Id && !post.IsHidden && (!post.IsDraft || viewerId == user.Id))
             .OrderByDescending(post => post.CreatedAt).Take(50)
             .Select(post => new { id = post.Id, content = post.Content, mediaUrl = post.MediaUrl, mediaType = post.MediaType, createdAt = post.CreatedAt, isDraft = post.IsDraft, likesCount = post.Likes.Count, likedByMe = viewerId != null && post.Likes.Any(like => like.UserId == viewerId) })
             .ToListAsync();
@@ -172,34 +176,29 @@ public class CommunityHandlers : EndpointHandler
         if (validation.Image is null) return BadRequest(new { message = validation.Error });
 
         var image = validation.Image;
-        var fileName = $"community/{Guid.NewGuid():N}{image.Extension}";
+        var assetId = Guid.NewGuid().ToString("N");
+        var fileName = $"community/{assetId}{image.Extension}";
         await using var originalStream = new MemoryStream(image.Content, writable: false);
         var mediaUrl = await _fileStorageService.UploadAsync(originalStream, fileName, image.ContentType);
 
-        await using var thumbnailSource = new MemoryStream(image.Content, writable: false);
-        var thumbnailBytes = await ImageThumbnailService.CreateThumbnailAsync(thumbnailSource);
-        var thumbnailFileName = $"community/{Guid.NewGuid():N}.webp";
-        await using var thumbnailStream = new MemoryStream(thumbnailBytes);
-        var thumbnailUrl = await _fileStorageService.UploadThumbnailAsync(
-            thumbnailStream,
-            thumbnailFileName,
-            "image/webp");
-
-        await using var mediumSource = new MemoryStream(image.Content, writable: false);
-        var mediumBytes = await ImageThumbnailService.CreateMediumAsync(mediumSource);
-        var mediumFileName = $"community/{Guid.NewGuid():N}.webp";
-        await using var mediumStream = new MemoryStream(mediumBytes);
-        var mediumUrl = await _fileStorageService.UploadThumbnailAsync(mediumStream, mediumFileName, "image/webp");
+        var thumbnailFileName = $"community/{assetId}-thumb.webp";
+        var mediumFileName = $"community/{assetId}-medium.webp";
+        var thumbnailUrl = _fileStorageService.GetPublicUrl(thumbnailFileName);
+        var mediumUrl = _fileStorageService.GetPublicUrl(mediumFileName);
+        _backgroundJobs.Enqueue<ThumbnailGenerationJob>(job =>
+            job.GenerateAsync(image.Content, thumbnailFileName, mediumFileName));
         return Ok(new { mediaUrl, thumbnailUrl, mediumUrl, mediaType = "image" });
     }
     public async Task<ApiResponseResult> UpdatePost(Guid id, PostRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id && item.AuthorId == userId);
+        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id);
         if (post == null) return NotFound(new { message = "Không tìm thấy bài viết của bạn." });
+        if (!User.IsInRole("Admin") && post.AuthorId != userId) return Forbid();
         var content = (request.Content ?? string.Empty).Trim();
         if (content.Length > 3000 || (content.Length == 0 && string.IsNullOrWhiteSpace(request.MediaUrl ?? post.MediaUrl)))
             return BadRequest(new { message = "Bài viết cần có nội dung hoặc ảnh/video đính kèm." });
+        var previousMediaUrl = post.MediaUrl;
         post.Content = content;
         if (!string.IsNullOrWhiteSpace(request.MediaUrl))
         {
@@ -210,6 +209,17 @@ public class CommunityHandlers : EndpointHandler
         if (request.IsDraft.HasValue) post.IsDraft = request.IsDraft.Value;
         if (request.CommentsEnabled.HasValue) post.CommentsEnabled = request.CommentsEnabled.Value;
         await _context.SaveChangesAsync();
+        if (!string.Equals(previousMediaUrl, post.MediaUrl, StringComparison.Ordinal) && TryGetCommunityStorageKey(previousMediaUrl, out var previousKey))
+        {
+            await _fileStorageService.DeleteAsync(previousKey);
+            var extension = Path.GetExtension(previousKey);
+            if (!string.IsNullOrEmpty(extension))
+            {
+                var stem = previousKey[..^extension.Length];
+                await _fileStorageService.DeleteAsync($"{stem}-thumb.webp");
+                await _fileStorageService.DeleteAsync($"{stem}-medium.webp");
+            }
+        }
         return Ok(new { id = post.Id, content = post.Content, createdAt = post.CreatedAt });
     }
     public async Task<ApiResponseResult> ToggleLike(Guid id)
@@ -252,18 +262,22 @@ public class CommunityHandlers : EndpointHandler
     public async Task<ApiResponseResult> DeletePost(Guid id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id && item.AuthorId == userId);
+        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id);
         if (post == null) return NotFound(new { message = "Không tìm thấy bài viết của bạn." });
+        if (!User.IsInRole("Admin") && post.AuthorId != userId) return Forbid();
         var mediaUrl = post.MediaUrl;
         _context.CommunityPosts.Remove(post);
         await _context.SaveChangesAsync();
-        if (Uri.TryCreate(mediaUrl, UriKind.Absolute, out var mediaUri))
+        if (TryGetCommunityStorageKey(mediaUrl, out var objectKey))
         {
-            var path = mediaUri.AbsolutePath.TrimStart('/');
-            var objectKey = path.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
-                ? path["uploads/".Length..]
-                : string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries).Skip(1));
             await _fileStorageService.DeleteAsync(objectKey);
+            var extension = Path.GetExtension(objectKey);
+            if (!string.IsNullOrEmpty(extension))
+            {
+                var stem = objectKey[..^extension.Length];
+                await _fileStorageService.DeleteAsync($"{stem}-thumb.webp");
+                await _fileStorageService.DeleteAsync($"{stem}-medium.webp");
+            }
         }
         return NoContent();
     }
@@ -312,8 +326,9 @@ public class CommunityHandlers : EndpointHandler
     public async Task<ApiResponseResult> SetCommentsEnabled(Guid id, CommentsEnabledRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
-        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id && item.AuthorId == userId);
+        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id);
         if (post == null) return NotFound();
+        if (!User.IsInRole("Admin") && post.AuthorId != userId) return Forbid();
         post.CommentsEnabled = request.Enabled;
         await _context.SaveChangesAsync();
         return Ok(new { post.CommentsEnabled });
@@ -390,9 +405,32 @@ public class CommunityHandlers : EndpointHandler
     private static bool IsValidPostMedia(string? mediaUrl, string? mediaType)
     {
         if (string.IsNullOrWhiteSpace(mediaUrl) && string.IsNullOrWhiteSpace(mediaType)) return true;
+        if (mediaType != "image" || string.IsNullOrWhiteSpace(mediaUrl)) return false;
+
+        // Local storage returns /uploads/community/... while MinIO returns a public HTTP(S) URL.
+        // Both forms originate from UploadMedia and are safe to attach to a post.
+        if (mediaUrl.StartsWith("/uploads/community/", StringComparison.Ordinal) &&
+            !mediaUrl.Contains("..", StringComparison.Ordinal) &&
+            !mediaUrl.Contains('\\') &&
+            !mediaUrl.Contains('?') &&
+            !mediaUrl.Contains('#'))
+            return true;
+
         return Uri.TryCreate(mediaUrl, UriKind.Absolute, out var uri)
-            && uri.AbsolutePath.Contains("/community/", StringComparison.Ordinal)
-            && mediaType == "image";
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            && uri.AbsolutePath.Contains("/community/", StringComparison.Ordinal);
+    }
+
+    private static bool TryGetCommunityStorageKey(string? mediaUrl, out string objectKey)
+    {
+        objectKey = string.Empty;
+        if (string.IsNullOrWhiteSpace(mediaUrl)) return false;
+        var path = Uri.TryCreate(mediaUrl, UriKind.Absolute, out var uri) ? uri.AbsolutePath : mediaUrl;
+        var marker = "/community/";
+        var index = path.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) return false;
+        objectKey = path[(index + 1)..];
+        return !objectKey.Contains("..", StringComparison.Ordinal) && !objectKey.Contains('\\');
     }
 
     public sealed class PostRequest { public string Content { get; set; } = string.Empty; public string? MediaUrl { get; set; } public string? MediaType { get; set; } public bool? IsDraft { get; set; } public bool? CommentsEnabled { get; set; } }

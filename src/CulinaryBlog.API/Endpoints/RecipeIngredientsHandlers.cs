@@ -85,6 +85,9 @@ public class RecipeIngredientsHandlers : EndpointHandler
         ingredient.Update(dto.Name, dto.Quantity, dto.Unit, dto.Notes, ingredient.OrderIndex);
         if (dto.OrderIndex.HasValue && dto.OrderIndex.Value != ingredient.OrderIndex)
         {
+            // Save content changes before changing the unique (RecipeId, OrderIndex) sequence.
+            // ReindexIngredientsAsync moves every row through a temporary range first.
+            await _context.SaveChangesAsync();
             var rows = await _context.RecipeIngredients.Where(item => item.RecipeId == recipeId)
                 .OrderBy(item => item.OrderIndex).ToListAsync();
             var requestedIndex = Math.Clamp(dto.OrderIndex.Value, 1, rows.Count);
@@ -107,6 +110,12 @@ public class RecipeIngredientsHandlers : EndpointHandler
             return NotFound(new { message = "Không tìm thấy nguyên liệu cần xóa." });
         }
         if (!await CanManageRecipeAsync(recipeId)) return Forbid();
+
+        var ingredientCount = await _context.RecipeIngredients.CountAsync(item => item.RecipeId == recipeId);
+        if (ingredientCount <= Recipe.MinimumIngredientCount)
+        {
+            return BadRequest(new { message = $"Mỗi công thức phải giữ ít nhất {Recipe.MinimumIngredientCount} nguyên liệu." });
+        }
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
         _context.RecipeIngredients.Remove(ingredient);
@@ -136,14 +145,31 @@ public class RecipeIngredientsHandlers : EndpointHandler
     private async Task ReindexIngredientsAsync(Guid recipeId, List<RecipeIngredient> rows, bool beginTransaction = true)
     {
         await using var transaction = beginTransaction ? await _context.Database.BeginTransactionAsync() : null;
+        if (!_context.Database.IsRelational())
+        {
+            for (var index = 0; index < rows.Count; index++)
+                rows[index].Update(rows[index].Name, rows[index].Quantity, rows[index].Unit, rows[index].Notes, index + 1);
+            await _context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
+            return;
+        }
+
+        var orderedIds = rows.Select(item => item.Id).ToList();
+
+        // EF tries to batch direct swaps in a unique index and detects a circular
+        // dependency. Move all rows out of the active sequence first, then assign
+        // the final positions with direct updates.
         await _context.RecipeIngredients.Where(item => item.RecipeId == recipeId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.OrderIndex, item => item.OrderIndex + 1_000_000));
-        for (var index = 0; index < rows.Count; index++)
+        for (var index = 0; index < orderedIds.Count; index++)
         {
-            rows[index].Update(rows[index].Name, rows[index].Quantity, rows[index].Unit, rows[index].Notes, index + 1);
-            _context.Entry(rows[index]).Property(item => item.OrderIndex).IsModified = true;
+            var ingredientId = orderedIds[index];
+            await _context.RecipeIngredients.Where(item => item.Id == ingredientId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.OrderIndex, index + 1));
         }
-        await _context.SaveChangesAsync();
+        // ExecuteUpdate bypasses the change tracker. Clear stale tracked order values
+        // so a later query in this request observes the reindexed rows.
+        _context.ChangeTracker.Clear();
         if (transaction != null) await transaction.CommitAsync();
     }
 }

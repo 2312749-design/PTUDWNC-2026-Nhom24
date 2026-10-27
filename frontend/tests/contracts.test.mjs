@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { normalizeApiResponse, readApiResponse } from '../src/api/config.js'
+import { normalizeApiResponse, readApiResponse, resolveMediaUrl } from '../src/api/config.js'
 import { recipeJsonLd, articleJsonLd, serializeJsonLd } from '../src/structured-data.js'
 
 test('unwraps API pagination without losing total and current page', () => {
@@ -8,6 +8,20 @@ test('unwraps API pagination without losing total and current page', () => {
 })
 test('surfaces problem details to forms', () => {
   assert.equal(normalizeApiResponse({ status: 400, detail: 'Invalid input' }).message, 'Invalid input')
+})
+test('converts local upload paths to the API origin throughout a response', () => {
+  const data = normalizeApiResponse({
+    data: {
+      imageUrl: '/uploads/recipes/dish.webp',
+      author: { avatarUrl: '/uploads/avatars/chef.webp' },
+      media: ['/uploads/community/post.webp'],
+    },
+  })
+
+  assert.equal(data.imageUrl, 'http://localhost:5152/uploads/recipes/dish.webp')
+  assert.equal(data.author.avatarUrl, 'http://localhost:5152/uploads/avatars/chef.webp')
+  assert.equal(data.media[0], 'http://localhost:5152/uploads/community/post.webp')
+  assert.equal(resolveMediaUrl('https://images.example.com/dish.webp'), 'https://images.example.com/dish.webp')
 })
 test('handles logout empty response', async () => {
   assert.deepEqual(await readApiResponse(new Response(null, { status: 204 })), {})

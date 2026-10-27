@@ -98,6 +98,35 @@ public sealed class MinioFileStorageService : IFileStorageService
             .WithObject(objectKey), cancellationToken);
     }
 
+    public async Task<IReadOnlyList<string>> ListKeysAsync(string prefix, CancellationToken cancellationToken = default)
+    {
+        await EnsureBucketAsync(cancellationToken);
+        var keys = new List<string>();
+        var request = new ListObjectsArgs()
+            .WithBucket(_bucket)
+            .WithPrefix(prefix.TrimStart('/'))
+            .WithRecursive(true);
+
+        await foreach (var item in _client.ListObjectsEnumAsync(request, cancellationToken))
+        {
+            if (!string.IsNullOrWhiteSpace(item.Key)) keys.Add(item.Key);
+        }
+
+        return keys;
+    }
+
+    public async Task<IReadOnlyList<StorageObjectInfo>> ListObjectsAsync(string prefix, CancellationToken cancellationToken = default)
+    {
+        await EnsureBucketAsync(cancellationToken);
+        var objects = new List<StorageObjectInfo>();
+        var request = new ListObjectsArgs().WithBucket(_bucket).WithPrefix(prefix.TrimStart('/')).WithRecursive(true);
+        await foreach (var item in _client.ListObjectsEnumAsync(request, cancellationToken))
+        {
+            if (!string.IsNullOrWhiteSpace(item.Key)) objects.Add(new StorageObjectInfo(item.Key, item.Size > long.MaxValue ? long.MaxValue : (long)item.Size));
+        }
+        return objects;
+    }
+
     public string GetPublicUrl(string objectKey) => $"{_publicBaseUrl.TrimEnd('/')}/{_bucket}/{objectKey.TrimStart('/')}";
 }
 

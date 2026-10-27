@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate, useParams } from './navigation.jsx'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from './navigation.jsx'
+import { useLocation, useNavigate, useParams } from './navigation-hooks.js'
 import NextLink from 'next/link'
-import { useParams as useNextParams, usePathname, useRouter } from 'next/navigation'
+import { useParams as useNextParams, useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useLocale } from './LocaleContext.jsx'
-import { apiRequest, clearSession, getAccessToken } from './api/session.js'
+import { useLocale } from './locale-context.js'
+import { apiRequest, clearSession, getSessionUser, hasSession } from './api/session.js'
 import { useAuthStore } from './store/auth-store'
-import './CommunityPages.css'
+import AppHeader from './components/layout/AppHeader.jsx'
+import Avatar from './components/common/Avatar.jsx'
 
 const EDITORIAL_STARTERS = [
   {
@@ -43,24 +45,25 @@ const EDITORIAL_STARTERS = [
   },
 ]
 
-const token = () => getAccessToken()
+const token = () => hasSession()
 
-function Avatar({ user, size = 'normal' }) {
-  const initials = (user?.fullName || user?.username || '?').slice(0, 1).toUpperCase()
-  return user?.avatarUrl
-    ? <img className={`community-avatar ${size}`} src={user.avatarUrl} alt={user.fullName || user.username} />
-    : <span className={`community-avatar avatar-fallback ${size}`}>{initials}</span>
+function NavigationLink({ to, useNextLinks, ...props }) {
+  return useNextLinks
+    ? <NextLink href={to} {...props} />
+    : <Link to={to} {...props} />
 }
 
 function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
   const { t } = useLocale()
   const [me, setMe] = useState(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [openGroup, setOpenGroup] = useState(null)
+  const navigationRef = useRef(null)
   const sessionUser = useAuthStore((state) => state.user)
   const setSessionUser = useAuthStore((state) => state.setUser)
   useEffect(() => {
     const loadAccount = () => {
-      if (!token() && !localStorage.getItem('refreshToken')) return
+      if (!token() && !getSessionUser()) return
       Promise.all([apiRequest('/account/me'), apiRequest('/features/notifications')]).then(([user, notifications]) => {
       setMe(user)
       setSessionUser(user)
@@ -70,14 +73,24 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
     loadAccount()
     window.addEventListener('auth-session-refreshed', loadAccount)
     return () => window.removeEventListener('auth-session-refreshed', loadAccount)
+  }, [setSessionUser])
+  useEffect(() => {
+    const closeMenu = event => { if (!navigationRef.current?.contains(event.target)) setOpenGroup(null) }
+    const closeOnEscape = event => { if (event.key === 'Escape') setOpenGroup(null) }
+    document.addEventListener('pointerdown', closeMenu)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeMenu)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
   }, [])
+  useEffect(() => { setOpenGroup(null) }, [pathname])
   const logout = async () => {
-    const refreshToken = localStorage.getItem('refreshToken')
     try {
-      if (refreshToken) {
+      if (token() || getSessionUser()) {
         await apiRequest('/auth/logout', {
           method: 'POST',
-          body: JSON.stringify({ refreshToken }),
+          body: JSON.stringify({}),
         })
       }
     } catch {
@@ -115,30 +128,27 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
     {
       title: 'Tài khoản',
       links: [
-        ['/account', 'Cài đặt tài khoản'], ['/notifications', 'Thông báo'], ['/creator', 'Thống kê tác giả'],
+        ['/account', 'Cài đặt tài khoản'], ['/security', 'Bảo mật tài khoản'], ['/notifications', 'Thông báo'], ['/creator', 'Thống kê tác giả'],
         ['/drafts', 'Bản nháp'], ['/safety', 'An toàn cộng đồng'],
       ],
     },
   ]
   const isActive = (path) => pathname === path || (path !== '/community' && pathname.startsWith(`${path}/`))
   const currentUser = me || sessionUser
-  const AppLink = ({ to, ...props }) => useNextLinks
-    ? <NextLink href={to} {...props} />
-    : <Link to={to} {...props} />
-
   return (
     <header className="community-nav">
-      <AppLink to="/community" className="community-wordmark"><span className="wordmark-mark">B</span><span>Bếp Nhà<small>{t('CỘNG ĐỒNG ẨM THỰC')}</small></span></AppLink>
-      <nav aria-label={t('Điều hướng chính')}>
-        <AppLink to="/community" className={`community-nav-home${isActive('/community') ? ' active' : ''}`} aria-current={isActive('/community') ? 'page' : undefined}>{t('Bảng tin')}</AppLink>
+      <NavigationLink to="/community" useNextLinks={useNextLinks} className="community-wordmark"><span className="wordmark-mark">B</span><span>Bếp Nhà<small>{t('CỘNG ĐỒNG ẨM THỰC')}</small></span></NavigationLink>
+      <nav ref={navigationRef} aria-label={t('Điều hướng chính')}>
+        <NavigationLink to="/community" useNextLinks={useNextLinks} className={`community-nav-home${isActive('/community') ? ' active' : ''}`} aria-current={isActive('/community') ? 'page' : undefined}>{t('Bảng tin')}</NavigationLink>
+        <NavigationLink to="/home" useNextLinks={useNextLinks} className={`community-nav-home${isActive('/home') ? ' active' : ''}`} aria-current={isActive('/home') ? 'page' : undefined}>{t('Trang chủ')}</NavigationLink>
         {navigationGroups.map((group) => (
-          <details className="community-nav-group" key={group.title}>
+          <details className="community-nav-group" key={group.title} open={openGroup === group.title} onToggle={event => setOpenGroup(event.currentTarget.open ? group.title : null)}>
             <summary>{t(group.title)}<span aria-hidden="true">⌄</span></summary>
             <div className="community-nav-group-links">
               {group.links.map(([path, label]) => (
-                <AppLink key={path} to={path} className={isActive(path) ? 'active' : ''} aria-current={isActive(path) ? 'page' : undefined}>
+                <NavigationLink key={path} to={path} useNextLinks={useNextLinks} onClick={() => setOpenGroup(null)} className={isActive(path) ? 'active' : ''} aria-current={isActive(path) ? 'page' : undefined}>
                   {t(label)}
-                </AppLink>
+                </NavigationLink>
               ))}
             </div>
           </details>
@@ -146,12 +156,12 @@ function CommunityNavContent({ navigate, pathname, useNextLinks = false }) {
       </nav>
       <div className="community-nav-account">
         {currentUser ? <>
-          {currentUser.role === 'Admin' && <AppLink to="/admin">Quản trị</AppLink>}
-          <AppLink to={`/members/${encodeURIComponent(currentUser.username)}`} className="nav-profile"><Avatar user={currentUser} size="small" /><span>{currentUser.fullName || currentUser.displayName || currentUser.username}</span></AppLink>
+          {currentUser.role === 'Admin' && <NavigationLink to="/admin" useNextLinks={useNextLinks}>Quản trị</NavigationLink>}
+          <NavigationLink to={`/members/${encodeURIComponent(currentUser.username)}`} useNextLinks={useNextLinks} className="nav-profile"><Avatar user={currentUser} size="small" /><span>{currentUser.fullName || currentUser.displayName || currentUser.username}</span>{unreadCount > 0 && <small aria-label={`${unreadCount} thông báo chưa đọc`}>({unreadCount})</small>}</NavigationLink>
           <button type="button" onClick={logout}>{t('Đăng xuất')}</button>
         </> : <>
-          <AppLink to="/login" className="nav-login">{t('Đăng nhập')}</AppLink>
-          <AppLink to="/register" className="nav-join">{t('Tạo tài khoản')}</AppLink>
+          <NavigationLink to="/login" useNextLinks={useNextLinks} className="nav-login">{t('Đăng nhập')}</NavigationLink>
+          <NavigationLink to="/register" useNextLinks={useNextLinks} className="nav-join">{t('Tạo tài khoản')}</NavigationLink>
         </>}
       </div>
     </header>
@@ -165,12 +175,10 @@ export function CommunityNav() {
 }
 
 export function NextCommunityNav() {
-  const router = useRouter()
-  const pathname = usePathname()
-  return <CommunityNavContent navigate={(path) => router.push(path)} pathname={pathname} useNextLinks />
+  return <AppHeader />
 }
 
-function CommunityLayout({ children }) {
+export function CommunityLayout({ children }) {
   return <div className="community-app">{children}</div>
 }
 
@@ -667,8 +675,20 @@ export function AccountPage() {
   const [password, setPassword] = useState({ currentPassword: '', newPassword: '' })
   const [saving, setSaving] = useState(false)
   useEffect(() => {
-    if (!token()) { navigate('/login'); return }
-    apiRequest('/account/me').then(user => { setProfile(user); setForm({ ...user, birthDate: user.birthDate ? user.birthDate.slice(0, 10) : '' }) }).catch(error => toast.error(error.message))
+    let active = true
+    apiRequest('/account/me').then(user => {
+      if (!active) return
+      setProfile(user)
+      setForm({ ...user, birthDate: user.birthDate ? user.birthDate.slice(0, 10) : '' })
+    }).catch(error => {
+      if (error.status === 401) {
+        clearSession()
+        navigate('/login')
+        return
+      }
+      toast.error(error.message)
+    })
+    return () => { active = false }
   }, [navigate])
   const updateField = event => setForm(current => ({ ...current, [event.target.name]: event.target.value }))
   const saveProfile = async event => {

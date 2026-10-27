@@ -1,33 +1,36 @@
 ﻿using CulinaryBlog.Application.CQRS.Recipes.Commands;
 using CulinaryBlog.Application.DTOs;
-using CulinaryBlog.Application.Interfaces; // Dùng IApplicationDbContext chuẩn Clean Architecture
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
+using CulinaryBlog.Domain.Exceptions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Application.CQRS.Recipes.Handlers;
 
 public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, RecipeDto>
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ICacheService _cache;
 
-    public CreateRecipeCommandHandler(IApplicationDbContext context, ICacheService cache)
+    public CreateRecipeCommandHandler(IUnitOfWork unitOfWork, ICacheService cache)
     {
-        _context = context;
+        _unitOfWork = unitOfWork;
         _cache = cache;
     }
 
     public async Task<RecipeDto> Handle(CreateRecipeCommand request, CancellationToken cancellationToken)
     {
         // 1. Kiểm tra Category có tồn tại không
-        var categoryExists = await _context.Categories.AnyAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken);
+        var categoryExists = await _unitOfWork.Repository<Category>().ExistsAsync(c => c.Id == request.CategoryId && !c.IsDeleted, cancellationToken);
         if (!categoryExists)
         {
-            throw new Exception("Danh mục (CategoryId) không tồn tại trong hệ thống!");
+            throw new NotFoundException("Danh mục (CategoryId) không tồn tại trong hệ thống.");
         }
 
-        var ingredientInputs = request.RecipeIngredients
+        // JSON clients may explicitly send a collection as null. Treat it as an
+        // empty collection so the domain validation returns a useful 400 instead
+        // of leaking a NullReferenceException as a 500 response.
+        var ingredientInputs = (request.RecipeIngredients ?? [])
             .Where(item => !string.IsNullOrWhiteSpace(item.Name))
             .Select((item, index) => new { Item = item, Index = index })
             .OrderBy(entry => entry.Item.OrderIndex ?? entry.Index + 1)
@@ -37,19 +40,19 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
 
         if (ingredientInputs.Count == 0)
         {
-            ingredientInputs = request.Ingredients
+            ingredientInputs = (request.Ingredients ?? [])
                 .Where(item => !string.IsNullOrWhiteSpace(item))
                 .Select((item, index) => new CreateRecipeIngredientDto { Name = item, OrderIndex = index + 1 })
                 .ToList();
         }
 
-        var stepInputs = request.RecipeSteps
+        var stepInputs = (request.RecipeSteps ?? [])
             .Where(item => !string.IsNullOrWhiteSpace(item.Description))
             .ToList();
 
         if (stepInputs.Count == 0)
         {
-            stepInputs = request.Instructions
+            stepInputs = (request.Instructions ?? [])
                 .Where(item => !string.IsNullOrWhiteSpace(item))
                 .Select(item => new CreateRecipeStepDto { Description = item })
                 .ToList();
@@ -57,6 +60,7 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
 
         var ingredientNames = ingredientInputs.Select(item => item.Name.Trim()).ToList();
         var stepDescriptions = stepInputs.Select(item => item.Description.Trim()).ToList();
+        Recipe.EnsureMinimumContent(ingredientNames.Count, stepDescriptions.Count);
         var recipe = Recipe.Create(
             request.Title,
             request.Description,
@@ -74,7 +78,7 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
         var slugBase = Recipe.CreateSlug(request.Title);
         var slug = slugBase;
         var suffix = 2;
-        while (await _context.Recipes.AnyAsync(existing => existing.Slug == slug, cancellationToken))
+        while (await _unitOfWork.Repository<Recipe>().ExistsAsync(existing => existing.Slug == slug, cancellationToken))
         {
             slug = $"{slugBase}-{suffix++}";
         }
@@ -106,12 +110,12 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
                 item.TimerMinutes,
                 item.ImageUrl))
             .ToList();
-        _context.RecipeIngredients.AddRange(recipeIngredients);
-        _context.RecipeSteps.AddRange(recipeSteps);
+        foreach (var ingredient in recipeIngredients) await _unitOfWork.Repository<RecipeIngredient>().AddAsync(ingredient, cancellationToken);
+        foreach (var step in recipeSteps) await _unitOfWork.Repository<RecipeStep>().AddAsync(step, cancellationToken);
 
         // Persist the recipe and its structured children together.
-        _context.Recipes.Add(recipe);
-        await _context.SaveChangesAsync(cancellationToken);
+        await _unitOfWork.Repository<Recipe>().AddAsync(recipe, cancellationToken);
+        await _unitOfWork.SaveChangesAsync(cancellationToken);
         await _cache.RemoveAsync(CacheKeys.Recipes, cancellationToken);
 
         // 4. Trả về Response DTO
@@ -147,6 +151,8 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
             CategoryId = recipe.CategoryId,
             AuthorId = recipe.AuthorId,
             Status = recipe.Status,
+            CreatedAt = recipe.CreatedAt,
+            UpdatedAt = recipe.UpdatedAt,
             PrepTimeMinutes = recipe.PrepTimeMinutes,
             CookTimeMinutes = recipe.CookTimeMinutes,
             Servings = recipe.Servings,

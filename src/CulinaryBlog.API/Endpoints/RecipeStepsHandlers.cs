@@ -96,6 +96,12 @@ public class RecipeStepsHandlers : EndpointHandler
         }
         if (!await CanManageRecipeAsync(recipeId)) return Forbid();
 
+        var stepCount = await _context.RecipeSteps.CountAsync(item => item.RecipeId == recipeId);
+        if (stepCount <= Recipe.MinimumStepCount)
+        {
+            return BadRequest(new { message = $"Mỗi công thức phải giữ ít nhất {Recipe.MinimumStepCount} bước nấu." });
+        }
+
         await using var transaction = await _context.Database.BeginTransactionAsync();
         _context.RecipeSteps.Remove(step);
         await _context.SaveChangesAsync();
@@ -124,14 +130,30 @@ public class RecipeStepsHandlers : EndpointHandler
     private async Task ReindexStepsAsync(Guid recipeId, List<RecipeStep> rows, bool beginTransaction = true)
     {
         await using var transaction = beginTransaction ? await _context.Database.BeginTransactionAsync() : null;
+        if (!_context.Database.IsRelational())
+        {
+            for (var index = 0; index < rows.Count; index++)
+                rows[index].SetStepNumber(index + 1);
+            await _context.SaveChangesAsync();
+            if (transaction != null) await transaction.CommitAsync();
+            return;
+        }
+
+        var orderedIds = rows.Select(item => item.Id).ToList();
+
+        // Avoid EF's circular dependency when values in the unique order sequence
+        // must be shifted after a step is removed.
         await _context.RecipeSteps.Where(item => item.RecipeId == recipeId)
             .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.StepNumber, item => item.StepNumber + 1_000_000));
-        for (var index = 0; index < rows.Count; index++)
+        for (var index = 0; index < orderedIds.Count; index++)
         {
-            rows[index].SetStepNumber(index + 1);
-            _context.Entry(rows[index]).Property(item => item.StepNumber).IsModified = true;
+            var stepId = orderedIds[index];
+            await _context.RecipeSteps.Where(item => item.Id == stepId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.StepNumber, index + 1));
         }
-        await _context.SaveChangesAsync();
+        // ExecuteUpdate bypasses the change tracker. Clear stale tracked order values
+        // so a later query in this request observes the reindexed rows.
+        _context.ChangeTracker.Clear();
         if (transaction != null) await transaction.CommitAsync();
     }
 }

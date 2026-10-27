@@ -46,5 +46,30 @@ public sealed class LocalFileStorageService : IFileStorageService
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<string>> ListKeysAsync(string prefix, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalizedPrefix = prefix.Trim('/', '\\').Replace('\\', '/');
+        var directory = Path.Combine(_root, normalizedPrefix.Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(directory)) return Task.FromResult<IReadOnlyList<string>>([]);
+
+        IReadOnlyList<string> keys = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(_root, path).Replace('\\', '/'))
+            .ToList();
+        return Task.FromResult(keys);
+    }
+
+    public Task<IReadOnlyList<StorageObjectInfo>> ListObjectsAsync(string prefix, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var normalizedPrefix = prefix.Trim('/', '\\').Replace('\\', '/');
+        var directory = Path.Combine(_root, normalizedPrefix.Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(directory)) return Task.FromResult<IReadOnlyList<StorageObjectInfo>>([]);
+        IReadOnlyList<StorageObjectInfo> files = Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+            .Select(path => new StorageObjectInfo(Path.GetRelativePath(_root, path).Replace('\\', '/'), new FileInfo(path).Length))
+            .ToList();
+        return Task.FromResult(files);
+    }
+
     public string GetPublicUrl(string objectKey) => $"/uploads/{objectKey.Replace('\\', '/') }";
 }

@@ -8,8 +8,6 @@ public static class OpenAIEndpoints
 {
     public static void MapOpenAI(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/openai/chat", (OpenAIHandlers handler, HttpContext context, [FromBody] OpenAiChatRequest request, CancellationToken cancellationToken) => { handler.HttpContext = context; return handler.Chat(request, cancellationToken); })
-            .WithTags("OpenAI").AddEndpointFilter<RequestValidationFilter>();
         app.MapPost("/api/v1/openai/chat", (OpenAIHandlers handler, HttpContext context, [FromBody] OpenAiChatRequest request, CancellationToken cancellationToken) => { handler.HttpContext = context; return handler.Chat(request, cancellationToken); })
             .WithTags("OpenAI").AddEndpointFilter<RequestValidationFilter>();
     }

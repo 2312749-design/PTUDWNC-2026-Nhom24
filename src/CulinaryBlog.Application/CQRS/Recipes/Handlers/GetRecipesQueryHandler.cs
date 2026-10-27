@@ -2,30 +2,33 @@
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Application.CQRS.Recipes.Handlers;
 
 public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerable<RecipeDto>>
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ICacheService _cache;
 
-    public GetRecipesQueryHandler(IApplicationDbContext context, ICacheService cache)
+    public GetRecipesQueryHandler(IUnitOfWork unitOfWork, ICacheService cache)
     {
-        _context = context;
+        _unitOfWork = unitOfWork;
         _cache = cache;
     }
 
     public async Task<IEnumerable<RecipeDto>> Handle(GetRecipesQuery request, CancellationToken cancellationToken)
     {
         var cached = await _cache.GetAsync<IEnumerable<RecipeDto>>(CacheKeys.Recipes, cancellationToken);
-        if (cached != null) return cached;
+        if (cached != null && cached.All(recipe => recipe.CreatedAt != default))
+            return cached.OrderByDescending(recipe => recipe.CreatedAt).ThenBy(recipe => recipe.Id).ToList();
 
-        var recipes = await _context.Recipes
-            .Where(r => !r.IsDeleted && r.Status == CulinaryBlog.Domain.Entities.RecipeStatus.Published && !r.Category.IsDeleted)
-            .Include(r => r.Category)
-            .Include(r => r.Author)
+        var allRecipes = await _unitOfWork.Repository<CulinaryBlog.Domain.Entities.Recipe>().GetAllAsync(cancellationToken);
+        var categories = await _unitOfWork.Repository<CulinaryBlog.Domain.Entities.Category>().GetAllAsync(cancellationToken);
+        var categoryById = categories.ToDictionary(category => category.Id);
+        var recipes = allRecipes
+            .Where(r => !r.IsDeleted && r.Status == CulinaryBlog.Domain.Entities.RecipeStatus.Published && categoryById.TryGetValue(r.CategoryId, out var category) && !category.IsDeleted && category.IsVisible)
+            .OrderByDescending(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
             .Select(r => new RecipeDto
             {
                 Id = r.Id,
@@ -36,9 +39,10 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
                 Ingredients = r.Ingredients,
                 Instructions = r.Instructions,
                 CategoryId = r.CategoryId,
-                CategoryName = r.Category != null ? r.Category.Name : string.Empty,
+                CategoryName = categoryById[r.CategoryId].Name,
                 AuthorId = r.AuthorId,
                 Status = r.Status,
+                CreatedAt = r.CreatedAt,
                 UpdatedAt = r.UpdatedAt,
                 PrepTimeMinutes = r.PrepTimeMinutes,
                 CookTimeMinutes = r.CookTimeMinutes,
@@ -56,7 +60,7 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
                     Sodium = r.Nutrition.Sodium
                 }
             })
-            .ToListAsync(cancellationToken);
+            .ToList();
         await _cache.SetAsync(CacheKeys.Recipes, recipes, TimeSpan.FromMinutes(5), cancellationToken);
         return recipes;
     }

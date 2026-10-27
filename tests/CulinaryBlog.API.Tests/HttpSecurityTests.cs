@@ -60,22 +60,32 @@ public class HttpSecurityTests : IAsyncLifetime
         request.Headers.Add("Access-Control-Request-Method", "POST");
         var response = await _client.SendAsync(request);
         Assert.Equal(allowed, response.Headers.Contains("Access-Control-Allow-Origin"));
-        if (allowed) Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        if (allowed)
+        {
+            Assert.Equal(origin, response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+            Assert.Equal("true", response.Headers.GetValues("Access-Control-Allow-Credentials").Single());
+        }
     }
 
     [Fact]
-    public async Task Registration_AllAliasesShareLimit_AndLoginHasSeparateBudget()
+    public async Task Registration_VersionedRoutesShareLimit_AndLoginHasSeparateBudget()
     {
-        foreach (var route in new[] { "/api/v1/auth/register", "/api/auth/signup", "/api/v1/auth/signup" })
+        foreach (var route in new[] { "/api/v1/auth/register", "/api/v1/auth/signup", "/api/v1/auth/register" })
         {
             var response = await _client.PostAsJsonAsync(route, new { });
             Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
             Assert.Contains("errors", await response.Content.ReadAsStringAsync());
         }
-        var rejected = await _client.PostAsJsonAsync("/api/auth/register", new { });
+        var rejected = await _client.PostAsJsonAsync("/api/v1/auth/register", new { });
         Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
         Assert.True(rejected.Headers.Contains("Retry-After"));
         Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync("/api/v1/auth/login", new { })).StatusCode);
+    }
+
+    [Fact]
+    public async Task PreVersionedRoutes_AreNotExposed()
+    {
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync("/api/auth/login", new { })).StatusCode);
     }
 
     [Fact]

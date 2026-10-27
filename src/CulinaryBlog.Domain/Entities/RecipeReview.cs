@@ -10,6 +10,7 @@ public class RecipeReview
     public int Rating { get; set; }
     public string Content { get; set; } = string.Empty;
     public bool IsCooked { get; set; }
+    public string? PhotoUrl { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

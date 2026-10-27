@@ -4,6 +4,8 @@ using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Jobs;
+using Hangfire;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,18 +21,20 @@ namespace CulinaryBlog.API.Endpoints
         private readonly ApplicationDbContext _context;
         private readonly ICacheService _cache;
         private readonly IFileStorageService? _fileStorageService;
+        private readonly IBackgroundJobClient? _backgroundJobs;
 
         public RecipesHandlers(IMediator mediator, ApplicationDbContext context, ICacheService cache)
-            : this(mediator, context, cache, null)
+            : this(mediator, context, cache, null, null)
         {
         }
 
-        public RecipesHandlers(IMediator mediator, ApplicationDbContext context, ICacheService cache, IFileStorageService? fileStorageService)
+        public RecipesHandlers(IMediator mediator, ApplicationDbContext context, ICacheService cache, IFileStorageService? fileStorageService, IBackgroundJobClient? backgroundJobs = null)
         {
             _mediator = mediator;
             _context = context;
             _cache = cache;
             _fileStorageService = fileStorageService;
+            _backgroundJobs = backgroundJobs;
         }
 
         // 1. Lấy danh sách tất cả Recipe thông qua MediatR CQRS Query
@@ -42,7 +46,7 @@ namespace CulinaryBlog.API.Endpoints
         public async Task<ApiResponseResult> GetRecipeById(Guid id)
         {
             var cached = await _cache.GetAsync<RecipeDto>(CacheKeys.Recipe(id));
-            if (cached?.Status == RecipeStatus.Published) return Ok(cached);
+            if (cached?.Status == RecipeStatus.Published && cached.CreatedAt != default) return Ok(cached);
 
             var recipe = await _context.Recipes
                 .Include(r => r.Category)
@@ -82,7 +86,7 @@ namespace CulinaryBlog.API.Endpoints
         public async Task<ApiResponseResult> GetSitemapRecipes()
         {
             var recipes = await _context.Recipes.AsNoTracking()
-                .Where(recipe => !recipe.IsDeleted && recipe.Status == RecipeStatus.Published && !recipe.Category.IsDeleted)
+                .Where(recipe => !recipe.IsDeleted && recipe.Status == RecipeStatus.Published && !recipe.Category.IsDeleted && recipe.Category.IsVisible)
                 .OrderBy(recipe => recipe.Id)
                 .Select(recipe => new { recipe.Slug, recipe.UpdatedAt })
                 .ToListAsync();
@@ -130,6 +134,8 @@ namespace CulinaryBlog.API.Endpoints
             try
             {
                 var result = await _mediator.Send(command);
+                AddActivity(userId, "recipe.created", $"Tạo công thức: {result.Title}.");
+                await _context.SaveChangesAsync();
                 return Created($"/api/v1/recipes/{result.Id}", result);
             }
             catch (Exception ex)
@@ -163,6 +169,14 @@ namespace CulinaryBlog.API.Endpoints
             {
                 return BadRequest(new { message = "Danh mục (CategoryId) không tồn tại!" });
             }
+
+            var ingredientCount = dto.RecipeIngredients is { Count: > 0 }
+                ? dto.RecipeIngredients.Count(item => !string.IsNullOrWhiteSpace(item.Name))
+                : dto.Ingredients.Count(item => !string.IsNullOrWhiteSpace(item));
+            var stepCount = dto.RecipeSteps is { Count: > 0 }
+                ? dto.RecipeSteps.Count(item => !string.IsNullOrWhiteSpace(item.Description))
+                : dto.Instructions.Count(item => !string.IsNullOrWhiteSpace(item));
+            Recipe.EnsureMinimumContent(ingredientCount, stepCount);
 
             recipe.Update(
                 dto.Title,
@@ -210,6 +224,8 @@ namespace CulinaryBlog.API.Endpoints
             await ReplaceRecipeChildrenAsync(recipe.Id, dto.RecipeIngredients, dto.RecipeSteps, dto.Ingredients, dto.Instructions);
             await transaction.CommitAsync();
             await InvalidateCachesAsync(id);
+            AddActivity(userId, "recipe.updated", $"Cập nhật công thức: {recipe.Title}.");
+            await _context.SaveChangesAsync();
 
             return Ok(new { message = "Cập nhật công thức nấu ăn thành công!" });
         }
@@ -255,15 +271,17 @@ namespace CulinaryBlog.API.Endpoints
                 throw new CulinaryBlog.Domain.Exceptions.ValidationException("Không thể xuất bản công thức thuộc danh mục đã xóa.");
             }
 
-            var hasIngredient = await _context.RecipeIngredients.AnyAsync(item => item.RecipeId == id && item.Name.Trim() != "") ||
-                recipe.Ingredients.Any(item => !string.IsNullOrWhiteSpace(item));
-            var hasStep = await _context.RecipeSteps.AnyAsync(item => item.RecipeId == id && item.Description.Trim() != "") ||
-                recipe.Instructions.Any(item => !string.IsNullOrWhiteSpace(item));
-            var changed = recipe.Publish(hasIngredient, hasStep);
+            var persistedIngredientCount = await _context.RecipeIngredients.CountAsync(item => item.RecipeId == id && item.Name.Trim() != "");
+            var persistedStepCount = await _context.RecipeSteps.CountAsync(item => item.RecipeId == id && item.Description.Trim() != "");
+            var ingredientCount = Math.Max(persistedIngredientCount, recipe.Ingredients.Count(item => !string.IsNullOrWhiteSpace(item)));
+            var stepCount = Math.Max(persistedStepCount, recipe.Instructions.Count(item => !string.IsNullOrWhiteSpace(item)));
+            var changed = recipe.Publish(ingredientCount, stepCount);
             if (changed)
             {
                 await _context.SaveChangesAsync();
                 await InvalidateCachesAsync(id);
+                AddActivity(recipe.AuthorId, "recipe.published", $"Xuất bản công thức: {recipe.Title}.");
+                await _context.SaveChangesAsync();
             }
             return Ok(new { data = new { recipe.Id, status = recipe.Status }, changed });
         }
@@ -271,9 +289,22 @@ namespace CulinaryBlog.API.Endpoints
         public Task<ApiResponseResult> ArchiveRecipe(Guid id) => TransitionRecipeAsync(id, recipe => recipe.Archive());
         public Task<ApiResponseResult> RestoreRecipe(Guid id) => TransitionRecipeAsync(id, recipe => recipe.RestoreToDraft());
 
+        public async Task<ApiResponseResult> SubmitForReview(Guid id)
+        {
+            var authorization = await GetManageableRecipeAsync(id);
+            if (authorization.Recipe is null) return NotFound(new { message = "Không tìm thấy công thức." });
+            if (!authorization.CanManage) return Forbid();
+            var recipe = authorization.Recipe;
+            recipe.RequestReview();
+            await _context.SaveChangesAsync();
+            await InvalidateCachesAsync(id);
+            return Ok(new { message = "Đã gửi công thức tới hàng chờ duyệt.", data = new { recipe.Id, recipe.ReviewStatus, recipe.ReviewRequestedAt } });
+        }
+
         public async Task<ApiResponseResult> UploadRecipeImage(Guid id, IFormFile file)
         {
             if (_fileStorageService is null) return StatusCode(500, new { message = "Dịch vụ lưu trữ ảnh chưa được cấu hình." });
+            if (_backgroundJobs is null) return StatusCode(500, new { message = "Dịch vụ nền xử lý ảnh chưa được cấu hình." });
             var authorization = await GetManageableRecipeAsync(id);
             if (authorization.Recipe is null) return NotFound(new { message = "Không tìm thấy công thức." });
             if (!authorization.CanManage) return Forbid();
@@ -285,14 +316,12 @@ namespace CulinaryBlog.API.Endpoints
 
             await using var original = new MemoryStream(image.Content, writable: false);
             var originalUrl = await _fileStorageService.UploadAsync(original, $"{prefix}{image.Extension}", image.ContentType);
-            await using var thumbnailSource = new MemoryStream(image.Content, writable: false);
-            var thumbnail = await CulinaryBlog.Infrastructure.Services.ImageThumbnailService.CreateThumbnailAsync(thumbnailSource);
-            await using var thumbnailStream = new MemoryStream(thumbnail, writable: false);
-            var thumbnailUrl = await _fileStorageService.UploadThumbnailAsync(thumbnailStream, $"{prefix}-thumb.webp", "image/webp");
-            await using var mediumSource = new MemoryStream(image.Content, writable: false);
-            var medium = await CulinaryBlog.Infrastructure.Services.ImageThumbnailService.CreateMediumAsync(mediumSource);
-            await using var mediumStream = new MemoryStream(medium, writable: false);
-            var mediumUrl = await _fileStorageService.UploadThumbnailAsync(mediumStream, $"{prefix}-medium.webp", "image/webp");
+            var thumbnailFileName = $"{prefix}-thumb.webp";
+            var mediumFileName = $"{prefix}-medium.webp";
+            var thumbnailUrl = _fileStorageService.GetPublicUrl(thumbnailFileName);
+            var mediumUrl = _fileStorageService.GetPublicUrl(mediumFileName);
+            _backgroundJobs.Enqueue<ThumbnailGenerationJob>(job =>
+                job.GenerateAsync(image.Content, thumbnailFileName, mediumFileName));
 
             var recipe = authorization.Recipe;
             var isPrimary = !await _context.RecipeImages.AnyAsync(item => item.RecipeId == id);
@@ -398,6 +427,18 @@ namespace CulinaryBlog.API.Endpoints
             await _cache.RemoveAsync(CacheKeys.Recipe(recipeId), cancellationToken);
         }
 
+        private void AddActivity(string userId, string activityType, string description)
+        {
+            _context.UserActivityLogs.Add(new UserActivityLog
+            {
+                UserId = userId,
+                ActivityType = activityType,
+                Description = description,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = HttpContext.Request.Headers.UserAgent.ToString()[..Math.Min(HttpContext.Request.Headers.UserAgent.ToString().Length, 512)]
+            });
+        }
+
         private static bool TryGetStorageKey(string url, out string key)
         {
             key = string.Empty;
@@ -411,7 +452,7 @@ namespace CulinaryBlog.API.Endpoints
         }
 
         private bool CanViewRecipe(Recipe recipe) =>
-            (recipe.Status == RecipeStatus.Published && recipe.Category?.IsDeleted != true) ||
+            (recipe.Status == RecipeStatus.Published && recipe.Category?.IsDeleted != true && recipe.Category?.IsVisible != false) ||
             User.IsInRole("Admin") || User.FindFirstValue(ClaimTypes.NameIdentifier) == recipe.AuthorId;
 
         private async Task<(Recipe? Recipe, bool CanManage)> GetManageableRecipeAsync(Guid id)
@@ -478,6 +519,7 @@ namespace CulinaryBlog.API.Endpoints
                 CategoryName = recipe.Category?.Name ?? string.Empty,
                 AuthorId = recipe.AuthorId,
                 Status = recipe.Status,
+                CreatedAt = recipe.CreatedAt,
                 UpdatedAt = recipe.UpdatedAt,
                 PrepTimeMinutes = recipe.PrepTimeMinutes,
                 CookTimeMinutes = recipe.CookTimeMinutes,

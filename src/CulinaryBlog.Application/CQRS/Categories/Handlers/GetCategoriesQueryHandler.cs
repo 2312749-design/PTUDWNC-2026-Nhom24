@@ -1,39 +1,56 @@
-﻿using CulinaryBlog.Application.CQRS.Categories.Queries;
+using CulinaryBlog.Application.CQRS.Categories.Queries;
 using CulinaryBlog.Application.DTOs;
-using CulinaryBlog.Application.Interfaces; // Sử dụng Interface thay vì tầng Infrastructure
+using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Domain.Entities;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.Application.CQRS.Categories.Handlers;
 
-public class GetCategoriesQueryHandler : IRequestHandler<GetCategoriesQuery, IEnumerable<CategoryDto>>
+public sealed class GetCategoriesQueryHandler : IRequestHandler<GetCategoriesQuery, IEnumerable<CategoryDto>>
 {
-    private readonly IApplicationDbContext _context;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ICacheService _cache;
 
-    public GetCategoriesQueryHandler(IApplicationDbContext context, ICacheService cache)
+    public GetCategoriesQueryHandler(IUnitOfWork unitOfWork, ICacheService cache)
     {
-        _context = context;
+        _unitOfWork = unitOfWork;
         _cache = cache;
     }
 
     public async Task<IEnumerable<CategoryDto>> Handle(GetCategoriesQuery request, CancellationToken cancellationToken)
     {
         var cached = await _cache.GetAsync<IEnumerable<CategoryDto>>(CacheKeys.Categories, cancellationToken);
-        if (cached != null) return cached;
+        if (cached is not null) return cached;
 
-        var categories = await _context.Categories
-            .Where(c => !c.IsDeleted)
-            .Select(c => new CategoryDto
+        // Categories are a small catalogue. The repository keeps EF Core out of
+        // the application layer while this projection remains simple and cacheable.
+        var categories = (await _unitOfWork.Repository<Category>().GetAllAsync(cancellationToken))
+            .Where(category => !category.IsDeleted && category.IsVisible)
+            .ToList();
+        var recipes = await _unitOfWork.Repository<Recipe>().GetAllAsync(cancellationToken);
+        var recipeCounts = recipes
+            .Where(recipe => !recipe.IsDeleted)
+            .GroupBy(recipe => recipe.CategoryId)
+            .ToDictionary(group => group.Key, group => new
             {
-                Id = c.Id,
-                Name = c.Name,
-                Slug = c.Slug,
-                Description = c.Description,
-                ImageUrl = c.ImageUrl
+                Total = group.Count(),
+                Published = group.Count(recipe => recipe.Status == RecipeStatus.Published)
+            });
+
+        var result = categories
+            .Select(category => new CategoryDto
+            {
+                Id = category.Id,
+                Name = category.Name,
+                Slug = category.Slug,
+                Description = category.Description,
+                ImageUrl = category.ImageUrl,
+                RecipeCount = recipeCounts.TryGetValue(category.Id, out var count) ? count.Total : 0,
+                PublishedRecipeCount = recipeCounts.TryGetValue(category.Id, out count) ? count.Published : 0
             })
-            .ToListAsync(cancellationToken);
-        await _cache.SetAsync(CacheKeys.Categories, categories, TimeSpan.FromMinutes(10), cancellationToken);
-        return categories;
+            .ToList();
+
+        await _cache.SetAsync(CacheKeys.Categories, result, TimeSpan.FromMinutes(10), cancellationToken);
+        return result;
     }
 }

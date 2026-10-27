@@ -1,16 +1,12 @@
-using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.CQRS.Categories.Commands;
 using CulinaryBlog.Application.CQRS.Categories.Handlers;
 using CulinaryBlog.Application.CQRS.Categories.Queries;
-using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
 using CulinaryBlog.Infrastructure.Persistence;
-using MediatR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Moq;
 using Xunit;
 
 namespace CulinaryBlog.API.Tests;
@@ -40,7 +36,7 @@ public sealed class CategoryLifecycleTests : IAsyncLifetime
     [Fact]
     public async Task CreateCategory_AssignsSlugAndRejectsDuplicateName()
     {
-        var handler = new CreateCategoryCommandHandler(_context, _cache);
+        var handler = new CreateCategoryCommandHandler(CreateUnitOfWork(), _cache);
         var created = await handler.Handle(new CreateCategoryCommand
         {
             Name = "Món Việt", Description = "Món ăn Việt Nam"
@@ -62,8 +58,8 @@ public sealed class CategoryLifecycleTests : IAsyncLifetime
         _context.AddRange(category, user, recipe);
         await _context.SaveChangesAsync();
 
-        var handler = CreateHandler();
-        ResponseAssert.Status(409, await handler.DeleteCategory(category.Id));
+        var handler = new DeleteCategoryCommandHandler(CreateUnitOfWork(), _cache);
+        await Assert.ThrowsAsync<ConflictException>(() => handler.Handle(new DeleteCategoryCommand { Id = category.Id }, CancellationToken.None));
         Assert.False(category.IsDeleted);
         Assert.False(recipe.IsDeleted);
     }
@@ -78,13 +74,39 @@ public sealed class CategoryLifecycleTests : IAsyncLifetime
         _context.AddRange(category, user, deletedRecipe);
         await _context.SaveChangesAsync();
 
-        ResponseAssert.Status(200, await CreateHandler().DeleteCategory(category.Id));
+        await new DeleteCategoryCommandHandler(CreateUnitOfWork(), _cache)
+            .Handle(new DeleteCategoryCommand { Id = category.Id }, CancellationToken.None);
         Assert.True(category.IsDeleted);
         Assert.True(deletedRecipe.IsDeleted);
 
-        var visible = await new GetCategoriesQueryHandler(_context, _cache)
+        var visible = await new GetCategoriesQueryHandler(CreateUnitOfWork(), _cache)
             .Handle(new GetCategoriesQuery(), CancellationToken.None);
         Assert.DoesNotContain(visible, item => item.Id == category.Id);
+    }
+
+    [Fact]
+    public async Task UpdateCategory_UpdatesThroughUnitOfWorkAndInvalidatesCatalogCaches()
+    {
+        var category = Category.Create("Món hấp", "", null);
+        _context.Categories.Add(category);
+        await _context.SaveChangesAsync();
+        await _cache.SetAsync(CacheKeys.Categories, new object());
+        await _cache.SetAsync(CacheKeys.Category(category.Id), new object());
+        await _cache.SetAsync(CacheKeys.Recipes, new object());
+
+        var updated = await new UpdateCategoryCommandHandler(CreateUnitOfWork(), _cache)
+            .Handle(new UpdateCategoryCommand
+            {
+                Id = category.Id,
+                Name = "Món hấp mới",
+                Description = "Đã đổi tên"
+            }, CancellationToken.None);
+
+        Assert.Equal("mon-hap-moi", updated.Slug);
+        Assert.Equal("Món hấp mới", category.Name);
+        Assert.DoesNotContain(CacheKeys.Categories, _cache.Keys);
+        Assert.DoesNotContain(CacheKeys.Category(category.Id), _cache.Keys);
+        Assert.DoesNotContain(CacheKeys.Recipes, _cache.Keys);
     }
 
     [Fact]
@@ -95,13 +117,11 @@ public sealed class CategoryLifecycleTests : IAsyncLifetime
         _context.Categories.Add(category);
         await _context.SaveChangesAsync();
 
-        ResponseAssert.Status(404, await CreateHandler().UpdateCategory(category.Id, new CreateCategoryDto
-        {
-            Name = "Món hấp mới", Description = ""
-        }));
+        await Assert.ThrowsAsync<NotFoundException>(() => new UpdateCategoryCommandHandler(CreateUnitOfWork(), _cache)
+            .Handle(new UpdateCategoryCommand { Id = category.Id, Name = "Món hấp mới" }, CancellationToken.None));
     }
 
-    private CategoriesHandlers CreateHandler() => new(Mock.Of<IMediator>(), _context, _cache);
+    private UnitOfWork CreateUnitOfWork() => new(_context);
 
     private sealed class TestApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : ApplicationDbContext(options)
@@ -109,13 +129,14 @@ public sealed class CategoryLifecycleTests : IAsyncLifetime
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
-            builder.Entity<Recipe>().Ignore(recipe => recipe.SearchVector);
+            builder.Entity<Recipe>().Ignore("SearchVector");
         }
     }
 
     private sealed class TestCacheService : ICacheService
     {
         private readonly Dictionary<string, object> _values = new();
+        public IEnumerable<string> Keys => _values.Keys;
         public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default) =>
             Task.FromResult(_values.TryGetValue(key, out var value) ? (T)value : default);
         public Task SetAsync<T>(string key, T value, TimeSpan? expiry = null, CancellationToken cancellationToken = default)

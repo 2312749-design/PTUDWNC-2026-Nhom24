@@ -1,4 +1,4 @@
-﻿using CulinaryBlog.Application.Interfaces; // 1. Thêm namespace chứa interface
+using CulinaryBlog.Application.Interfaces; // 1. Thêm namespace chứa interface
 using CulinaryBlog.Domain.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +12,57 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     {
     }
 
+
+    public override int SaveChanges()
+    {
+        CaptureRecipeRevisions();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        CaptureRecipeRevisions();
+        return base.SaveChangesAsync(cancellationToken);
+    }
+
+    private void CaptureRecipeRevisions()
+    {
+        var changedRecipes = ChangeTracker.Entries<Recipe>()
+            .Where(entry => entry.State == EntityState.Modified)
+            .ToList();
+        foreach (var entry in changedRecipes)
+        {
+            var recipe = entry.Entity;
+            var original = entry.OriginalValues;
+            var nextVersion = RecipeRevisions.Where(item => item.RecipeId == recipe.Id).Select(item => (int?)item.Version).Max() ?? 0;
+            var snapshot = new RecipeRevisionSnapshot
+            {
+                Title = original.GetValue<string>(nameof(Recipe.Title)),
+                Description = original.GetValue<string?>(nameof(Recipe.Description)),
+                ImageUrl = original.GetValue<string?>(nameof(Recipe.ImageUrl)),
+                CategoryId = original.GetValue<Guid>(nameof(Recipe.CategoryId)),
+                Ingredients = (original[nameof(Recipe.Ingredients)] as List<string>)?.ToList() ?? recipe.Ingredients.ToList(),
+                Instructions = (original[nameof(Recipe.Instructions)] as List<string>)?.ToList() ?? recipe.Instructions.ToList(),
+                PrepTimeMinutes = original.GetValue<int>(nameof(Recipe.PrepTimeMinutes)),
+                CookTimeMinutes = original.GetValue<int>(nameof(Recipe.CookTimeMinutes)),
+                Servings = original.GetValue<int>(nameof(Recipe.Servings)),
+                Difficulty = original.GetValue<string>(nameof(Recipe.Difficulty)),
+                IsVegetarian = original.GetValue<bool>(nameof(Recipe.IsVegetarian)),
+                Nutrition = recipe.Nutrition
+            };
+            RecipeRevisions.Add(new RecipeRevision
+            {
+                RecipeId = recipe.Id,
+                Version = nextVersion + 1,
+                SnapshotJson = System.Text.Json.JsonSerializer.Serialize(snapshot),
+                CreatedById = recipe.AuthorId,
+                CreatedAt = DateTime.UtcNow
+            });
+#if false
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+#endif
+        }
+    }
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Recipe> Recipes => Set<Recipe>();
@@ -36,7 +87,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<UserBadge> UserBadges => Set<UserBadge>();
     public DbSet<RecipeView> RecipeViews => Set<RecipeView>();
     public DbSet<BlogArticle> BlogArticles => Set<BlogArticle>();
+    public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<TwoFactorRecoveryCode> TwoFactorRecoveryCodes => Set<TwoFactorRecoveryCode>();
+    public DbSet<EmailChangeRequest> EmailChangeRequests => Set<EmailChangeRequest>();
+    public DbSet<UserActivityLog> UserActivityLogs => Set<UserActivityLog>();
 
+    public DbSet<RecipeRevision> RecipeRevisions => Set<RecipeRevision>();
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+    public DbSet<CategoryRelationship> CategoryRelationships => Set<CategoryRelationship>();
+    public DbSet<PostReaction> PostReactions => Set<PostReaction>();
+    public DbSet<CookingEvent> CookingEvents => Set<CookingEvent>();
+    public DbSet<CookingEventRegistration> CookingEventRegistrations => Set<CookingEventRegistration>();
+    public DbSet<UserWorkspaceDraft> UserWorkspaceDrafts => Set<UserWorkspaceDraft>();
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -44,12 +106,113 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         // Cấu hình tên bảng chuẩn cho Identity và các thực thể
         builder.Entity<ApplicationUser>(entity => { entity.ToTable(name: "Users"); });
 
+        builder.Entity<AdminAuditLog>(entity => {
+            entity.ToTable("AdminAuditLogs");
+            entity.HasKey(log => log.Id);
+            entity.Property(log => log.Action).HasMaxLength(80).IsRequired();
+            entity.Property(log => log.TargetType).HasMaxLength(40).IsRequired();
+            entity.Property(log => log.TargetId).HasMaxLength(100).IsRequired();
+            entity.Property(log => log.Summary).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(log => new { log.CreatedAt, log.TargetType, log.TargetId });
+            entity.HasOne(log => log.Actor).WithMany().HasForeignKey(log => log.ActorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<TwoFactorRecoveryCode>(entity => {
+            entity.ToTable("TwoFactorRecoveryCodes");
+            entity.HasKey(code => code.Id);
+            entity.Property(code => code.CodeHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(code => new { code.UserId, code.CodeHash }).IsUnique();
+            entity.HasOne(code => code.User).WithMany().HasForeignKey(code => code.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<EmailChangeRequest>(entity => {
+            entity.ToTable("EmailChangeRequests");
+            entity.HasKey(request => request.Id);
+            entity.Property(request => request.NewEmail).HasMaxLength(254).IsRequired();
+            entity.Property(request => request.CodeHash).HasMaxLength(64).IsRequired();
+            entity.HasIndex(request => new { request.UserId, request.CreatedAt });
+            entity.HasOne(request => request.User).WithMany().HasForeignKey(request => request.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<UserActivityLog>(entity => {
+            entity.ToTable("UserActivityLogs");
+            entity.HasKey(activity => activity.Id);
+            entity.Property(activity => activity.ActivityType).HasMaxLength(80).IsRequired();
+            entity.Property(activity => activity.Description).HasMaxLength(500).IsRequired();
+            entity.Property(activity => activity.IpAddress).HasMaxLength(64);
+            entity.Property(activity => activity.UserAgent).HasMaxLength(512);
+            entity.HasIndex(activity => new { activity.UserId, activity.CreatedAt });
+            entity.HasOne(activity => activity.User).WithMany().HasForeignKey(activity => activity.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<RecipeRevision>(entity => {
+            entity.ToTable("RecipeRevisions");
+            entity.HasKey(revision => revision.Id);
+            entity.Property(revision => revision.SnapshotJson).HasMaxLength(60000).IsRequired();
+            entity.Property(revision => revision.CreatedById).HasMaxLength(450).IsRequired();
+            entity.HasIndex(revision => new { revision.RecipeId, revision.Version }).IsUnique();
+            entity.HasOne(revision => revision.Recipe).WithMany().HasForeignKey(revision => revision.RecipeId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(revision => revision.CreatedBy).WithMany().HasForeignKey(revision => revision.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<UserPreference>(entity => {
+            entity.ToTable("UserPreferences");
+            entity.HasKey(preference => preference.UserId);
+            entity.Property(preference => preference.SettingsJson).HasMaxLength(12000).IsRequired();
+            entity.HasOne(preference => preference.User).WithMany().HasForeignKey(preference => preference.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<CategoryRelationship>(entity => {
+            entity.ToTable("CategoryRelationships");
+            entity.HasKey(link => link.ChildCategoryId);
+            entity.HasOne(link => link.ChildCategory).WithMany().HasForeignKey(link => link.ChildCategoryId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(link => link.ParentCategory).WithMany().HasForeignKey(link => link.ParentCategoryId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(link => link.ParentCategoryId);
+        });
+
+        builder.Entity<PostReaction>(entity => {
+            entity.ToTable("PostReactions");
+            entity.HasKey(reaction => new { reaction.PostId, reaction.UserId });
+            entity.Property(reaction => reaction.Type).HasMaxLength(20).IsRequired();
+            entity.HasOne(reaction => reaction.Post).WithMany().HasForeignKey(reaction => reaction.PostId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(reaction => reaction.User).WithMany().HasForeignKey(reaction => reaction.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<CookingEvent>(entity => {
+            entity.ToTable("CookingEvents");
+            entity.HasKey(item => item.Id);
+            entity.Property(item => item.Title).HasMaxLength(160).IsRequired();
+            entity.Property(item => item.Description).HasMaxLength(3000).IsRequired();
+            entity.Property(item => item.CoverImageUrl).HasMaxLength(2048);
+            entity.Property(item => item.CreatedById).HasMaxLength(450).IsRequired();
+            entity.HasOne(item => item.CreatedBy).WithMany().HasForeignKey(item => item.CreatedById).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(item => new { item.StartsAt, item.EndsAt });
+        });
+
+        builder.Entity<CookingEventRegistration>(entity => {
+            entity.ToTable("CookingEventRegistrations");
+            entity.HasKey(item => new { item.EventId, item.UserId });
+            entity.HasOne(item => item.Event).WithMany().HasForeignKey(item => item.EventId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(item => item.SubmittedRecipe).WithMany().HasForeignKey(item => item.SubmittedRecipeId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(item => item.SubmittedRecipeId);
+        });
+
+        builder.Entity<UserWorkspaceDraft>(entity => {
+            entity.ToTable("UserWorkspaceDrafts");
+            entity.HasKey(item => new { item.UserId, item.DraftKey });
+            entity.Property(item => item.DraftKey).HasMaxLength(120);
+            entity.Property(item => item.ContentJson).HasMaxLength(30000).IsRequired();
+            entity.HasOne(item => item.User).WithMany().HasForeignKey(item => item.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<CommunityPost>(entity => {
             entity.ToTable("CommunityPosts");
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Content).HasMaxLength(3000);
             entity.Property(e => e.MediaUrl).HasMaxLength(2048);
             entity.Property(e => e.MediaType).HasMaxLength(10);
+            entity.Property(e => e.HiddenReason).HasMaxLength(500);
             entity.HasOne(e => e.Author).WithMany().HasForeignKey(e => e.AuthorId).OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => new { e.IsDraft, e.CreatedAt });
         });
@@ -116,6 +279,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Content).HasMaxLength(1200);
             entity.HasIndex(e => new { e.RecipeId, e.UserId }).IsUnique();
+            entity.Property(e => e.PhotoUrl).HasMaxLength(2048);
             entity.HasOne(e => e.Recipe).WithMany().HasForeignKey(e => e.RecipeId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -160,7 +324,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.TargetType).HasMaxLength(30);
             entity.Property(e => e.TargetId).HasMaxLength(80);
             entity.Property(e => e.Reason).HasMaxLength(500);
+            entity.Property(e => e.ResolutionAction).HasMaxLength(80);
+            entity.Property(e => e.ResolutionNote).HasMaxLength(1000);
             entity.HasOne(e => e.Reporter).WithMany().HasForeignKey(e => e.ReporterId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ResolvedBy).WithMany().HasForeignKey(e => e.ResolvedById).OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => new { e.TargetType, e.TargetId, e.CreatedAt });
         });
 
@@ -200,6 +367,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.HasKey(e => e.Id);
             entity.Property(e => e.TokenHash).IsRequired().HasMaxLength(64);
             entity.Property(e => e.TokenFamilyId).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.IpAddress).HasMaxLength(64);
+            entity.Property(e => e.UserAgent).HasMaxLength(512);
             entity.HasIndex(e => e.TokenHash).IsUnique();
             entity.HasIndex(e => new { e.UserId, e.IsRevoked, e.ExpiresAt });
             entity.HasOne(e => e.User)
@@ -215,6 +384,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Slug).HasMaxLength(160).IsRequired();
             entity.Property(e => e.ImageUrl).HasMaxLength(2048);
+            entity.Property(e => e.IsVisible).HasDefaultValue(true);
+            entity.HasIndex(e => new { e.IsDeleted, e.IsVisible, e.DisplayOrder });
             entity.HasIndex(e => e.Name).IsUnique();
             entity.HasIndex(e => e.Slug).IsUnique();
         });
@@ -233,6 +404,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.Property(e => e.Title).HasMaxLength(160).IsRequired();
             entity.Property(e => e.Slug).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Difficulty).HasMaxLength(10).IsRequired();
+            entity.Property(e => e.ReviewStatus).HasMaxLength(30).HasDefaultValue("Draft");
+            entity.Property(e => e.ReviewNote).HasMaxLength(1000);
             entity.HasIndex(e => e.Slug).IsUnique();
             entity.OwnsOne(e => e.Nutrition, nutrition =>
             {
@@ -244,11 +417,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 nutrition.Property(value => value.Sodium).HasColumnName("Nutrition_Sodium").HasPrecision(12, 2);
             });
             entity.Navigation(e => e.Nutrition).IsRequired(false);
-            entity.Property(e => e.SearchVector)
+            entity.Property<NpgsqlTsVector>("SearchVector")
+                .IsRequired()
                 .HasColumnType("tsvector")
                 .HasDefaultValueSql("''::tsvector")
                 .ValueGeneratedOnAddOrUpdate();
-            entity.HasIndex(e => e.SearchVector)
+            entity.HasIndex("SearchVector")
                 .HasMethod("GIN");
 
             entity.HasOne(e => e.Author)

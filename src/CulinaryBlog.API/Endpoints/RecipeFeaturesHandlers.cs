@@ -103,7 +103,7 @@ public class RecipeFeaturesHandlers : EndpointHandler
     public async Task<ApiResponseResult> Reviews(Guid recipeId)
     {
         var reviews = await _context.RecipeReviews.Where(review => review.RecipeId == recipeId).OrderByDescending(review => review.CreatedAt)
-            .Select(review => new { review.Id, review.Rating, review.Content, review.IsCooked, review.CreatedAt, username = review.User.UserName, fullName = review.User.FullName, avatarUrl = review.User.AvatarUrl })
+            .Select(review => new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.CreatedAt, username = review.User.UserName, fullName = review.User.FullName, avatarUrl = review.User.AvatarUrl })
             .ToListAsync();
         return Ok(new { averageRating = reviews.Count == 0 ? 0 : reviews.Average(review => review.Rating), count = reviews.Count, items = reviews });
     }
@@ -111,8 +111,14 @@ public class RecipeFeaturesHandlers : EndpointHandler
     {
         if (request.Rating is < 1 or > 5) return BadRequest(new { message = "Đánh giá cần từ 1 đến 5 sao." });
         if (request.Content?.Length > 1200) return BadRequest(new { message = "Nhận xét tối đa 1200 ký tự." });
+        if (request.PhotoUrl?.Length > 2048) return BadRequest(new { message = "Đường dẫn ảnh thành phẩm quá dài." });
         if (!await _context.Recipes.AnyAsync(recipe => recipe.Id == recipeId)) return NotFound();
         var review = await _context.RecipeReviews.FirstOrDefaultAsync(item => item.RecipeId == recipeId && item.UserId == UserId);
+#if false
+        if (request.PhotoUrl?.Length > 2048) return BadRequest(new { message = "Đường dẫn ảnh thành phẩm quá dài." });
+#endif
+#if false
+#endif
         if (review == null)
         {
             review = new RecipeReview { RecipeId = recipeId, UserId = UserId };
@@ -121,10 +127,20 @@ public class RecipeFeaturesHandlers : EndpointHandler
         review.Rating = request.Rating;
         review.Content = (request.Content ?? string.Empty).Trim();
         review.IsCooked = request.IsCooked;
+        review.PhotoUrl = string.IsNullOrWhiteSpace(request.PhotoUrl) ? null : request.PhotoUrl.Trim();
         review.UpdatedAt = DateTime.UtcNow;
+#if false
+        review.PhotoUrl = string.IsNullOrWhiteSpace(request.PhotoUrl) ? null : request.PhotoUrl.Trim();
+#endif
         await _context.SaveChangesAsync();
-        return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.UpdatedAt });
+        return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.UpdatedAt });
     }
+#if false
+        return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.UpdatedAt });
+    }
+    }
+        return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.UpdatedAt });
+#endif
     public async Task<ApiResponseResult> MealPlan([FromQuery] DateOnly? weekStart = null)
     {
         var monday = NormalizeWeekStart(weekStart);
@@ -255,8 +271,9 @@ public class RecipeFeaturesHandlers : EndpointHandler
     }
 
     public sealed class CollectionRequest { public string Name { get; set; } = string.Empty; }
-    public sealed class ReviewRequest { public int Rating { get; set; } public string? Content { get; set; } public bool IsCooked { get; set; } }
+    public sealed class ReviewRequest { public int Rating { get; set; } public string? Content { get; set; } public bool IsCooked { get; set; } public string? PhotoUrl { get; set; } }
     public sealed class MealPlanRequest { public Guid RecipeId { get; set; } public DateOnly PlannedFor { get; set; } public string MealType { get; set; } = "Bữa tối"; public int Servings { get; set; } = 2; }
     public sealed class GroceryCheckRequest { public DateOnly WeekStart { get; set; } public string Ingredient { get; set; } = string.Empty; public bool IsChecked { get; set; } }
     public sealed class ChallengeEntryRequest { public Guid RecipeId { get; set; } }
+    public sealed class ReviewPhotoRequest { public string? PhotoUrl { get; set; } }
 }

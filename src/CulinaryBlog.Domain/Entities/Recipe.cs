@@ -1,6 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
 using CulinaryBlog.Domain.Exceptions;
-using NpgsqlTypes;
 
 namespace CulinaryBlog.Domain.Entities;
 
@@ -13,6 +12,9 @@ public enum RecipeStatus
 
 public class Recipe
 {
+    public const int MinimumIngredientCount = 10;
+    public const int MinimumStepCount = 5;
+
     private static readonly HashSet<string> AllowedDifficulties = new(StringComparer.Ordinal)
     {
         "Easy", "Medium", "Hard", "Expert"
@@ -24,7 +26,6 @@ public class Recipe
     public string? Description { get; private set; }
     public string? ImageUrl { get; private set; }
     public List<string> Ingredients { get; private set; } = new();
-    public NpgsqlTsVector SearchVector { get; private set; } = NpgsqlTsVector.Empty;
     public List<string> Instructions { get; private set; } = new();
     public int PrepTimeMinutes { get; private set; } = 1;
     public int CookTimeMinutes { get; private set; }
@@ -47,6 +48,13 @@ public class Recipe
     public string AuthorId { get; private set; } = string.Empty;
     public ApplicationUser Author { get; private set; } = null!;
     public RecipeStatus Status { get; private set; } = RecipeStatus.Draft;
+    // Review workflow is intentionally separate from the public lifecycle
+    // (Draft/Published/Archived) so existing recipes and links keep working.
+    public string ReviewStatus { get; private set; } = "Draft";
+    public string? ReviewNote { get; private set; }
+    public DateTime? ReviewRequestedAt { get; private set; }
+    public DateTime? ReviewedAt { get; private set; }
+    public string? ReviewedById { get; private set; }
     public bool IsDeleted { get; private set; }
     public DateTime? DeletedAt { get; private set; }
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
@@ -162,7 +170,25 @@ public class Recipe
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public bool Publish(bool hasUsableIngredient, bool hasUsableStep)
+    public static void EnsureMinimumContent(int ingredientCount, int stepCount)
+    {
+        if (ingredientCount < MinimumIngredientCount)
+        {
+            throw new ValidationException($"Công thức cần ít nhất {MinimumIngredientCount} nguyên liệu hợp lệ.");
+        }
+
+        if (stepCount < MinimumStepCount)
+        {
+            throw new ValidationException($"Công thức cần ít nhất {MinimumStepCount} bước nấu hợp lệ.");
+        }
+    }
+
+    // Kept for existing callers that only know whether the recipe already has
+    // valid content. New application code supplies the actual counts below.
+    public bool Publish(bool hasUsableIngredient, bool hasUsableStep) =>
+        Publish(hasUsableIngredient ? MinimumIngredientCount : 0, hasUsableStep ? MinimumStepCount : 0);
+
+    public bool Publish(int ingredientCount, int stepCount)
     {
         if (Status == RecipeStatus.Published)
         {
@@ -179,15 +205,7 @@ public class Recipe
             throw new ValidationException("Công thức cần có tiêu đề và mô tả trước khi xuất bản.");
         }
 
-        if (!hasUsableIngredient)
-        {
-            throw new ValidationException("Cần ít nhất một nguyên liệu hợp lệ trước khi xuất bản.");
-        }
-
-        if (!hasUsableStep)
-        {
-            throw new ValidationException("Cần ít nhất một bước nấu hợp lệ trước khi xuất bản.");
-        }
+        EnsureMinimumContent(ingredientCount, stepCount);
 
         Status = RecipeStatus.Published;
         UpdatedAt = DateTime.UtcNow;
@@ -238,6 +256,28 @@ public class Recipe
         Status = RecipeStatus.Draft;
         UpdatedAt = DateTime.UtcNow;
         return true;
+    }
+
+    public void RequestReview()
+    {
+        if (IsDeleted) throw new ValidationException("Không thể gửi duyệt công thức đã xóa.");
+        ReviewStatus = "PendingReview";
+        ReviewNote = null;
+        ReviewRequestedAt = DateTime.UtcNow;
+        ReviewedAt = null;
+        ReviewedById = null;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void CompleteReview(string status, string? note, string reviewerId)
+    {
+        if (status is not ("Approved" or "ChangesRequested"))
+            throw new ValidationException("Kết quả duyệt chỉ có thể là Approved hoặc ChangesRequested.");
+        ReviewStatus = status;
+        ReviewNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        ReviewedAt = DateTime.UtcNow;
+        ReviewedById = reviewerId;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SoftDelete()

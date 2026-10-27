@@ -10,4 +10,8 @@ public class ContentReport
     public string Reason { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ResolvedAt { get; set; }
+    public string? ResolutionAction { get; set; }
+    public string? ResolutionNote { get; set; }
+    public string? ResolvedById { get; set; }
+    public ApplicationUser? ResolvedBy { get; set; }
 }

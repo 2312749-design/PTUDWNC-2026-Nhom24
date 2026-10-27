@@ -13,9 +13,20 @@ function generateCaptcha() {
   return { question: `${left} + ${right} = ?`, answer: String(left + right) }
 }
 
+function getPasswordError(password) {
+  if (password.length < 8) return 'Mật khẩu cần tối thiểu 8 ký tự.'
+  if (!/[A-Z]/.test(password)) return 'Mật khẩu cần có ít nhất 1 chữ hoa.'
+  if (!/[a-z]/.test(password)) return 'Mật khẩu cần có ít nhất 1 chữ thường.'
+  if (!/\d/.test(password)) return 'Mật khẩu cần có ít nhất 1 chữ số.'
+  if (!/[^A-Za-z0-9]/.test(password)) return 'Mật khẩu cần có ít nhất 1 ký tự đặc biệt, ví dụ: ! hoặc @.'
+  return ''
+}
+
 export default function RegisterClient() {
   const router = useRouter()
-  const [captcha, setCaptcha] = useState({ question: '2 + 3 = ?', answer: '5' })
+  // The first value must be deterministic because this page is rendered on
+  // both the server and browser. Generate the random challenge after hydration.
+  const [captcha, setCaptcha] = useState({ question: 'Đang tạo captcha…', answer: '' })
   const [form, setForm] = useState({
     displayName: '',
     username: '',
@@ -26,10 +37,9 @@ export default function RegisterClient() {
   })
   const [submitting, setSubmitting] = useState(false)
   const captchaReady = form.captchaInput.trim() === captcha.answer
+  const passwordError = form.password ? getPasswordError(form.password) : ''
 
-  useEffect(() => {
-    setCaptcha(generateCaptcha())
-  }, [])
+  useEffect(() => { setCaptcha(generateCaptcha()) }, [])
 
   const refreshCaptcha = () => {
     setCaptcha(generateCaptcha())
@@ -46,6 +56,11 @@ export default function RegisterClient() {
 
     if (!form.password || !form.confirmPassword) {
       toast.error('Vui lòng nhập mật khẩu và xác nhận mật khẩu.')
+      return
+    }
+
+    if (passwordError) {
+      toast.error(passwordError)
       return
     }
 
@@ -126,10 +141,12 @@ export default function RegisterClient() {
                 id="register-password"
                 type="password"
                 autoComplete="new-password"
+                minLength={8}
                 placeholder="Nhập mật khẩu"
                 value={form.password}
                 onChange={(event) => setForm({ ...form, password: event.target.value })}
               />
+              <small className={passwordError ? 'form-hint form-hint-error' : 'form-hint'}>Tối thiểu 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.</small>
             </div>
             <div className="form-group">
               <label htmlFor="register-confirm-password">Xác nhận Password</label>
@@ -137,6 +154,7 @@ export default function RegisterClient() {
                 id="register-confirm-password"
                 type="password"
                 autoComplete="new-password"
+                minLength={8}
                 placeholder="Nhập lại mật khẩu"
                 value={form.confirmPassword}
                 onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}

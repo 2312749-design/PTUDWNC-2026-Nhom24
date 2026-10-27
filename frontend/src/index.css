@@ -10,6 +10,12 @@ html, body, #root {
   color: #1f2937;
 }
 
+/* System UI fonts render Vietnamese combining accents consistently on Chrome,
+   Cốc Cốc and Edge. Display headings use the same reliable family. */
+:root {
+  --bep-nha-display-font: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
 body {
   min-height: 100vh;
 }

@@ -1,18 +1,25 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from './navigation.jsx'
+import { Link } from './navigation.jsx'
+import { useNavigate } from './navigation-hooks.js'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useLocale } from './LocaleContext.jsx'
+import { useLocale } from './locale-context.js'
 import { CommunityNav, NextCommunityNav } from './CommunityPages.jsx'
-import { apiRequest, getAccessToken } from './api/session.js'
+import { apiRequest, hasSession } from './api/session.js'
 import './PlatformFeaturePages.css'
 
-const getToken = () => getAccessToken()
+const getToken = () => hasSession()
 
 const request = (path, options = {}) => apiRequest(path, options)
+
+function readSavedPortion() {
+  if (typeof window === 'undefined') return 2
+  const stored = Number(localStorage.getItem('recipePortionPreference') || '2')
+  return Number.isNaN(stored) || stored <= 0 ? 2 : stored
+}
 
 function FeatureShell({ eyebrow, title, intro, children }) {
   const { t } = useLocale()
@@ -105,8 +112,8 @@ export function FridgeMatchPage() {
 
 export function FlexibleRecipePage() {
   const { t } = useLocale()
-  const [servings, setServings] = useState(2)
-  const [savedPortion, setSavedPortion] = useState(2)
+  const [servings, setServings] = useState(readSavedPortion)
+  const [savedPortion, setSavedPortion] = useState(readSavedPortion)
   const recipe = {
     title: 'Bún chả giò rau củ',
     baseServings: 2,
@@ -118,14 +125,6 @@ export function FlexibleRecipePage() {
       { name: 'Tỏi', amount: 3, unit: 'cây' },
     ],
   }
-
-  useEffect(() => {
-    const stored = Number(localStorage.getItem('recipePortionPreference') || '2')
-    if (!Number.isNaN(stored) && stored > 0) {
-      setSavedPortion(stored)
-      setServings(stored)
-    }
-  }, [])
 
   const scaleFactor = servings / recipe.baseServings
 
@@ -752,7 +751,6 @@ export function AuthorProfilePage() {
 export function MultilingualPage() {
   const { settings, applySettings, t } = useLocale()
   const [draftSettings, setDraftSettings] = useState(settings)
-  useEffect(() => setDraftSettings(settings), [settings])
   const hasUnsavedChanges = draftSettings.language !== settings.language
     || draftSettings.unit !== settings.unit
     || draftSettings.region !== settings.region
@@ -1103,10 +1101,12 @@ export function CookModePage() {
   const currentStepData = recipe.steps[currentStep] || recipe.steps[0]
   const [secondsLeft, setSecondsLeft] = useState(currentStepData.duration)
 
-  useEffect(() => {
-    setSecondsLeft(currentStepData.duration)
+  const selectStep = (nextStep) => {
+    const next = Math.max(0, Math.min(recipe.steps.length - 1, nextStep))
+    setCurrentStep(next)
+    setSecondsLeft(recipe.steps[next].duration)
     setIsRunning(false)
-  }, [currentStep, currentStepData.duration])
+  }
 
   useEffect(() => {
     if (!isRunning) return undefined
@@ -1231,8 +1231,8 @@ export function CookModePage() {
             </div>
 
             <div className="cook-step-controls">
-              <button type="button" className="feature-button" onClick={() => setCurrentStep((value) => Math.max(0, value - 1))} disabled={currentStep === 0}>{t('Bước trước')}</button>
-              <button type="button" className="feature-button primary" onClick={() => setCurrentStep((value) => Math.min(recipe.steps.length - 1, value + 1))} disabled={currentStep === recipe.steps.length - 1}>{t('Bước sau')}</button>
+              <button type="button" className="feature-button" onClick={() => selectStep(currentStep - 1)} disabled={currentStep === 0}>{t('Bước trước')}</button>
+              <button type="button" className="feature-button primary" onClick={() => selectStep(currentStep + 1)} disabled={currentStep === recipe.steps.length - 1}>{t('Bước sau')}</button>
             </div>
           </section>
 
@@ -1257,7 +1257,7 @@ export function CookModePage() {
                   key={step.title}
                   type="button"
                   className={index === currentStep ? 'active' : ''}
-                  onClick={() => setCurrentStep(index)}
+                  onClick={() => selectStep(index)}
                 >
                   {index + 1}
                 </button>

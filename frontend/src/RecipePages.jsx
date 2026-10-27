@@ -1,14 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Navigate, Link, useNavigate, useParams } from './navigation.jsx'
+import { useCallback, useEffect, useState } from 'react'
+import { Navigate, Link } from './navigation.jsx'
+import { useLocation, useNavigate, useParams } from './navigation-hooks.js'
 import { toast } from 'react-toastify'
 import { RecipeEngagement } from './PlatformFeaturePages.jsx'
-import { useLocale } from './LocaleContext.jsx'
-import { apiRequest, getAccessToken as getStoredAccessToken, getFreshAccessToken } from './api/session.js'
-import './App.css'
+import RecipeProPanel from './RecipeProPanel.jsx'
+import { useLocale } from './locale-context.js'
+import { apiRequest, clearSession, getAccessToken as getStoredAccessToken, getFreshAccessToken, getSessionUser } from './api/session.js'
+import AppFooter from './components/layout/AppFooter.jsx'
 
-const browserStorage = () => typeof window === 'undefined' ? null : window.localStorage
 const RECIPE_CATALOG_UPDATED_EVENT = 'culinary:recipe-catalog-updated'
 
 function notifyRecipeCatalogUpdated() {
@@ -22,7 +23,7 @@ function getStoredToken() {
 }
 
 export function ProtectedRoute({ children }) {
-  const token = getStoredToken() || browserStorage()?.getItem('refreshToken')
+  const token = getStoredToken() || getSessionUser()
 
   if (!token) {
     return <Navigate to="/login" replace />
@@ -39,8 +40,8 @@ export function RecipeDetailPage() {
   const [loading, setLoading] = useState(true)
   const [canManage, setCanManage] = useState(false)
 
-  const fetchRecipe = async () => {
-    const token = getStoredToken()
+  const fetchRecipe = useCallback(async () => {
+    const token = getStoredToken() || getSessionUser()
 
     try {
       const recipePath = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
@@ -63,14 +64,14 @@ export function RecipeDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    fetchRecipe()
   }, [id])
 
   useEffect(() => {
-    const activeToken = getStoredToken()
+    fetchRecipe()
+  }, [fetchRecipe])
+
+  useEffect(() => {
+    const activeToken = getStoredToken() || getSessionUser()
     if (activeToken) apiRequest(`/recipes/${id}/view`, { method: 'POST' }).catch(() => {})
   }, [id])
 
@@ -191,6 +192,7 @@ export function RecipeDetailPage() {
                   {recipe.nutrition.sodium != null && <span className="meta-chip">Sodium {recipe.nutrition.sodium} mg</span>}
                 </div>
               </div>}
+              <RecipeProPanel recipe={recipe} />
             </div>
           </div>
           <RecipeEngagement recipe={recipe} />
@@ -210,18 +212,27 @@ export function CategoriesPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [selectedCategoryId, setSelectedCategoryId] = useState(null)
+  const [selectedCategoryDetail, setSelectedCategoryDetail] = useState(null)
+  const [categoryDetailLoading, setCategoryDetailLoading] = useState(false)
   const [canManageCategories, setCanManageCategories] = useState(false)
 
-  const token = getStoredToken() || browserStorage()?.getItem('refreshToken') || ''
+  const token = getStoredToken() || getSessionUser() || ''
 
-  const fetchCatalog = async () => {
+  function closeCategoryDialog() {
+    setSelectedCategoryId(null)
+    setSelectedCategoryDetail(null)
+    setCategoryDetailLoading(false)
+  }
+
+  const fetchCatalog = useCallback(async () => {
     setLoading(true)
     try {
       // Administrators manage every lifecycle state, so their category view also
       // includes drafts and archived recipes. Everyone else sees the public
       // cookbook, which contains published recipes only.
       let isAdmin = false
-      if (token) {
+      const activeToken = getStoredToken() || getSessionUser() || ''
+      if (activeToken) {
         try {
           const currentUser = await apiRequest('/auth/me')
           isAdmin = currentUser.role === 'Admin'
@@ -245,7 +256,7 @@ export function CategoriesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchCatalog()
@@ -269,13 +280,13 @@ export function CategoriesPage() {
       window.removeEventListener('focus', refreshCatalog)
       document.removeEventListener('visibilitychange', refreshWhenWindowIsVisible)
     }
-  }, [])
+  }, [fetchCatalog])
 
   useEffect(() => {
     if (!selectedCategoryId) return undefined
     const previousOverflow = document.body.style.overflow
     const closeOnEscape = event => {
-      if (event.key === 'Escape') setSelectedCategoryId(null)
+      if (event.key === 'Escape') closeCategoryDialog()
     }
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', closeOnEscape)
@@ -370,29 +381,37 @@ export function CategoriesPage() {
   }
 
   const handleLogout = async () => {
-    const refreshToken = browserStorage()?.getItem('refreshToken')
     try {
-      if (refreshToken) {
+      if (getStoredToken() || getSessionUser()) {
         await apiRequest('/auth/logout', {
           method: 'POST',
-          body: JSON.stringify({ refreshToken }),
+          body: JSON.stringify({}),
         })
       }
     } catch {
       // The local session is always cleared; the backend may be unavailable.
     }
-    browserStorage()?.removeItem('accessToken')
-    browserStorage()?.removeItem('refreshToken')
+    clearSession()
     toast.success('Đăng xuất thành công.')
     navigate('/login')
   }
 
-  const selectedCategory = categories.find(category => category.id === selectedCategoryId)
-  const selectedCategoryRecipes = selectedCategory
-    ? recipes.filter(recipe => recipe.categoryId === selectedCategoryId).sort((first, second) => first.title.localeCompare(second.title, 'vi'))
-    : []
-  const selectCategory = (categoryId) => {
+  const selectedCategory = selectedCategoryDetail?.category || categories.find(category => category.id === selectedCategoryId)
+  const selectedCategoryRecipes = selectedCategoryDetail?.recipes || []
+  const selectCategory = async (categoryId) => {
     setSelectedCategoryId(categoryId)
+    setSelectedCategoryDetail(null)
+    setCategoryDetailLoading(true)
+    try {
+      // CategoryId is the source of truth. The server returns the current
+      // recipes for this category, instead of relying on a stale page list.
+      setSelectedCategoryDetail(await apiRequest(`/categories/${categoryId}`))
+    } catch (error) {
+      closeCategoryDialog()
+      toast.error(error.message || 'Không thể tải công thức của danh mục.')
+    } finally {
+      setCategoryDetailLoading(false)
+    }
   }
 
   return (
@@ -412,12 +431,14 @@ export function CategoriesPage() {
         </div>
         {loading ? <div className="empty-state">Đang tải danh mục...</div> : <div className="category-card-grid">
           {categories.map((category, index) => {
-            const recipeCount = recipes.filter(recipe => recipe.categoryId === category.id).length
+            // The API owns the count so the card remains accurate even when
+            // this page only fetched a public subset of recipes.
+            const recipeCount = category.publishedRecipeCount ?? recipes.filter(recipe => recipe.categoryId === category.id).length
             const selected = selectedCategoryId === category.id
             return <article className={`category-tile${selected ? ' is-selected' : ''}`} key={category.id}>
               <button type="button" className="category-tile-select" onClick={() => selectCategory(category.id)} aria-pressed={selected} aria-controls="category-recipes-panel">
                 <div className="category-tile-image">{category.imageUrl ? <img src={category.imageUrl} alt={category.name} loading="lazy" /> : <span>Ảnh danh mục chưa thêm</span>}</div>
-                <div className="category-tile-content"><span className="category-tile-index">{String(index + 1).padStart(2, '0')}</span><span className="category-tile-tag"># {t(category.name)}</span><h3>{t(category.name)}</h3><p>{t(category.description || 'Khám phá công thức trong danh mục này.')}</p><small>{recipeCount} công thức <span aria-hidden="true">↓</span></small></div>
+                <div className="category-tile-content"><span className="category-tile-index">{String(index + 1).padStart(2, '0')}</span><span className="category-tile-tag"># {t(category.name)}</span><h3>{t(category.name)}</h3><p>{t(category.description || 'Khám phá công thức trong danh mục này.')}</p><small>{recipeCount ? `${recipeCount} công thức` : 'Xem công thức'} <span aria-hidden="true">↓</span></small></div>
               </button>
               {canManageCategories && <button type="button" className="category-edit-icon" onClick={() => handleEdit(category)} aria-label={`Chỉnh sửa ${category.name}`} title="Chỉnh sửa danh mục">✎</button>}
             </article>
@@ -425,11 +446,11 @@ export function CategoriesPage() {
         </div>}
       </section>
 
-      {selectedCategory && <div className="category-recipes-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setSelectedCategoryId(null) }}>
+      {selectedCategoryId && selectedCategory && <div className="category-recipes-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) closeCategoryDialog() }}>
         <section className="category-recipes-dialog" id="category-recipes-panel" role="dialog" aria-modal="true" aria-labelledby="category-recipes-title" aria-live="polite">
-          <header className="category-recipes-dialog-header"><div><p className="eyebrow"># {t(selectedCategory.name)}</p><h2 id="category-recipes-title">Các món trong danh mục {t(selectedCategory.name)}</h2><span>{selectedCategoryRecipes.length} công thức</span></div><button type="button" className="recipe-modal-close" onClick={() => setSelectedCategoryId(null)} aria-label="Đóng danh sách công thức">×</button></header>
-          {selectedCategoryRecipes.length ? <div className="category-recipe-list">{selectedCategoryRecipes.map(recipe => <Link key={recipe.id} to={`/recipes/${recipe.id}`}><span>{t(recipe.title)}</span><small>{recipe.cookingTimeMinutes ? `${recipe.cookingTimeMinutes} phút` : 'Mở công thức'} <b aria-hidden="true">→</b></small></Link>)}</div> : <p className="empty-state">Chưa có công thức trong danh mục này.</p>}
-          <footer><button type="button" className="category-dialog-dismiss" onClick={() => setSelectedCategoryId(null)}>Đã hiểu, đóng danh sách</button></footer>
+          <header className="category-recipes-dialog-header"><div><p className="eyebrow"># {t(selectedCategory.name)}</p><h2 id="category-recipes-title">Các món trong danh mục {t(selectedCategory.name)}</h2><span>{selectedCategoryRecipes.length} công thức</span></div><button type="button" className="recipe-modal-close" onClick={closeCategoryDialog} aria-label="Đóng danh sách công thức">×</button></header>
+          {categoryDetailLoading ? <p className="empty-state">Đang tải các công thức thuộc danh mục…</p> : selectedCategoryRecipes.length ? <div className="category-recipe-list">{selectedCategoryRecipes.map(recipe => <Link key={recipe.id} to={`/recipes/${recipe.id}`} onClick={closeCategoryDialog}><span>{t(recipe.title)}</span><small>{recipe.cookingTimeMinutes ? `${recipe.cookingTimeMinutes} phút` : 'Mở công thức'} <b aria-hidden="true">→</b></small></Link>)}</div> : <p className="empty-state">Chưa có công thức công khai trong danh mục này.</p>}
+          <footer><button type="button" className="category-dialog-dismiss" onClick={closeCategoryDialog}>Đã hiểu, đóng danh sách</button></footer>
         </section>
       </div>}
 
@@ -450,6 +471,7 @@ export function CategoriesPage() {
 
 export function RecipesPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useLocale()
   const [recipes, setRecipes] = useState([])
   const [categories, setCategories] = useState([])
@@ -482,6 +504,11 @@ export function RecipesPage() {
 
   const token = getStoredToken()
 
+  useEffect(() => {
+    const categoryFromUrl = new URLSearchParams(location.search).get('category')
+    setCategoryFilter(categoryFromUrl || 'all')
+  }, [location.search])
+
   const resetForm = () => {
     setForm({
       title: '',
@@ -501,15 +528,15 @@ export function RecipesPage() {
     setIsFormOpen(false)
   }
 
-  const fetchCategories = async () => {
+  const fetchCategories = useCallback(async () => {
     const data = await apiRequest('/categories')
     setCategories(data)
-    if (!form.categoryId && data[0]) {
-      setForm((current) => ({ ...current, categoryId: data[0].id }))
-    }
-  }
+    setForm((current) => (current.categoryId || !data[0])
+      ? current
+      : { ...current, categoryId: data[0].id })
+  }, [])
 
-  const fetchRecipes = async () => {
+  const fetchRecipes = useCallback(async () => {
     const activeToken = await getFreshAccessToken()
     if (!activeToken) {
       setCurrentUser(null)
@@ -531,7 +558,7 @@ export function RecipesPage() {
     const combined = new Map(publicRecipes.map((recipe) => [recipe.id, recipe]))
     ownRecipes.forEach((recipe) => combined.set(recipe.id, recipe))
     setRecipes([...combined.values()])
-  }
+  }, [])
 
   useEffect(() => {
     const loadData = async () => {
@@ -545,7 +572,7 @@ export function RecipesPage() {
     }
 
     loadData()
-  }, [])
+  }, [fetchCategories, fetchRecipes])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -567,18 +594,16 @@ export function RecipesPage() {
       return
     }
 
-    if (!form.ingredients.trim()) {
-      toast.error('Vui lòng nhập ít nhất một nguyên liệu.')
-      return
-    }
-
-    if (!form.instructions.trim()) {
-      toast.error('Vui lòng nhập các bước làm.')
-      return
-    }
-
     const ingredientValues = form.ingredients.split(/\n|,/).map((item) => item.trim()).filter(Boolean)
     const stepValues = form.instructions.split(/\n|\./).map((item) => item.trim()).filter(Boolean)
+    if (ingredientValues.length < 10) {
+      toast.error('Mỗi công thức cần ít nhất 10 nguyên liệu.')
+      return
+    }
+    if (stepValues.length < 5) {
+      toast.error('Mỗi công thức cần ít nhất 5 bước làm.')
+      return
+    }
     const nutritionValues = Object.fromEntries(Object.entries(form.nutrition)
       .map(([key, value]) => [key, value === '' ? null : Number(value)]))
     const hasNutrition = Object.values(form.nutrition).some((value) => value !== '')
@@ -615,14 +640,25 @@ export function RecipesPage() {
   }
 
   const handleEdit = (recipe) => {
+    const ingredientLines = recipe.recipeIngredients?.length
+      ? recipe.recipeIngredients
+        .map((item) => [item.quantity, item.unit, item.name].filter(Boolean).join(' '))
+        .filter(Boolean)
+      : Array.isArray(recipe.ingredients) ? recipe.ingredients : []
+    const instructionLines = recipe.recipeSteps?.length
+      ? recipe.recipeSteps
+        .map((item) => [item.title, item.description].filter(Boolean).join(': '))
+        .filter(Boolean)
+      : Array.isArray(recipe.instructions) ? recipe.instructions : []
+
     setEditingId(recipe.id)
     setForm({
       title: recipe.title,
       description: recipe.description || '',
       imageUrl: recipe.imageUrl || '',
       categoryId: recipe.categoryId,
-      ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients.join('\n') : '',
-      instructions: Array.isArray(recipe.instructions) ? recipe.instructions.join('\n') : '',
+      ingredients: ingredientLines.join('\n'),
+      instructions: instructionLines.join('\n'),
       prepTimeMinutes: recipe.prepTimeMinutes ?? 1,
       cookTimeMinutes: recipe.cookTimeMinutes ?? 0,
       servings: recipe.servings ?? 1,
@@ -716,9 +752,15 @@ export function RecipesPage() {
     }
   }
 
-  const handleLogout = () => {
-    browserStorage()?.removeItem('accessToken')
-    browserStorage()?.removeItem('refreshToken')
+  const handleLogout = async () => {
+    try {
+      if (getStoredToken() || getSessionUser()) {
+        await apiRequest('/auth/logout', { method: 'POST', body: JSON.stringify({}) })
+      }
+    } catch {
+      // Clearing the local session remains safe when the API is unreachable.
+    }
+    clearSession()
     toast.success('Đăng xuất thành công.')
     navigate('/login')
   }
@@ -952,46 +994,5 @@ export function RecipesPage() {
 }
 
 export function SiteFooter() {
-  return (
-    <footer className="site-footer">
-      <div className="site-footer__main">
-        <section className="site-footer__brand" aria-label="Giới thiệu Culinary Blog">
-          <Link className="site-footer__logo" to="/community" aria-label="Culinary Blog - Trang cộng đồng">
-            <span className="site-footer__logo-mark">C</span>
-            <span>Culinary<span>Blog</span></span>
-          </Link>
-          <p>Nơi lưu giữ công thức, chia sẻ câu chuyện và tìm cảm hứng cho những bữa ăn mỗi ngày.</p>
-          <Link className="site-footer__write-link" to="/recipes/new">Chia sẻ công thức <span aria-hidden="true">→</span></Link>
-        </section>
-
-        <nav className="site-footer__links" aria-label="Khám phá">
-          <h2>Khám phá</h2>
-          <Link to="/community">Cộng đồng</Link>
-          <Link to="/recipes">Công thức món ăn</Link>
-          <Link to="/categories">Danh mục món ăn</Link>
-          <Link to="/challenges">Thử thách nấu ăn</Link>
-        </nav>
-
-        <section className="site-footer__social">
-          <h2>Kết nối với chúng tôi</h2>
-          <p>Theo dõi Culinary Blog để cập nhật món ngon và hoạt động mới.</p>
-          <div className="site-footer__social-list">
-            <a href="https://www.facebook.com/dducthanh.1" target="_blank" rel="noreferrer" aria-label="Facebook Culinary Blog">
-              <span aria-hidden="true">f</span> Facebook
-            </a>
-            <a href="https://www.instagram.com/joxpiz_/" target="_blank" rel="noreferrer" aria-label="Instagram Culinary Blog">
-              <span aria-hidden="true">◎</span> Instagram
-            </a>
-            <a href="https://www.tiktok.com/@linhcutevcl1909" target="_blank" rel="noreferrer" aria-label="TikTok Culinary Blog">
-              <span aria-hidden="true">♪</span> TikTok
-            </a>
-          </div>
-        </section>
-      </div>
-      <div className="site-footer__bottom">
-        <span>© {new Date().getFullYear()} Culinary Blog. Được làm bằng niềm yêu thích nấu ăn.</span>
-        <Link to="/safety">An toàn cộng đồng</Link>
-      </div>
-    </footer>
-  )
+  return <AppFooter />
 }

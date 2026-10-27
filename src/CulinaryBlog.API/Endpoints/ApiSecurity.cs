@@ -19,7 +19,7 @@ public static class ApiSecurity
 
         services.AddCors(options => options.AddPolicy("FrontendPolicy", policy => policy
             .WithOrigins(allowedOrigins)
-            .AllowAnyHeader().AllowAnyMethod()));
+            .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

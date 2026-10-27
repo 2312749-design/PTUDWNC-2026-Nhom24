@@ -212,6 +212,14 @@ public static class RecipeCatalogSeeder
 
         foreach (var recipe in recipes)
         {
+            // ExpandedDemoDataSeeder owns these records. Do not normalize their
+            // slug/image on every startup, otherwise its idempotency marker is
+            // lost and the catalog would be generated again.
+            if (recipe.Description?.Contains("Dữ liệu demo mở rộng Bếp Nhà", StringComparison.OrdinalIgnoreCase) == true ||
+                recipe.Description?.Contains("là công thức dễ theo dõi, nguyên liệu quen thuộc", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                continue;
+            }
             if (LegacyCategories.TryGetValue(recipe.Title, out var correctCategory))
             {
                 recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, categoryIds[correctCategory], string.Empty, recipe.CookingTimeMinutes, Recipe.NormalizeDifficulty(recipe.Difficulty), recipe.IsVegetarian);
@@ -280,6 +288,11 @@ public static class RecipeCatalogSeeder
 
         await EnsureLabTwoRecipeMinimumsAsync(context);
         await context.SaveChangesAsync();
+
+        // This seeder also adds the extended catalog after DataSeeder has run.
+        // Convert the new and existing legacy arrays into structured child rows.
+        await DataSeeder.EnsureStructuredRecipeContentAsync(context);
+        await context.SaveChangesAsync();
     }
 
     /// <summary>
@@ -307,7 +320,9 @@ public static class RecipeCatalogSeeder
             var changed = false;
             while (ingredients.Count < MinimumIngredientCount)
             {
-                var supplement = SupplementalIngredients[(ingredients.Count - 1) % SupplementalIngredients.Length];
+                // A newly created recipe may have no legacy ingredient strings yet.
+                // Start at index zero so it does not try to access [-1].
+                var supplement = SupplementalIngredients[ingredients.Count % SupplementalIngredients.Length];
                 ingredients.Add($"{supplement} ({ingredients.Count + 1})");
                 changed = true;
             }

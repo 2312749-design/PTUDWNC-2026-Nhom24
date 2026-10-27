@@ -13,9 +13,11 @@ function storage() {
 
 export function saveSession(tokens) {
   const store = storage()
-  if (!store || !tokens?.accessToken || !tokens?.refreshToken) return false
-  store.setItem(ACCESS_TOKEN_KEY, tokens.accessToken)
-  store.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken)
+  if (!store || !tokens?.accessToken) return false
+  // Access credentials live only in memory. The durable browser session is
+  // the HttpOnly refresh/access cookie set by the API, never localStorage.
+  store.removeItem(ACCESS_TOKEN_KEY)
+  store.removeItem(REFRESH_TOKEN_KEY)
   if (tokens.user) store.setItem(USER_KEY, JSON.stringify(tokens.user))
   useAuthStore.getState().setSession(tokens)
   window.dispatchEvent(new Event('auth-session-refreshed'))
@@ -35,31 +37,40 @@ export function getSessionUser() {
   try { return JSON.parse(storage()?.getItem(USER_KEY) || 'null') } catch { return null }
 }
 
+/** A cookie-backed session survives a route change even when its access token
+ * is intentionally absent from localStorage. Use this for UI guards, not as
+ * an Authorization header value. */
+export function hasSession() {
+  return Boolean(getAccessToken() || getSessionUser())
+}
+
 export function getAccessToken() {
-  const token = storage()?.getItem(ACCESS_TOKEN_KEY) || ''
+  const token = useAuthStore.getState().accessToken || ''
   if (!token) return ''
   try {
     const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
     if (!payload.exp || payload.exp * 1000 <= Date.now()) return ''
     return token
   } catch {
-    clearSession()
     return ''
   }
 }
 
 export async function refreshAccessToken() {
   const store = storage()
-  const refreshToken = store?.getItem(REFRESH_TOKEN_KEY) || ''
-  if (!refreshToken) return ''
+  const legacyRefreshToken = store?.getItem(REFRESH_TOKEN_KEY) || ''
+  if (!legacyRefreshToken && !store?.getItem(USER_KEY)) return ''
   if (!refreshPromise) {
     refreshPromise = fetch(`${getVersionedApiBaseUrl()}/auth/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      // Supplying the old value once lets sessions from before the upgrade
+      // seamlessly move to the cookie transport.
+      body: JSON.stringify(legacyRefreshToken ? { refreshToken: legacyRefreshToken } : {}),
     }).then(async response => {
       const data = await readApiResponse(response)
-      if (!response.ok || !data.accessToken || !data.refreshToken) throw new Error('Phiên đăng nhập đã hết hạn.')
+      if (!response.ok || !data.accessToken) throw new Error('Phiên đăng nhập đã hết hạn.')
       saveSession(data)
       return data.accessToken
     }).catch(() => {
@@ -71,7 +82,8 @@ export async function refreshAccessToken() {
 }
 
 export async function getFreshAccessToken() {
-  return getAccessToken() || refreshAccessToken()
+  const accessToken = getAccessToken()
+  return accessToken || (getSessionUser() || storage()?.getItem(REFRESH_TOKEN_KEY) ? refreshAccessToken() : '')
 }
 
 export async function apiRequest(path, options = {}) {
@@ -82,7 +94,7 @@ export async function apiRequest(path, options = {}) {
   try {
     return await send()
   } catch (error) {
-    if (error?.status === 401 && storage()?.getItem(REFRESH_TOKEN_KEY)) {
+    if (error?.status === 401 && (getSessionUser() || storage()?.getItem(REFRESH_TOKEN_KEY))) {
       const refreshed = await refreshAccessToken()
       if (refreshed) return send()
     }

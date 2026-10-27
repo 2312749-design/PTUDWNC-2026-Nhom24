@@ -3,12 +3,15 @@ using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Jobs;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Services;
+using CulinaryBlog.API.Services;
 using Google.Apis.Auth;
 using Hangfire;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
@@ -17,20 +20,41 @@ namespace CulinaryBlog.API.Endpoints
 {
     public class AuthHandlers : EndpointHandler
     {
+        public const string AccessTokenCookieName = "culinary_access_token";
+        public const string RefreshTokenCookieName = "culinary_refresh_token";
+
         private readonly ApplicationDbContext _context;
         private readonly ITokenService _tokenService;
         private readonly IBackgroundJobClient _backgroundJobs;
         private readonly string? _googleClientId;
         private readonly IGoogleIdentityVerifier _googleVerifier;
+        private readonly bool _secureAuthCookies;
+        private readonly SameSiteMode _authCookieSameSite;
+        private readonly int _accessTokenExpiryMinutes;
         private readonly PasswordHasher<ApplicationUser> _passwordHasher = new();
+        private readonly AccountSecurityService? _security;
+        private readonly IEmailSender? _emailSender;
+        private readonly IDataProtector? _passwordResetProtector;
+        private readonly bool _isDevelopment;
+        private readonly string _publicSiteUrl;
 
-        public AuthHandlers(ApplicationDbContext context, ITokenService tokenService, IBackgroundJobClient backgroundJobs, IConfiguration? configuration = null, IGoogleIdentityVerifier? googleVerifier = null)
+        public AuthHandlers(ApplicationDbContext context, ITokenService tokenService, IBackgroundJobClient backgroundJobs, IConfiguration? configuration = null, IGoogleIdentityVerifier? googleVerifier = null, AccountSecurityService? security = null, IEmailSender? emailSender = null, IDataProtectionProvider? dataProtectionProvider = null, IHostEnvironment? hostEnvironment = null)
         {
             _context = context;
             _tokenService = tokenService;
             _backgroundJobs = backgroundJobs;
             _googleClientId = configuration?["Google:ClientId"];
             _googleVerifier = googleVerifier ?? new GoogleIdentityVerifier();
+            _secureAuthCookies = configuration?.GetValue<bool?>("AuthCookies:Secure") ?? false;
+            _accessTokenExpiryMinutes = Math.Max(1, configuration?.GetValue<int?>("JwtSettings:ExpiryMinutes") ?? 15);
+            _authCookieSameSite = Enum.TryParse<SameSiteMode>(configuration?["AuthCookies:SameSite"], true, out var sameSite)
+                ? sameSite
+                : SameSiteMode.Lax;
+            _security = security;
+            _emailSender = emailSender;
+            _passwordResetProtector = dataProtectionProvider?.CreateProtector("CulinaryBlog.Auth.PasswordReset.v1");
+            _isDevelopment = hostEnvironment?.IsDevelopment() ?? false;
+            _publicSiteUrl = (configuration?["PublicSiteUrl"] ?? "http://localhost:3000").TrimEnd('/');
         }
 
         private bool VerifyPassword(ApplicationUser user, string password)
@@ -69,32 +93,101 @@ namespace CulinaryBlog.API.Endpoints
                    password.Any(ch => !char.IsLetterOrDigit(ch));
         }
 
-        private async Task<object> CreateTokenBundleAsync(ApplicationUser user)
+        private static bool IsSuspended(ApplicationUser user) => user.IsSuspended &&
+            (!user.SuspendedUntil.HasValue || user.SuspendedUntil > DateTime.UtcNow);
+
+        private async Task<TokenBundle> CreateTokenBundleAsync(ApplicationUser user)
         {
             var accessToken = _tokenService.GenerateAccessToken(user);
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             var refreshToken = _tokenService.GenerateRefreshToken(user.Id, ipAddress);
+            refreshToken.SetSessionMetadata(ipAddress, HttpContext.Request.Headers.UserAgent.ToString());
 
             _context.RefreshTokens.Add(refreshToken);
             await _context.SaveChangesAsync();
 
+            return new TokenBundle(accessToken, refreshToken, ToSessionUser(user));
+        }
+
+        private static SessionUser ToSessionUser(ApplicationUser user) => new(
+            user.Id,
+            user.Email,
+            user.FullName,
+            user.Role,
+            user.UserName,
+            user.AvatarUrl,
+            user.Bio);
+
+        private object PublishTokenBundle(TokenBundle bundle)
+        {
+            SetSessionCookies(bundle.AccessToken, bundle.RefreshToken);
+            // The refresh token deliberately never enters JavaScript/localStorage.
+            // Browser clients receive it only as an HttpOnly cookie; the access
+            // token remains available for the existing Bearer API contract.
             return new
             {
-                accessToken,
-                refreshToken = refreshToken.Token,
-                expiresAt = refreshToken.ExpiresAt,
-                user = new
-                {
-                    id = user.Id,
-                    email = user.Email,
-                    displayName = user.FullName,
-                    role = user.Role,
-                    username = user.UserName,
-                    avatarUrl = user.AvatarUrl,
-                    bio = user.Bio
-                }
+                accessToken = bundle.AccessToken,
+                expiresAt = bundle.RefreshToken.ExpiresAt,
+                user = bundle.User
             };
         }
+
+        private void SetSessionCookies(string accessToken, RefreshToken refreshToken)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var options = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = _secureAuthCookies,
+                SameSite = _authCookieSameSite,
+                Path = "/",
+                IsEssential = true
+            };
+
+            HttpContext.Response.Cookies.Append(AccessTokenCookieName, accessToken, new CookieOptions
+            {
+                HttpOnly = options.HttpOnly,
+                Secure = options.Secure,
+                SameSite = options.SameSite,
+                Path = options.Path,
+                IsEssential = options.IsEssential,
+                Expires = now.AddMinutes(_accessTokenExpiryMinutes)
+            });
+            HttpContext.Response.Cookies.Append(RefreshTokenCookieName, refreshToken.Token, new CookieOptions
+            {
+                HttpOnly = options.HttpOnly,
+                Secure = options.Secure,
+                SameSite = options.SameSite,
+                Path = options.Path,
+                IsEssential = options.IsEssential,
+                Expires = new DateTimeOffset(refreshToken.ExpiresAt, TimeSpan.Zero)
+            });
+        }
+
+        private void ClearSessionCookies()
+        {
+            var options = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = _secureAuthCookies,
+                SameSite = _authCookieSameSite,
+                Path = "/",
+                IsEssential = true
+            };
+            HttpContext.Response.Cookies.Delete(AccessTokenCookieName, options);
+            HttpContext.Response.Cookies.Delete(RefreshTokenCookieName, options);
+        }
+
+        private sealed record SessionUser(
+            string Id,
+            string? Email,
+            string DisplayName,
+            string Role,
+            string? Username,
+            string? AvatarUrl,
+            string? Bio);
+
+        private sealed record TokenBundle(string AccessToken, RefreshToken RefreshToken, SessionUser User);
 
         public class RegisterDto
         {
@@ -133,6 +226,8 @@ namespace CulinaryBlog.API.Endpoints
             [Required]
             [StringLength(128)]
             public string? Password { get; set; }
+            [StringLength(32)] public string? TwoFactorCode { get; set; }
+            [StringLength(32)] public string? RecoveryCode { get; set; }
         }
 
         public class MeUpdateDto
@@ -150,6 +245,8 @@ namespace CulinaryBlog.API.Endpoints
         {
             [Required, StringLength(16384)]
             public string IdToken { get; set; } = string.Empty;
+            [StringLength(32)] public string? TwoFactorCode { get; set; }
+            [StringLength(32)] public string? RecoveryCode { get; set; }
         }
 
         public class RefreshTokenDto
@@ -157,6 +254,72 @@ namespace CulinaryBlog.API.Endpoints
             [StringLength(1024)]
             public string? RefreshToken { get; set; }
         }
+
+        public class ForgotPasswordDto
+        {
+            [Required, EmailAddress, StringLength(254)] public string? Email { get; set; }
+        }
+
+        public class ResetPasswordDto
+        {
+            [Required, StringLength(8192)] public string? Token { get; set; }
+            [Required, StringLength(128, MinimumLength = 8)] public string? NewPassword { get; set; }
+            [Required, Compare(nameof(NewPassword))] public string? ConfirmPassword { get; set; }
+        }
+
+        public async Task<ApiResponseResult> ForgotPassword([FromBody] ForgotPasswordDto model)
+        {
+            const string genericMessage = "Nếu email tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi. Vui lòng kiểm tra hộp thư.";
+            if (model is null || string.IsNullOrWhiteSpace(model.Email)) return BadRequest(new { message = "Vui lòng nhập email hợp lệ." });
+            if (_passwordResetProtector is null) return StatusCode(503, new { message = "Chức năng đặt lại mật khẩu chưa sẵn sàng." });
+
+            var email = model.Email.Trim();
+            var user = await _context.Users.FirstOrDefaultAsync(item => item.NormalizedEmail == email.ToUpperInvariant() || item.Email!.ToUpper() == email.ToUpperInvariant());
+            if (user is null) return Ok(new { message = genericMessage });
+
+            var expiresAt = DateTimeOffset.UtcNow.AddMinutes(15);
+            var securityStamp = user.SecurityStamp ?? user.PasswordHash ?? string.Empty;
+            var payload = $"{user.Id}|{securityStamp}|{expiresAt.ToUnixTimeSeconds()}";
+            var token = _passwordResetProtector.Protect(payload);
+            var resetUrl = $"{_publicSiteUrl}/reset-password?token={Uri.EscapeDataString(token)}";
+
+            try
+            {
+                await (_emailSender?.SendAsync(email, "Đặt lại mật khẩu Bếp Nhà", $"<p>Bạn vừa yêu cầu đặt lại mật khẩu.</p><p><a href=\"{System.Net.WebUtility.HtmlEncode(resetUrl)}\">Đặt lại mật khẩu</a></p><p>Liên kết hết hạn sau 15 phút. Nếu không phải bạn yêu cầu, hãy bỏ qua email này.</p>") ?? Task.CompletedTask);
+            }
+            catch
+            {
+                return StatusCode(503, new { message = "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau." });
+            }
+
+            return Ok(new { message = genericMessage, developmentResetToken = _isDevelopment ? token : null });
+        }
+
+        public async Task<ApiResponseResult> ResetPassword([FromBody] ResetPasswordDto model)
+        {
+            if (model is null || _passwordResetProtector is null) return BadRequest(new { message = "Yêu cầu đặt lại mật khẩu không hợp lệ." });
+            var password = model.NewPassword ?? string.Empty;
+            if (!IsStrongPassword(password)) return BadRequest(new { message = "Mật khẩu phải tối thiểu 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt." });
+            if (!string.Equals(password, model.ConfirmPassword, StringComparison.Ordinal)) return BadRequest(new { message = "Mật khẩu xác nhận không khớp." });
+
+            string[] values;
+            try { values = _passwordResetProtector.Unprotect(model.Token!).Split('|', 3); }
+            catch { return BadRequest(new { message = "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn." }); }
+            if (values.Length != 3 || !long.TryParse(values[2], out var expiryUnix) || DateTimeOffset.UtcNow > DateTimeOffset.FromUnixTimeSeconds(expiryUnix))
+                return BadRequest(new { message = "Liên kết đặt lại mật khẩu đã hết hạn. Vui lòng yêu cầu liên kết mới." });
+
+            var user = await _context.Users.FirstOrDefaultAsync(item => item.Id == values[0]);
+            if (user is null || (user.SecurityStamp ?? user.PasswordHash ?? string.Empty) != values[1])
+                return BadRequest(new { message = "Liên kết đặt lại mật khẩu không còn hiệu lực. Vui lòng yêu cầu lại." });
+
+            user.PasswordHash = _passwordHasher.HashPassword(user, password);
+            user.SecurityStamp = Guid.NewGuid().ToString("N");
+            var refreshTokens = await _context.RefreshTokens.Where(token => token.UserId == user.Id && !token.IsRevoked).ToListAsync();
+            refreshTokens.ForEach(token => token.Revoke());
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại." });
+        }
+
         public async Task<ApiResponseResult> Register([FromBody] RegisterDto model)
         {
             if (model == null)
@@ -237,7 +400,7 @@ namespace CulinaryBlog.API.Endpoints
             return Ok(new
             {
                 message = "Đăng ký tài khoản thành công!",
-                data = tokenBundle
+                data = PublishTokenBundle(tokenBundle)
             });
         }
         public async Task<ApiResponseResult> Login([FromBody] LoginDto model)
@@ -263,15 +426,22 @@ namespace CulinaryBlog.API.Endpoints
             {
                 return Unauthorized(new { message = "Tài khoản hoặc mật khẩu không chính xác!" });
             }
+            if (IsSuspended(user))
+            {
+                return StatusCode(StatusCodes.Status423Locked, new { message = "Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.", suspendedUntil = user.SuspendedUntil, reason = user.SuspensionReason });
+            }
+            if (!await VerifyTwoFactorAsync(user, model.TwoFactorCode, model.RecoveryCode))
+                return Unauthorized(new { code = "AUTH_2FA_REQUIRED", message = "Nhập mã từ ứng dụng xác thực hoặc mã khôi phục để đăng nhập." });
 
             user.NormalizedEmail ??= user.Email?.ToUpperInvariant();
             user.NormalizedUserName ??= user.UserName?.ToUpperInvariant();
 
+            await RecordLoginAsync(user);
             var tokenBundle = await CreateTokenBundleAsync(user);
             return Ok(new
             {
                 message = "Đăng nhập thành công!",
-                data = tokenBundle
+                data = PublishTokenBundle(tokenBundle)
             });
         }
         public async Task<ApiResponseResult> GetCurrentUser()
@@ -357,14 +527,20 @@ namespace CulinaryBlog.API.Endpoints
                 }
             });
         }
-        public async Task<ApiResponseResult> Refresh([FromBody] RefreshTokenDto model)
+        public async Task<ApiResponseResult> Refresh([FromBody] RefreshTokenDto? model)
         {
-            if (string.IsNullOrWhiteSpace(model.RefreshToken))
+            // Accept a legacy JSON token once so sessions created before this
+            // upgrade can move to the HttpOnly-cookie flow without forcing a
+            // surprise logout. All new browser calls use the cookie instead.
+            var presentedToken = !string.IsNullOrWhiteSpace(model?.RefreshToken)
+                ? model.RefreshToken
+                : HttpContext.Request.Cookies[RefreshTokenCookieName];
+            if (string.IsNullOrWhiteSpace(presentedToken))
             {
                 return BadRequest(new { message = "Refresh token không được để trống." });
             }
 
-            var tokenHash = RefreshToken.Hash(model.RefreshToken);
+            var tokenHash = RefreshToken.Hash(presentedToken);
             var storedToken = await _context.RefreshTokens
                 .Include(token => token.User)
                 .FirstOrDefaultAsync(token => token.TokenHash == tokenHash);
@@ -379,6 +555,13 @@ namespace CulinaryBlog.API.Endpoints
                 storedToken.Revoke();
                 await _context.SaveChangesAsync();
                 return Unauthorized(new { code = "AUTH_REFRESH_TOKEN_EXPIRED", message = "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." });
+            }
+            if (IsSuspended(storedToken.User))
+            {
+                storedToken.Revoke();
+                await _context.SaveChangesAsync();
+                ClearSessionCookies();
+                return StatusCode(StatusCodes.Status423Locked, new { message = "Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên." });
             }
 
             await using var transaction = await _context.Database.BeginTransactionAsync();
@@ -404,37 +587,29 @@ namespace CulinaryBlog.API.Endpoints
             storedToken.Revoke();
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             var nextRefreshToken = _tokenService.GenerateRefreshToken(storedToken.UserId, ipAddress, storedToken.TokenFamilyId);
+            nextRefreshToken.SetSessionMetadata(ipAddress, HttpContext.Request.Headers.UserAgent.ToString());
             _context.RefreshTokens.Add(nextRefreshToken);
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             var refreshedAccessToken = _tokenService.GenerateAccessToken(storedToken.User);
+            var tokenBundle = new TokenBundle(refreshedAccessToken, nextRefreshToken, ToSessionUser(storedToken.User));
             return Ok(new
             {
                 message = "Làm mới token thành công!",
-                data = new
-                {
-                    accessToken = refreshedAccessToken,
-                    refreshToken = nextRefreshToken.Token,
-                    expiresAt = nextRefreshToken.ExpiresAt,
-                    user = new
-                    {
-                        id = storedToken.User.Id,
-                        email = storedToken.User.Email,
-                        displayName = storedToken.User.FullName,
-                        role = storedToken.User.Role,
-                        username = storedToken.User.UserName
-                    }
-                }
+                data = PublishTokenBundle(tokenBundle)
             });
         }
         public async Task<ApiResponseResult> Logout([FromBody] RefreshTokenDto? model)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var presentedToken = !string.IsNullOrWhiteSpace(model?.RefreshToken)
+                ? model.RefreshToken
+                : HttpContext.Request.Cookies[RefreshTokenCookieName];
             IQueryable<RefreshToken> tokens;
-            if (!string.IsNullOrWhiteSpace(model?.RefreshToken))
+            if (!string.IsNullOrWhiteSpace(presentedToken))
             {
-                var tokenHash = RefreshToken.Hash(model.RefreshToken);
+                var tokenHash = RefreshToken.Hash(presentedToken);
                 tokens = _context.RefreshTokens.Where(token => token.TokenHash == tokenHash &&
                     (userId == null || token.UserId == userId));
             }
@@ -442,6 +617,7 @@ namespace CulinaryBlog.API.Endpoints
             {
                 if (string.IsNullOrWhiteSpace(userId))
                 {
+                    ClearSessionCookies();
                     return Unauthorized(new { message = "Cần access token hoặc refresh token để đăng xuất." });
                 }
                 tokens = _context.RefreshTokens.Where(token => token.UserId == userId);
@@ -450,6 +626,7 @@ namespace CulinaryBlog.API.Endpoints
             var matchingTokens = await tokens.ToListAsync();
             if (matchingTokens.Count == 0)
             {
+                ClearSessionCookies();
                 return NoContent();
             }
 
@@ -460,8 +637,31 @@ namespace CulinaryBlog.API.Endpoints
                 .ToListAsync();
             familyTokens.ForEach(token => token.Revoke());
             await _context.SaveChangesAsync();
+            ClearSessionCookies();
             return NoContent();
         }
+        private async Task<bool> VerifyTwoFactorAsync(ApplicationUser user, string? code, string? recoveryCode)
+        {
+            if (!user.TwoFactorEnabled) return true;
+            if (_security is null || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected)) return false;
+            if (_security.VerifyCode(user.TwoFactorSecretProtected, code)) return true;
+            if (string.IsNullOrWhiteSpace(recoveryCode)) return false;
+            var hash = AccountSecurityService.Hash(recoveryCode);
+            var saved = await _context.TwoFactorRecoveryCodes.FirstOrDefaultAsync(item => item.UserId == user.Id && item.CodeHash == hash && item.UsedAt == null);
+            if (saved is null) return false;
+            saved.UsedAt = DateTime.UtcNow;
+            return true;
+        }
+
+        private async Task RecordLoginAsync(ApplicationUser user)
+        {
+            user.LastLoginAt = DateTime.UtcNow;
+            user.LastLoginIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+            user.LastLoginUserAgent = HttpContext.Request.Headers.UserAgent.ToString()[..Math.Min(HttpContext.Request.Headers.UserAgent.ToString().Length, 512)];
+            if (_security is not null) await _security.LogAsync(_context, user.Id, "login.succeeded", "Đăng nhập thành công.", HttpContext);
+            await _context.SaveChangesAsync();
+        }
+
         public async Task<ApiResponseResult> GoogleLogin([FromBody] GoogleLoginDto model)
         {
             if (string.IsNullOrWhiteSpace(_googleClientId))
@@ -542,7 +742,13 @@ namespace CulinaryBlog.API.Endpoints
                 });
                 await _context.SaveChangesAsync();
             }
-            return Ok(new { data = await CreateTokenBundleAsync(user) });
+            if (IsSuspended(user))
+                return StatusCode(StatusCodes.Status423Locked, new { message = "Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên." });
+            if (!await VerifyTwoFactorAsync(user, model.TwoFactorCode, model.RecoveryCode))
+                return Unauthorized(new { code = "AUTH_2FA_REQUIRED", message = "Nhập mã từ ứng dụng xác thực hoặc mã khôi phục để đăng nhập." });
+            await RecordLoginAsync(user);
+            var tokenBundle = await CreateTokenBundleAsync(user);
+            return Ok(new { data = PublishTokenBundle(tokenBundle) });
         }
     }
 }

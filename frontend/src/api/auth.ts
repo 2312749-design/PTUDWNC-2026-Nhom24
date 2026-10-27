@@ -11,7 +11,7 @@ async function submitAuthRequest(action: 'login' | 'register', request: LoginReq
       method: 'POST',
       body: JSON.stringify(request),
     })
-    if (!data?.accessToken || !data?.refreshToken) return { ok: false, message: 'Máy chủ không trả về thông tin phiên đăng nhập.' }
+    if (!data?.accessToken) return { ok: false, message: 'Máy chủ không trả về thông tin phiên đăng nhập.' }
     return { ok: true, data: data as AuthTokens, message: data.message }
   } catch (error) {
     if (error instanceof ApiClientError) return { ok: false, message: error.message }

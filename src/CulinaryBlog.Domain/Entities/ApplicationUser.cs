@@ -10,6 +10,15 @@ public class ApplicationUser : IdentityUser
     public string? Bio { get; set; }
     public DateTime? BirthDate { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // Account moderation is kept on the user record so an administrator can
+    // suspend sign-in without deleting the member or their content.
+    public bool IsSuspended { get; set; }
+    public DateTime? SuspendedUntil { get; set; }
+    public string? SuspensionReason { get; set; }
+    public string? TwoFactorSecretProtected { get; set; }
+    public DateTime? LastLoginAt { get; set; }
+    public string? LastLoginIp { get; set; }
+    public string? LastLoginUserAgent { get; set; }
 
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
 

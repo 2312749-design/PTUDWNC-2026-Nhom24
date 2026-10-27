@@ -21,6 +21,7 @@ public class RecipeDto
     public string CategoryName { get; set; } = string.Empty;
     public string AuthorId { get; set; } = string.Empty;
     public RecipeStatus Status { get; set; }
+    public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public int PrepTimeMinutes { get; set; }
     public int CookTimeMinutes { get; set; }

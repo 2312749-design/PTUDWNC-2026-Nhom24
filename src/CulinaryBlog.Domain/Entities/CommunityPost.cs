@@ -11,6 +11,9 @@ public class CommunityPost
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsDraft { get; set; }
     public bool CommentsEnabled { get; set; } = true;
+    public bool IsHidden { get; set; }
+    public DateTime? HiddenAt { get; set; }
+    public string? HiddenReason { get; set; }
     public ICollection<PostLike> Likes { get; set; } = new List<PostLike>();
     public ICollection<PostComment> Comments { get; set; } = new List<PostComment>();
 }

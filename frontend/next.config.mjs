@@ -6,6 +6,12 @@ const nextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  // Windows can intermittently deny simultaneous creation of App Router
+  // segment folders. A single static-generation worker keeps production
+  // builds deterministic for this local/CI project.
+  experimental: {
+    cpus: 1,
+  },
 }
 
 export default nextConfig
