@@ -23,6 +23,9 @@ the frontend origin through its `Cors:AllowedOrigins` configuration.
 - `src/lib/auth-store.ts` — in-memory authentication state managed with Zustand.
 - `src/types/` — shared API, recipe, and authentication contracts.
 - `src/app/search/` — `/search` recipe discovery page backed by TanStack Query.
+- `src/app/studio/recipes/` — author recipe list, editor, image upload, and
+  Draft/Published/Archived/Deleted lifecycle controls.
+- `src/app/admin/users/` — role-protected admin user directory.
 
 The interface is styled with Tailwind CSS 4 and Lucide icons. The root layout
 provides the shared header and footer; the sign-in page keeps the access token

@@ -22,10 +22,19 @@ export default async function RecipeDetailPage({
       </Link>
 
       <article className="mt-6 overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-sm">
-        <div className="relative flex min-h-64 items-center justify-center overflow-hidden bg-gradient-to-br from-amber-100 via-orange-50 to-rose-100 sm:min-h-80">
-          <span className="absolute -left-10 -top-20 size-64 rounded-full border-[36px] border-white/40" aria-hidden="true" />
-          <span className="absolute -bottom-20 -right-12 size-72 rounded-full bg-white/30" aria-hidden="true" />
-          <span className="relative text-9xl drop-shadow-lg" aria-hidden="true">🍲</span>
+        <div
+          role={recipe.imageUrl ? "img" : undefined}
+          aria-label={recipe.imageUrl ? `Ảnh ${recipe.title}` : undefined}
+          className="relative flex min-h-64 items-center justify-center overflow-hidden bg-gradient-to-br from-amber-100 via-orange-50 to-rose-100 bg-cover bg-center sm:min-h-80"
+          style={recipe.imageUrl ? { backgroundImage: `url("${recipe.imageUrl}")` } : undefined}
+        >
+          {!recipe.imageUrl && (
+            <>
+              <span className="absolute -left-10 -top-20 size-64 rounded-full border-[36px] border-white/40" aria-hidden="true" />
+              <span className="absolute -bottom-20 -right-12 size-72 rounded-full bg-white/30" aria-hidden="true" />
+              <span className="relative text-9xl drop-shadow-lg" aria-hidden="true">🍲</span>
+            </>
+          )}
           <span className="absolute bottom-5 left-5 rounded-full bg-white/90 px-4 py-2 text-xs font-bold uppercase tracking-wider text-orange-800 shadow-sm">
             {recipe.status}
           </span>

@@ -64,6 +64,20 @@ export default function SiteHeader() {
           {user ? (
             <>
               <Link
+                href="/studio/recipes"
+                className="hidden text-sm font-semibold text-stone-700 transition hover:text-orange-700 lg:inline"
+              >
+                Quản lý bài viết
+              </Link>
+              {user.role === "Admin" && (
+                <Link
+                  href="/admin/users"
+                  className="hidden text-sm font-semibold text-stone-700 transition hover:text-orange-700 lg:inline"
+                >
+                  Người dùng
+                </Link>
+              )}
+              <Link
                 href="/profile"
                 className="hidden text-sm font-semibold text-stone-700 transition hover:text-orange-700 sm:inline"
               >
@@ -102,6 +116,22 @@ export default function SiteHeader() {
                   className="rounded-xl px-3 py-2.5 text-sm font-medium text-stone-700 hover:bg-orange-50 hover:text-orange-700"
                 >
                   Hồ sơ của tôi
+                </Link>
+              )}
+              {user && (
+                <Link
+                  href="/studio/recipes"
+                  className="rounded-xl px-3 py-2.5 text-sm font-medium text-stone-700 hover:bg-orange-50 hover:text-orange-700"
+                >
+                  Quản lý bài viết
+                </Link>
+              )}
+              {user?.role === "Admin" && (
+                <Link
+                  href="/admin/users"
+                  className="rounded-xl px-3 py-2.5 text-sm font-medium text-stone-700 hover:bg-orange-50 hover:text-orange-700"
+                >
+                  Quản lý người dùng
                 </Link>
               )}
               {navigation.map((item) => (

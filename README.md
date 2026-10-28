@@ -77,9 +77,24 @@ Next.js server-side fetches and its `/api/*` rewrite.
 - Authenticated account routes provide profile retrieval/update and password
   changes. `POST /api/v1/auth/forgot-password` sends a one-time, 30-minute
   password reset link by SMTP; reset tokens are stored as hashes.
-- Recipe reads remain public. All recipe, ingredient, and step writes require an
-  `Author` bearer token and are restricted to the recipe's author. The author ID
-  is taken from the token, not the request body.
+- Published recipe reads are public. Recipe management, ingredient/step edits,
+  lifecycle transitions, and image uploads require an `Author` bearer token and
+  are restricted to the recipe's author. Authors can manage recipes at
+  `/studio/recipes`; states are `Draft`, `Published`, `Archived`, and `Deleted`
+  (`Deleted` is a soft-delete state).
+- `POST /api/v1/media/images` accepts JPEG, PNG, and WebP files up to 5 MB.
+  Uploads are stored under `src/CulinaryBlog.Api/wwwroot/uploads` and served
+  through `/uploads`. This local storage is suitable for development and
+  single-instance hosting; deployments with ephemeral disks or multiple API
+  instances should use shared object storage.
+- `GET /api/v1/admin/users` lists users and supports pagination and an optional
+  role filter. It requires the `Admin` role. New registrations are authors;
+  provision an administrator through a trusted database operator by promoting
+  an existing account's `BlogUsers.Role` to `Admin`. There is intentionally no
+  public admin registration or role-promotion endpoint.
+- HTTP method, path, status, duration, authenticated user ID, and trace ID are
+  recorded through the configured ASP.NET Core logging providers. Request
+  bodies and query strings are not logged.
 - `GET /api/v1/categories` lists categories and published recipe counts;
   `GET /api/v1/categories/{id}/recipes` returns a paginated category listing.
 - CORS is origin-allowlisted. A per-IP global limiter allows 120 requests/minute;

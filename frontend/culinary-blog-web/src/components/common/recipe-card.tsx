@@ -22,22 +22,24 @@ export default function RecipeCard({
       className="group overflow-hidden rounded-3xl border border-stone-200/80 bg-white shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orange-600"
     >
       <div
+        role={recipe.imageUrl ? "img" : undefined}
+        aria-label={recipe.imageUrl ? `Ảnh ${recipe.title}` : undefined}
         className={`relative flex h-52 items-center justify-center overflow-hidden bg-gradient-to-br ${cardAccents[index % cardAccents.length]}`}
+        style={recipe.imageUrl ? {
+          backgroundImage: `url("${recipe.imageUrl}")`,
+          backgroundPosition: "center",
+          backgroundSize: "cover",
+        } : undefined}
       >
-        <span
-          className="absolute -right-7 -top-10 size-40 rounded-full border-[22px] border-white/35"
-          aria-hidden="true"
-        />
-        <span
-          className="absolute -bottom-12 -left-8 size-36 rounded-full bg-white/35"
-          aria-hidden="true"
-        />
-        <span
-          className="relative text-7xl drop-shadow-sm transition duration-300 group-hover:scale-110"
-          aria-hidden="true"
-        >
-          🍲
-        </span>
+        {!recipe.imageUrl && (
+          <>
+            <span className="absolute -right-7 -top-10 size-40 rounded-full border-[22px] border-white/35" aria-hidden="true" />
+            <span className="absolute -bottom-12 -left-8 size-36 rounded-full bg-white/35" aria-hidden="true" />
+            <span className="relative text-7xl drop-shadow-sm transition duration-300 group-hover:scale-110" aria-hidden="true">
+              🍲
+            </span>
+          </>
+        )}
         <span className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-orange-800 shadow-sm">
           {recipe.status}
         </span>

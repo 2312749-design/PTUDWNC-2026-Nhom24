@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using System.Threading.RateLimiting;
@@ -72,6 +73,9 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("Author", policy =>
         policy.RequireAuthenticatedUser()
             .RequireRole("Author"));
+    options.AddPolicy("Admin", policy =>
+        policy.RequireAuthenticatedUser()
+            .RequireRole("Admin"));
 });
 
 var allowedOrigins = builder.Configuration
@@ -143,12 +147,22 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
+app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<GlobalExceptionHandlingMiddleware>();
 app.UseRouting();
 app.UseCors("Frontend");
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+var uploadsDirectory = Path.Combine(
+    app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"),
+    "uploads");
+Directory.CreateDirectory(uploadsDirectory);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadsDirectory),
+    RequestPath = "/uploads"
+});
 
 if (app.Environment.IsDevelopment())
 {
@@ -165,6 +179,8 @@ var apiV1 = app.MapGroup("/api/v{version:apiVersion}")
     .WithApiVersionSet(apiVersionSet);
 apiV1.MapRecipeEndpoints();
 apiV1.MapCategoryEndpoints();
+apiV1.MapMediaEndpoints();
+apiV1.MapAdminEndpoints();
 apiV1.MapAuthEndpoints(
     issuer,
     audience,

@@ -3,6 +3,7 @@ export interface Recipe {
   title: string;
   slug: string;
   description: string;
+  imageUrl: string | null;
   cookTimeMinutes: number;
   servings: number;
   difficulty: string;
@@ -51,6 +52,7 @@ export interface CreateRecipeRequest {
   title: string;
   slug: string;
   description: string;
+  imageUrl: string | null;
   cookTimeMinutes: number;
   servings: number;
   difficulty: string;
@@ -74,4 +76,14 @@ export interface CreateStepRequest {
   description: string;
   timerMinutes: number | null;
   imageUrl: string | null;
+}
+
+export interface UpdateIngredientRequest extends CreateIngredientRequest {
+  id: string;
+  recipeId: string;
+}
+
+export interface UpdateStepRequest extends CreateStepRequest {
+  id: string;
+  recipeId: string;
 }

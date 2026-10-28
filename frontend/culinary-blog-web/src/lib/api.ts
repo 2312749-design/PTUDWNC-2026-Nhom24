@@ -7,7 +7,19 @@ import type {
   RegisterRequest,
   UpdateProfileRequest,
 } from "@/types/auth";
-import type { Category, Recipe, RecipeDetail } from "@/types/recipe";
+import type {
+  Category,
+  CreateIngredientRequest,
+  CreateRecipeRequest,
+  CreateStepRequest,
+  Recipe,
+  RecipeDetail,
+  RecipeIngredient,
+  RecipeStep,
+  UpdateIngredientRequest,
+  UpdateRecipeRequest,
+  UpdateStepRequest,
+} from "@/types/recipe";
 import { ApiClientError } from "@/lib/api-error";
 
 const apiBaseUrl =
@@ -23,7 +35,9 @@ async function apiFetch<T>(
   const headers = new Headers(init?.headers);
   headers.set("Accept", "application/json");
 
-  if (init?.body && !headers.has("Content-Type")) {
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
+  if (init?.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (accessToken) {
@@ -76,6 +90,10 @@ async function apiFetch<T>(
     );
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
@@ -111,6 +129,141 @@ export function searchRecipes(
 
 export function getRecipeBySlug(slug: string): Promise<ApiResponse<RecipeDetail>> {
   return apiFetch(`recipes/slug/${encodeURIComponent(slug)}`);
+}
+
+export function getMyRecipes(accessToken: string): Promise<ApiResponse<Recipe[]>> {
+  return apiFetch("recipes/mine", undefined, accessToken);
+}
+
+export function getRecipeForManagement(
+  recipeId: string,
+  accessToken: string,
+): Promise<ApiResponse<RecipeDetail>> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}/manage`,
+    undefined,
+    accessToken,
+  );
+}
+
+export function createRecipe(
+  request: CreateRecipeRequest,
+  accessToken: string,
+): Promise<Recipe> {
+  return apiFetch(
+    "recipes",
+    { method: "POST", body: JSON.stringify(request) },
+    accessToken,
+  );
+}
+
+export function updateRecipe(
+  recipeId: string,
+  request: UpdateRecipeRequest,
+  accessToken: string,
+): Promise<Recipe> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}`,
+    { method: "PUT", body: JSON.stringify(request) },
+    accessToken,
+  );
+}
+
+export function changeRecipeStatus(
+  recipeId: string,
+  status: string,
+  accessToken: string,
+): Promise<Recipe> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}/status`,
+    { method: "POST", body: JSON.stringify({ status }) },
+    accessToken,
+  );
+}
+
+export function uploadRecipeImage(
+  file: File,
+  accessToken: string,
+): Promise<ApiResponse<{ url: string }>> {
+  const body = new FormData();
+  body.set("file", file);
+  return apiFetch("media/images", { method: "POST", body }, accessToken);
+}
+
+export function createIngredient(
+  recipeId: string,
+  request: CreateIngredientRequest,
+  accessToken: string,
+): Promise<RecipeIngredient> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}/ingredients`,
+    { method: "POST", body: JSON.stringify(request) },
+    accessToken,
+  );
+}
+
+export function updateIngredient(
+  request: UpdateIngredientRequest,
+  accessToken: string,
+): Promise<RecipeIngredient> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(request.recipeId)}/ingredients/${encodeURIComponent(request.id)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request),
+    },
+    accessToken,
+  );
+}
+
+export function deleteIngredient(
+  recipeId: string,
+  ingredientId: string,
+  accessToken: string,
+): Promise<void> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}/ingredients/${encodeURIComponent(ingredientId)}`,
+    { method: "DELETE" },
+    accessToken,
+  );
+}
+
+export function createStep(
+  recipeId: string,
+  request: CreateStepRequest,
+  accessToken: string,
+): Promise<RecipeStep> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}/steps`,
+    { method: "POST", body: JSON.stringify(request) },
+    accessToken,
+  );
+}
+
+export function updateStep(
+  request: UpdateStepRequest,
+  accessToken: string,
+): Promise<RecipeStep> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(request.recipeId)}/steps/${encodeURIComponent(request.id)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request),
+    },
+    accessToken,
+  );
+}
+
+export function deleteStep(
+  recipeId: string,
+  stepId: string,
+  accessToken: string,
+): Promise<void> {
+  return apiFetch(
+    `recipes/${encodeURIComponent(recipeId)}/steps/${encodeURIComponent(stepId)}`,
+    { method: "DELETE" },
+    accessToken,
+  );
 }
 
 export function register(request: RegisterRequest): Promise<AuthResponse> {
@@ -196,4 +349,34 @@ export function resetPassword(
     method: "POST",
     body: JSON.stringify({ email, token, newPassword }),
   });
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: "Admin" | "Author";
+  createdAt: string;
+}
+
+export function getAdminUsers(
+  accessToken: string,
+  page = 1,
+  pageSize = 20,
+  role?: "Admin" | "Author",
+): Promise<PaginatedResult<AdminUser>> {
+  const params = new URLSearchParams({
+    page: page.toString(),
+    pageSize: pageSize.toString(),
+  });
+  if (role) params.set("role", role);
+  return apiFetch<{
+    data: AdminUser[];
+    pagination: { page: number; total: number; totalPages: number };
+  }>(`admin/users?${params}`, undefined, accessToken).then((result) => ({
+    items: result.data,
+    totalCount: result.pagination.total,
+    page: result.pagination.page,
+    totalPages: result.pagination.totalPages,
+  }));
 }

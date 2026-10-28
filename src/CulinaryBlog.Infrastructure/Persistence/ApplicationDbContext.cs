@@ -140,6 +140,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(x => x.Description)
                 .HasMaxLength(2000);
 
+            entity.Property(x => x.ImageUrl)
+                .HasMaxLength(500);
+
             // PostgreSQL Full-Text Search
             entity.Property<NpgsqlTypes.NpgsqlTsVector>("SearchVector")
                 .HasColumnName("SearchVector")

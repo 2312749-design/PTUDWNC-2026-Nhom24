@@ -56,6 +56,44 @@ public static class RecipeEndpoints
             });
         });
 
+        recipes.MapGet("/mine", async (
+            ApplicationDbContext dbContext,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var authorId = GetUserId(user);
+            var result = await dbContext.Recipes
+                .AsNoTracking()
+                .Where(recipe => recipe.AuthorId == authorId)
+                .OrderByDescending(recipe => recipe.UpdatedAt)
+                .ToListAsync(cancellationToken);
+            return Results.Ok(new { data = result });
+        }).RequireAuthorization("Author");
+
+        recipes.MapGet("/{id:guid}/manage", async (
+            Guid id,
+            ApplicationDbContext dbContext,
+            IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            await GetOwnedRecipeOrThrowAsync(unitOfWork, id, user, cancellationToken);
+            var recipe = await dbContext.Recipes
+                .AsNoTracking()
+                .Include(item => item.Ingredients)
+                .Include(item => item.Steps)
+                .SingleAsync(item => item.Id == id, cancellationToken);
+            return Results.Ok(new
+            {
+                data = new
+                {
+                    recipe,
+                    ingredients = recipe.Ingredients.OrderBy(item => item.OrderIndex),
+                    steps = recipe.Steps.OrderBy(item => item.StepNumber)
+                }
+            });
+        }).RequireAuthorization("Author");
+
         recipes.MapGet("/{id:guid}", async (
             Guid id,
             IUnitOfWork unitOfWork,
@@ -64,7 +102,12 @@ public static class RecipeEndpoints
             var recipe = await unitOfWork.Recipes.GetByIdAsync(
                 id,
                 cancellationToken: cancellationToken);
-            return Results.Ok(recipe ?? throw new NotFoundException("Không tìm thấy công thức."));
+            if (recipe is null || recipe.Status != "Published")
+            {
+                throw new NotFoundException("Không tìm thấy công thức.");
+            }
+
+            return Results.Ok(recipe);
         });
 
         recipes.MapGet("/slug/{slug}", async (
@@ -127,6 +170,7 @@ public static class RecipeEndpoints
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
+            await GetRecipeOrThrowAsync(unitOfWork, id, cancellationToken);
             var ingredient = await unitOfWork.RecipeIngredients.GetByIdAsync(
                 id,
                 ingredientId,
@@ -204,8 +248,9 @@ public static class RecipeEndpoints
                 CookTimeMinutes = request.CookTimeMinutes,
                 Servings = request.Servings,
                 Difficulty = request.Difficulty,
+                ImageUrl = request.ImageUrl,
                 CategoryId = request.CategoryId,
-                AuthorId = Guid.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!),
+                AuthorId = GetUserId(user),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -243,11 +288,31 @@ public static class RecipeEndpoints
             recipe.CookTimeMinutes = request.CookTimeMinutes;
             recipe.Servings = request.Servings;
             recipe.Difficulty = request.Difficulty;
-            recipe.Status = request.Status;
+            SetRecipeStatus(recipe, request.Status);
             recipe.CategoryId = request.CategoryId;
+            recipe.ImageUrl = request.ImageUrl;
             recipe.UpdatedAt = DateTime.UtcNow;
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
+            return Results.Ok(recipe);
+        }).RequireAuthorization("Author");
+
+        recipes.MapPost("/{id:guid}/status", async (
+            Guid id,
+            ChangeRecipeStatusRequest request,
+            IUnitOfWork unitOfWork,
+            ClaimsPrincipal user,
+            CancellationToken cancellationToken) =>
+        {
+            var recipe = await GetOwnedRecipeOrThrowAsync(
+                unitOfWork,
+                id,
+                user,
+                cancellationToken,
+                trackChanges: true);
+            SetRecipeStatus(recipe, request.Status);
+            recipe.UpdatedAt = DateTime.UtcNow;
+            await unitOfWork.SaveChangesAsync(cancellationToken);
             return Results.Ok(recipe);
         }).RequireAuthorization("Author");
 
@@ -264,9 +329,10 @@ public static class RecipeEndpoints
                 cancellationToken,
                 trackChanges: true);
 
-            unitOfWork.Recipes.Remove(recipe);
+            SetRecipeStatus(recipe, "Deleted");
+            recipe.UpdatedAt = DateTime.UtcNow;
             await unitOfWork.SaveChangesAsync(cancellationToken);
-            return Results.Ok(new { message = "Xóa công thức thành công." });
+            return Results.Ok(new { message = "Đã chuyển công thức vào thùng rác." });
         }).RequireAuthorization("Author");
 
         recipes.MapPost("/{recipeId:guid}/steps", async (
@@ -306,6 +372,7 @@ public static class RecipeEndpoints
             IUnitOfWork unitOfWork,
             CancellationToken cancellationToken) =>
         {
+            await GetRecipeOrThrowAsync(unitOfWork, recipeId, cancellationToken);
             var step = await unitOfWork.RecipeSteps.GetByIdAsync(
                 recipeId,
                 stepId,
@@ -394,10 +461,16 @@ public static class RecipeEndpoints
         Guid recipeId,
         CancellationToken cancellationToken)
     {
-        return await unitOfWork.Recipes.GetByIdAsync(
+        var recipe = await unitOfWork.Recipes.GetByIdAsync(
             recipeId,
             cancellationToken: cancellationToken)
             ?? throw new NotFoundException("Không tìm thấy công thức.");
+        if (recipe.Status != "Published")
+        {
+            throw new NotFoundException("Không tìm thấy công thức.");
+        }
+
+        return recipe;
     }
 
     private static async Task<Recipe> GetOwnedRecipeOrThrowAsync(
@@ -420,5 +493,35 @@ public static class RecipeEndpoints
         }
 
         return recipe;
+    }
+
+    private static Guid GetUserId(ClaimsPrincipal user)
+    {
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(userId, out var authorId)
+            ? authorId
+            : throw new UnauthorizedException("Không xác định được tài khoản.");
+    }
+
+    private static void SetRecipeStatus(Recipe recipe, string status)
+    {
+        var validTransition = (recipe.Status, status) switch
+        {
+            ("Draft", "Published") => true,
+            ("Draft", "Deleted") => true,
+            ("Published", "Archived") => true,
+            ("Published", "Deleted") => true,
+            ("Archived", "Published") => true,
+            ("Archived", "Deleted") => true,
+            _ when recipe.Status == status => true,
+            _ => false
+        };
+        if (!validTransition)
+        {
+            throw new ValidationException(
+                $"Không thể chuyển trạng thái từ {recipe.Status} sang {status}.");
+        }
+
+        recipe.Status = status;
     }
 }
