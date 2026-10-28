@@ -5,21 +5,26 @@ on:
     branches:
       - main
       - master
-      - nguyeducthanhlab06
+      - 'nguyeducthanhlab*'
+      - 'codex/**'
   pull_request:
     branches:
       - main
       - master
-      - nguyeducthanhlab06
+      - 'nguyeducthanhlab*'
   workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout source
@@ -30,10 +35,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -54,6 +59,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
       - name: Test frontend contracts and structured data
         working-directory: frontend
         run: npm test
@@ -68,16 +77,33 @@ jobs:
 
       - name: Validate Docker Compose file
         env:
-          # This value is used only to expand the required Compose variable.
-          # Production deployments must provide their own JWT_SECRET.
+          # These values only validate Compose interpolation in CI.
+          POSTGRES_PASSWORD: ci-compose-postgres-placeholder
+          MINIO_ROOT_USER: ci-compose-minio
+          MINIO_ROOT_PASSWORD: ci-compose-minio-placeholder
           JWT_SECRET: ci-compose-validation-placeholder-not-a-deployment-secret
-        run: docker compose config
+        run: docker compose config --quiet
+
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-diagnostics
+          if-no-files-found: ignore
+          retention-days: 14
+          path: |
+            tests/**/TestResults/**
+            frontend/test-results/**
+            frontend/playwright-report/**
 
   docker:
     name: Publish Docker images
     needs: ci
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout source
