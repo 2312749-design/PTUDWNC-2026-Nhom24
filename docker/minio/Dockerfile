@@ -8,7 +8,11 @@ WORKDIR /src
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/minio ./
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates curl && addgroup -S minio && adduser -S -G minio minio
+RUN apk add --no-cache ca-certificates curl \
+    && addgroup -S minio \
+    && adduser -S -G minio minio \
+    && mkdir -p /data \
+    && chown minio:minio /data
 COPY --from=builder /out/minio /usr/local/bin/minio
 USER minio
 VOLUME ["/data"]

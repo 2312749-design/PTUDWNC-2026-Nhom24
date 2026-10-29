@@ -26,33 +26,9 @@ public static class DataSeeder
             await context.Users.AddAsync(defaultUser);
         }
 
-        if (defaultUser.Role != "Admin")
-        {
-            defaultUser.Role = "Admin";
-        }
-
-        if (string.IsNullOrWhiteSpace(defaultUser.PasswordHash))
-        {
-            defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
-        }
-        else
-        {
-            try
-            {
-                var passwordCheck = passwordHasher.VerifyHashedPassword(defaultUser, defaultUser.PasswordHash, "chefdemo");
-                if (passwordCheck == PasswordVerificationResult.Failed)
-                {
-                    defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
-                    await context.SaveChangesAsync();
-                }
-            }
-            catch (FormatException)
-            {
-                defaultUser.PasswordHash = passwordHasher.HashPassword(defaultUser, "chefdemo");
-                await context.SaveChangesAsync();
-            }
-        }
-
+        // Demo credentials and the initial role are assigned only when the
+        // account is created. Restarting with seed enabled must not undo an
+        // administrator's password change, role change, or security decision.
         await context.SaveChangesAsync();
 
         var demoUsers = new[]

@@ -1,5 +1,6 @@
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -89,6 +90,43 @@ public sealed class DataSeederRecipeContentTests : IAsyncLifetime
             Assert.True(ingredientCounts.GetValueOrDefault(recipe.Id) >= Recipe.MinimumIngredientCount);
             Assert.True(stepCounts.GetValueOrDefault(recipe.Id) >= Recipe.MinimumStepCount);
         });
+    }
+
+    [Fact]
+    public async Task RepeatedSeed_PreservesExistingDemoAccountPasswordRoleAndProfile()
+    {
+        var existing = ApplicationUser.Create("Tên hồ sơ đã cập nhật", "admin@culinaryblog.com", "chefdemo");
+        existing.Role = "Author";
+        existing.Bio = "Hồ sơ do người dùng tự cập nhật.";
+        existing.AvatarUrl = "/uploads/avatars/existing.webp";
+        var hasher = new PasswordHasher<ApplicationUser>();
+        existing.PasswordHash = hasher.HashPassword(existing, "ChangedByOwner@2026");
+        var originalHash = existing.PasswordHash;
+        _context.Users.Add(existing);
+        await _context.SaveChangesAsync();
+
+        await DataSeeder.SeedDataAsync(_context);
+        await DataSeeder.SeedDataAsync(_context);
+
+        var persisted = await _context.Users.SingleAsync(user => user.Id == existing.Id);
+        Assert.Equal(originalHash, persisted.PasswordHash);
+        Assert.NotEqual(PasswordVerificationResult.Failed,
+            hasher.VerifyHashedPassword(persisted, persisted.PasswordHash!, "ChangedByOwner@2026"));
+        Assert.Equal("Author", persisted.Role);
+        Assert.Equal("Tên hồ sơ đã cập nhật", persisted.FullName);
+        Assert.Equal("Hồ sơ do người dùng tự cập nhật.", persisted.Bio);
+        Assert.Equal("/uploads/avatars/existing.webp", persisted.AvatarUrl);
+    }
+
+    [Fact]
+    public async Task FreshSeed_CreatesDemoAdministratorWithInitialCredentials()
+    {
+        await DataSeeder.SeedDataAsync(_context);
+
+        var admin = await _context.Users.SingleAsync(user => user.UserName == "chefdemo");
+        Assert.Equal("Admin", admin.Role);
+        Assert.NotEqual(PasswordVerificationResult.Failed,
+            new PasswordHasher<ApplicationUser>().VerifyHashedPassword(admin, admin.PasswordHash!, "chefdemo"));
     }
 
     private sealed class TestApplicationDbContext(DbContextOptions<ApplicationDbContext> options)

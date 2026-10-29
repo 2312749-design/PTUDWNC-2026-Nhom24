@@ -20,7 +20,7 @@ Cần .NET SDK 10, Node.js từ 20.9 trở lên (CI dùng 22), Docker Desktop/Co
 ### Docker
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 # Thay các giá trị change-me trong .env bằng cấu hình local riêng.
 docker compose config --quiet
 docker compose up -d --build
@@ -43,6 +43,17 @@ npm run dev -- --port 3000
 ```
 
 Frontend: http://localhost:3000. Backend: http://localhost:5152. Hướng dẫn giao diện tại [frontend/COSMIC-UI.md](frontend/COSMIC-UI.md). Đọc cấu hình migration/seed trước khi chạy lần đầu trên database hiện có.
+
+### Kiểm tra bản nộp từ source sạch
+
+Repository ghim .NET SDK 10 trong `global.json`, không tự chọn SDK preview đang cài trên máy. Để kiểm tra bản đã commit bằng PowerShell 7.2 và Docker:
+
+```powershell
+pwsh -File scripts/submission/verify-clean.ps1
+pwsh -File scripts/submission/verify-runtime.ps1 -BaseUrl http://localhost:25152
+```
+
+Lệnh đầu xuất `git HEAD` và dựng một stack riêng với database/volume mới: web http://localhost:28080, API http://localhost:25152. Nó không dùng `.env`, container hoặc dữ liệu cũ. Lệnh thứ hai tạo dữ liệu thử riêng trong stack đó để kiểm tra các thao tác API với PostgreSQL, Redis và MinIO thật. Xem [hướng dẫn kiểm tra](scripts/submission/README.md) và [checklist review/nghiệm thu](docs/submission/REVIEW-CHECKLIST.md). Không công khai `.env` hoặc file Compose riêng được sinh trong `artifacts/`.
 
 ---
 

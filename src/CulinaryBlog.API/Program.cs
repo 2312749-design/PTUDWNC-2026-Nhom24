@@ -414,7 +414,8 @@ if (databaseInitialization.ApplyMigrationsOnStartup || databaseInitialization.Se
     if (databaseInitialization.SeedDemoDataOnStartup)
     {
         await DataSeeder.SeedDataAsync(dbContext);
-        var seedAuthor = await dbContext.Users.FirstAsync(user => user.Email == "admin@culinaryblog.com");
+        var seedAuthor = await dbContext.Users.FirstAsync(user =>
+            user.Email == "admin@culinaryblog.com" || user.UserName == "chefdemo");
         await RecipeCatalogSeeder.SeedDataAsync(dbContext, seedAuthor);
         await DemoActivitySeeder.SeedAsync(dbContext, seedAuthor);
         await ExpandedDemoDataSeeder.SeedAsync(dbContext, seedAuthor);
