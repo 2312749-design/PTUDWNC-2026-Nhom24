@@ -1,5 +1,5 @@
 import { getVersionedApiBaseUrl, readApiResponse } from './config.js'
-import { requestJson } from '../lib/api-client'
+import { ApiClientError, requestJson } from '../lib/api-client'
 import { useAuthStore } from '../store/auth-store'
 
 const ACCESS_TOKEN_KEY = 'accessToken'
@@ -70,17 +70,28 @@ export async function refreshAccessToken() {
       body: JSON.stringify(legacyRefreshToken ? { refreshToken: legacyRefreshToken } : {}),
     }).then(async response => {
       const data = await readApiResponse(response)
-      if (!response.ok || !data.accessToken) throw new Error('Phiên đăng nhập đã hết hạn.')
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          clearSession()
+          return ''
+        }
+        throw new ApiClientError(data.message || 'Chưa thể làm mới phiên. Vui lòng thử lại.', response.status, data.code)
+      }
+      if (!data.accessToken) throw new ApiClientError('Máy chủ không trả về phiên hợp lệ. Vui lòng thử lại.', 502)
       saveSession(data)
       return data.accessToken
-    }).catch(() => {
-      clearSession()
-      return ''
+    }).catch(error => {
+      // Connectivity, rate limiting and server outages do not revoke the
+      // refresh cookie. Keep user metadata so a later retry can recover.
+      if (error instanceof ApiClientError) throw error
+      throw new ApiClientError('Không thể kết nối để làm mới phiên. Vui lòng thử lại.', 0)
     }).finally(() => { refreshPromise = null })
   }
   return refreshPromise
 }
 
+/** Legacy explicit-token helper. Prefer apiRequest for cookie-authenticated
+ * requests; transient refresh failures reject without clearing the session. */
 export async function getFreshAccessToken() {
   const accessToken = getAccessToken()
   return accessToken || (getSessionUser() || storage()?.getItem(REFRESH_TOKEN_KEY) ? refreshAccessToken() : '')
@@ -88,8 +99,9 @@ export async function getFreshAccessToken() {
 
 export async function apiRequest(path, options = {}) {
   const send = async () => {
-    const accessToken = await getFreshAccessToken()
-    return requestJson(path, { ...options, token: accessToken })
+    // A valid HttpOnly access cookie already authenticates document reloads.
+    // Refresh only after an actual 401, not before every cookie-backed request.
+    return requestJson(path, { ...options, token: getAccessToken() })
   }
   try {
     return await send()

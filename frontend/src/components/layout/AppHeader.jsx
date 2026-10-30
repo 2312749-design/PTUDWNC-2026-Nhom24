@@ -63,8 +63,10 @@ export default function AppHeader() {
 
   useEffect(() => {
     let active = true
+    let accountRequest = 0
 
     const loadAccount = async () => {
+      const request = ++accountRequest
       if (!getAccessToken() && !getSessionUser()) {
         if (active) {
           setMe(null)
@@ -76,14 +78,15 @@ export default function AppHeader() {
       try {
         const [user, notifications] = await Promise.all([
           apiRequest('/account/me'),
-          apiRequest('/features/notifications'),
+          // Notification availability must not hide an authenticated profile.
+          apiRequest('/features/notifications').catch(() => null),
         ])
-        if (!active) return
+        if (!active || request !== accountRequest) return
         setMe(user)
         setSessionUser(user)
         setUnreadCount(Number(notifications?.unreadCount) || 0)
-      } catch {
-        if (active) {
+      } catch (error) {
+        if (active && request === accountRequest && error.status === 401) {
           setMe(null)
           setUnreadCount(0)
         }
@@ -92,9 +95,11 @@ export default function AppHeader() {
 
     loadAccount()
     window.addEventListener('auth-session-refreshed', loadAccount)
+    window.addEventListener('auth-session-cleared', loadAccount)
     return () => {
       active = false
       window.removeEventListener('auth-session-refreshed', loadAccount)
+      window.removeEventListener('auth-session-cleared', loadAccount)
     }
   }, [setSessionUser])
 

@@ -17,6 +17,7 @@ $runId = 'submission' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss') + [guid]::
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $checks = [Collections.Generic.List[object]]::new()
+$rateLimitWaits = [Collections.Generic.List[object]]::new()
 $created = [ordered]@{ userIds = @(); recipeId = $null; imageId = $null; categoryId = $null; recipeSoftDeleted = $false }
 $startedAt = [DateTime]::UtcNow
 $currentCheck = 'Initial setup'
@@ -52,6 +53,30 @@ function Request-Api {
         $arguments.ContentType = 'application/json; charset=utf-8'
     }
     $response = Invoke-WebRequest @arguments
+    # A complete verification legitimately performs more auth operations than
+    # the normal five-per-minute policy. Honor the real policy instead of
+    # weakening application configuration for a green test result.
+    if ([int]$response.StatusCode -eq 429 -and ([uri]$uri).AbsolutePath -match '/auth/(login|refresh|register|signup)$') {
+        for ($attempt = 1; $attempt -le 2 -and [int]$response.StatusCode -eq 429; $attempt++) {
+            $waitSeconds = 61
+            $retryAfter = [string]($response.Headers['Retry-After'] | Select-Object -First 1)
+            $numericDelay = 0
+            if ([int]::TryParse($retryAfter, [ref]$numericDelay)) {
+                $waitSeconds = [Math]::Clamp($numericDelay + 1, 1, 75)
+            } elseif ($retryAfter) {
+                $retryDate = [DateTimeOffset]::MinValue
+                if ([DateTimeOffset]::TryParse($retryAfter, [ref]$retryDate)) {
+                    $waitSeconds = [Math]::Clamp([int][Math]::Ceiling(($retryDate - [DateTimeOffset]::UtcNow).TotalSeconds) + 1, 1, 75)
+                }
+            }
+            $rateLimitWaits.Add([PSCustomObject]@{ path = ([uri]$uri).AbsolutePath; waitSeconds = $waitSeconds; attempt = $attempt })
+            Write-Host "Auth rate limit returned 429; respecting a $waitSeconds second retry window."
+            for ($remaining = $waitSeconds; $remaining -gt 0; $remaining -= 5) {
+                Start-Sleep -Seconds ([Math]::Min(5, $remaining))
+            }
+            $response = Invoke-WebRequest @arguments
+        }
+    }
     $json = $null
     if ($response.Content -and $response.Headers['Content-Type'] -match '(json|problem)') {
         $content = if ($response.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($response.Content) } else { [string]$response.Content }
@@ -273,7 +298,7 @@ try {
     $summary = [ordered]@{
         runId = $runId; target = $apiRoot; startedAtUtc = $startedAt.ToString('o'); finishedAtUtc = [DateTime]::UtcNow.ToString('o')
         passed = ($null -eq $failure); checksPassed = @($checks | Where-Object passed).Count; checksTotal = $checks.Count
-        created = $created; checks = @($checks.ToArray()); failure = $failure
+        created = $created; checks = @($checks.ToArray()); rateLimitWaits = @($rateLimitWaits.ToArray()); failure = $failure
         limits = @('Only smoke-created records are changed; test accounts remain in the isolated database.', 'Browser UI, actual Google OAuth and external SMTP delivery are not covered.', 'A healthy service check does not prove resilience to that service failing later.')
     }
     $summaryPath = Join-Path $OutputDirectory "$runId.json"

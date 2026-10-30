@@ -389,16 +389,44 @@ try {
         if ($report.initialSeed[$key] -ne $report.seedAfterRestart[$key]) { $sameSeed = $false }
     }
     Add-Check 'Restart without duplicate seed data' $sameSeed 'Category, recipe, user, community, article and migration counts remain unchanged after API restart.'
-    $serviceJson = Invoke-ComposeChecked -Arguments @('ps', '--all', '--format', 'json') -LogName 'services.log' -Capture
-    $parsedServices = if ($serviceJson.Trim().StartsWith('[')) {
-        @($serviceJson | ConvertFrom-Json)
+    $serviceDeadline = [DateTimeOffset]::UtcNow.AddSeconds(60)
+    do {
+        $serviceJson = Invoke-ComposeChecked -Arguments @('ps', '--all', '--format', 'json') -LogName 'services.log' -Capture
+        $parsedServices = if ($serviceJson.Trim().StartsWith('[')) {
+            @($serviceJson | ConvertFrom-Json)
+        } else {
+            @($serviceJson -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+        }
+        $report.services = @($parsedServices | ForEach-Object {
+            $serviceStatus = $_
+            [ordered]@{ name = $serviceStatus.Name; service = $serviceStatus.Service; state = $serviceStatus.State; health = $serviceStatus.Health; exitCode = $serviceStatus.ExitCode }
+        })
+        $servicesNotReady = [Collections.Generic.List[string]]::new()
+        foreach ($expectedService in $configuration['services'].Keys) {
+            $matchingServices = @($report.services | Where-Object { $_.service -eq $expectedService })
+            if ($matchingServices.Count -ne 1) {
+                $servicesNotReady.Add("$expectedService missing or duplicated")
+                continue
+            }
+            $state = $matchingServices[0]
+            if ($expectedService -eq 'jaeger-init') {
+                if ($state.state -ne 'exited' -or [int]$state.exitCode -ne 0) {
+                    $servicesNotReady.Add("$expectedService state=$($state.state), exit=$($state.exitCode)")
+                }
+            } elseif ($state.state -ne 'running' -or
+                (-not [string]::IsNullOrWhiteSpace($state.health) -and $state.health -ne 'healthy')) {
+                $servicesNotReady.Add("$expectedService state=$($state.state), health=$($state.health)")
+            }
+        }
+        if ($servicesNotReady.Count -eq 0 -or [DateTimeOffset]::UtcNow -ge $serviceDeadline) { break }
+        Start-Sleep -Seconds 2
+    } while ($true)
+    $serviceDetail = if ($servicesNotReady.Count -eq 0) {
+        'Every long-running Compose service is running and all configured health checks are healthy; jaeger-init completed with exit code 0.'
     } else {
-        @($serviceJson -split "`n" | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+        'Compose services did not become ready: ' + ($servicesNotReady -join '; ')
     }
-    $report.services = @($parsedServices | ForEach-Object {
-        $serviceStatus = $_
-        [ordered]@{ name = $serviceStatus.Name; service = $serviceStatus.Service; state = $serviceStatus.State; health = $serviceStatus.Health; exitCode = $serviceStatus.ExitCode }
-    })
+    Add-Check 'All Docker services remain running' ($servicesNotReady.Count -eq 0) $serviceDetail
     $report.status = 'passed'
 } catch {
     $report.status = 'failed'

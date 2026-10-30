@@ -7,7 +7,7 @@ import { toast } from 'react-toastify'
 import { RecipeEngagement } from './PlatformFeaturePages.jsx'
 import RecipeProPanel from './RecipeProPanel.jsx'
 import { useLocale } from './locale-context.js'
-import { apiRequest, clearSession, getAccessToken as getStoredAccessToken, getFreshAccessToken, getSessionUser } from './api/session.js'
+import { apiRequest, clearSession, getAccessToken as getStoredAccessToken, getSessionUser, hasSession } from './api/session.js'
 import AppFooter from './components/layout/AppFooter.jsx'
 
 const RECIPE_CATALOG_UPDATED_EVENT = 'culinary:recipe-catalog-updated'
@@ -310,7 +310,7 @@ export function CategoriesPage() {
       return
     }
 
-    const activeToken = await getFreshAccessToken()
+    const activeToken = hasSession()
     if (!activeToken) {
       toast.error('Phiên đã hết hạn. Vui lòng đăng nhập lại để lưu thay đổi.')
       navigate('/login')
@@ -356,7 +356,7 @@ export function CategoriesPage() {
       return
     }
 
-    const activeToken = await getFreshAccessToken()
+    const activeToken = hasSession()
     if (!activeToken) {
       toast.error('Phiên đã hết hạn. Vui lòng đăng nhập lại để tải ảnh.')
       navigate('/login')
@@ -537,7 +537,7 @@ export function RecipesPage() {
   }, [])
 
   const fetchRecipes = useCallback(async () => {
-    const activeToken = await getFreshAccessToken()
+    const activeToken = hasSession()
     if (!activeToken) {
       setCurrentUser(null)
       setRecipes(await apiRequest('/recipes'))
@@ -577,7 +577,7 @@ export function RecipesPage() {
   const handleSubmit = async (event) => {
     event.preventDefault()
 
-    const activeToken = await getFreshAccessToken()
+    const activeToken = hasSession()
     if (!activeToken) {
       toast.error('Phiên đã hết hạn. Vui lòng đăng nhập lại để lưu công thức.')
       navigate('/login')
@@ -690,7 +690,7 @@ export function RecipesPage() {
       return
     }
 
-    const activeToken = await getFreshAccessToken()
+    const activeToken = hasSession()
     if (!activeToken) {
       toast.error('Phiên đã hết hạn. Vui lòng đăng nhập lại để tải ảnh.')
       navigate('/login')
@@ -737,7 +737,7 @@ export function RecipesPage() {
   }
 
   const handleTransition = async (id, transition) => {
-    const activeToken = await getFreshAccessToken()
+    const activeToken = hasSession()
     if (!activeToken) {
       toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
       return

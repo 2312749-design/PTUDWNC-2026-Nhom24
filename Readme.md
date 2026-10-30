@@ -15,7 +15,7 @@ Nhánh main chỉ được coi là bản tích hợp sau khi PR được kiểm 
 
 ## Chạy dự án
 
-Cần .NET SDK 10, Node.js từ 20.9 trở lên (CI dùng 22), Docker Desktop/Compose và Git.
+Cần .NET SDK 10, Node.js 22 (CI và bộ kiểm tra dùng 22), Docker Desktop/Compose và Git.
 
 ### Docker
 

@@ -1,0 +1,119 @@
+name: Final submission verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/submission-check.yml'
+      - 'scripts/submission/**'
+      - 'docker-compose.yml'
+      - 'docker/minio/Dockerfile'
+      - 'src/**'
+      - 'global.json'
+      - 'frontend/Dockerfile'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - 'frontend/src/api/session.js'
+      - 'frontend/src/store/**'
+      - 'frontend/src/components/layout/AppProviders.jsx'
+      - 'frontend/src/components/layout/AppHeader.jsx'
+      - 'nginx/**'
+      - 'observability/**'
+      - 'otel-collector-config.yaml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: submission-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  submission:
+    name: Clean Docker stack and real-service checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout the revision under review
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install host browser-test dependencies
+        working-directory: frontend
+        run: npm ci --no-fund --no-audit
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Build and verify an isolated clean Docker stack
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/submission-ci'
+          & ./scripts/submission/verify-clean.ps1 -OutputDirectory $output
+
+      - name: Verify real API, PostgreSQL, Redis and MinIO operations
+        shell: pwsh
+        run: |
+          # This account exists only in the newly seeded, localhost-only test stack.
+          $password = ConvertTo-SecureString 'chefdemo' -AsPlainText -Force
+          $admin = [PSCredential]::new('chefdemo', $password)
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifacts/submission-ci-runtime'
+          & ./scripts/submission/verify-runtime.ps1 -BaseUrl 'http://localhost:25152' -OutputDirectory $output -AdminCredential $admin
+
+      - name: Verify real browser session, profile and category navigation
+        run: node scripts/submission/verify-browser.mjs --base-url http://localhost:28080 --output artifacts/submission-ci-browser
+
+      - name: Stop only this verification project
+        if: always()
+        shell: pwsh
+        run: |
+          $summaryPath = Join-Path $env:GITHUB_WORKSPACE 'artifacts/submission-ci/summary.json'
+          if (-not (Test-Path -LiteralPath $summaryPath)) {
+            Write-Host 'No verification summary exists; no Docker resources will be stopped.'
+            exit 0
+          }
+          $summary = Get-Content -Raw -LiteralPath $summaryPath | ConvertFrom-Json
+          $project = [string]$summary.dockerProject
+          if ($project -notmatch '^cbsubmission[0-9]{14}[0-9a-f]{6}$') {
+            throw 'Unexpected project name; refusing to stop Docker resources.'
+          }
+          $containerIds = @(& docker ps --filter "label=com.docker.compose.project=$project" --quiet)
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the verification containers.' }
+          foreach ($containerId in $containerIds) {
+            if ($containerId -notmatch '^[0-9a-f]{12,64}$') { throw 'Unexpected container ID.' }
+          }
+          if ($containerIds.Count -gt 0) {
+            & docker stop --time 20 @containerIds
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to stop the verification containers.' }
+          }
+
+      - name: Upload sanitized verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: submission-verification-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+          # Deliberate allow-list: never upload .env, resolved Compose, source ZIP or the whole artifacts directory.
+          path: |
+            artifacts/submission-ci/summary.json
+            artifacts/submission-ci-runtime/*.json
+            artifacts/submission-ci-browser/result.json
+            artifacts/submission-ci-browser/*.png
