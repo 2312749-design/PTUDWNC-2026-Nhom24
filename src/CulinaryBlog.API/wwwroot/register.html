@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đăng ký | Culinary Blog</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #f8f4ff, #edf7ff);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1d2433;
+    }
+    .register-box {
+      width: min(520px, 92vw);
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 12px 30px rgba(31, 62, 94, 0.12);
+      padding: 30px 28px;
+    }
+    h2 { text-align: center; margin: 0 0 18px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .full { grid-column: 1 / -1; }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #dfe6f3;
+      font-size: 15px;
+      outline: none;
+    }
+    input:focus { border-color: #4d8df7; box-shadow: 0 0 0 3px rgba(77,141,247,0.10); }
+    button {
+      width: 100%;
+      margin-top: 18px;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      background: linear-gradient(135deg, #2b7fff, #39c3ad);
+      color: white;
+    }
+    .link-row {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 14px;
+    }
+    .link-row a { color: #216ad8; text-decoration: none; font-weight: 600; }
+    .message {
+      margin-top: 14px;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 14px;
+      display: none;
+    }
+    .message.error { display: block; background: #fff1f0; color: #b42318; }
+    .message.success { display: block; background: #ecfdf3; color: #027a48; }
+  </style>
+</head>
+<body>
+  <div class="register-box">
+    <h2>Đăng ký tài khoản</h2>
+    <div class="form-grid">
+      <div class="full">
+        <label for="username">Tài khoản</label>
+        <input id="username" type="text" placeholder="Nhập tài khoản" />
+      </div>
+      <div class="full">
+        <label for="email">Email</label>
+        <input id="email" type="email" placeholder="Nhập email" />
+      </div>
+      <div>
+        <label for="password">Mật khẩu</label>
+        <input id="password" type="password" placeholder="Mật khẩu" />
+      </div>
+      <div>
+        <label for="confirmPassword">Nhập lại mật khẩu</label>
+        <input id="confirmPassword" type="password" placeholder="Nhập lại mật khẩu" />
+      </div>
+      <div class="full">
+        <label for="captcha">Xác minh người thật</label>
+        <input id="captcha" type="text" placeholder="Ví dụ: 3 + 4 = ?" />
+      </div>
+    </div>
+
+    <button id="registerBtn">Đăng ký</button>
+    <div class="link-row">
+      <a href="/login">Quay lại đăng nhập</a>
+    </div>
+    <div id="message" class="message"></div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:5152/api';
+
+    function createCaptcha() {
+      const a = Math.floor(Math.random() * 9) + 1;
+      const b = Math.floor(Math.random() * 9) + 1;
+      const question = `${a} + ${b}`;
+      document.getElementById('captcha').placeholder = `Ví dụ: ${question} = ?`;
+      document.getElementById('captcha').dataset.question = question;
+      return question;
+    }
+
+    function showMessage(type, text) {
+      const msg = document.getElementById('message');
+      msg.className = `message ${type}`;
+      msg.textContent = text;
+    }
+
+    async function register() {
+      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+      const captchaAnswer = document.getElementById('captcha').value.trim();
+      const captchaQuestion = document.getElementById('captcha').dataset.question || '';
+
+      if (!username || !email || !password || !confirmPassword) {
+        showMessage('error', 'Vui lòng điền đầy đủ thông tin.');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        showMessage('error', 'Mật khẩu xác nhận không khớp.');
+        return;
+      }
+
+      if (!captchaAnswer) {
+        showMessage('error', 'Vui lòng điền đáp án xác minh người thật.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            email,
+            password,
+            confirmPassword,
+            captchaQuestion,
+            captchaAnswer
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Đăng ký thất bại.');
+        }
+
+        showMessage('success', data.message || 'Đăng ký thành công!');
+        setTimeout(() => window.location.href = '/login', 800);
+      } catch (error) {
+        showMessage('error', error.message || 'Không thể đăng ký.');
+      }
+    }
+
+    document.getElementById('registerBtn').addEventListener('click', register);
+    createCaptcha();
+  </script>
+</body>
+</html>

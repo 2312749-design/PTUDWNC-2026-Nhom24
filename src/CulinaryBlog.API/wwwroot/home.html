@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trang chủ | Culinary Blog</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1d2433;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 32px;
+      background: linear-gradient(135deg, #1b2a41, #2d4a78);
+      color: white;
+    }
+    .topbar .nav a {
+      color: white;
+      text-decoration: none;
+      margin-left: 18px;
+      font-weight: 600;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 28px auto;
+      padding: 0 20px 40px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #eaf4ff, #eafaf5);
+      border-radius: 18px;
+      padding: 28px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+      margin-bottom: 24px;
+    }
+    .hero h1 { margin-top: 0; font-size: 32px; }
+    .dashboard {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+    }
+    .card h3 { margin-top: 0; }
+    .card a {
+      display: inline-block;
+      margin-top: 12px;
+      color: #1d6fe8;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .logout-btn {
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div><strong>CulinaryBlog</strong></div>
+    <div class="nav">
+      <a href="/home">Trang chủ</a>
+      <a href="/categories">Categories</a>
+      <a href="/recipes">Recipes</a>
+      <button class="logout-btn" id="logoutBtn">Đăng xuất</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="hero">
+      <h1>Chào mừng bạn đến với Culinary Blog</h1>
+      <p>Quản lý danh mục món ăn và công thức nấu ăn theo nhóm nội dung riêng biệt.</p>
+    </div>
+
+    <div class="dashboard">
+      <div class="card">
+        <h3>Nhóm Categories</h3>
+        <p>Quản lý danh sách món ăn, phân loại theo loại, thêm, sửa, xóa danh mục.</p>
+        <a href="/categories">Đi tới Categories</a>
+      </div>
+
+      <div class="card">
+        <h3>Nhóm Recipes</h3>
+        <p>Quản lý công thức nấu ăn, nguyên liệu, các bước làm và danh mục liên quan.</p>
+        <a href="/recipes">Đi tới Recipes</a>
+      </div>
+
+      <div class="card">
+        <h3>Thông tin hệ thống</h3>
+        <p>Trạng thái đăng nhập và token điều hướng được lưu trong trình duyệt.</p>
+        <a href="/login">Về trang đăng nhập</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      window.location.href = '/login';
+    });
+  </script>
+</body>
+</html>

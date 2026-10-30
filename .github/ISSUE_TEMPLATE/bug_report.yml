@@ -1,0 +1,23 @@
+name: Báo lỗi
+description: Ghi lại lỗi có thể tái hiện và kết quả mong đợi
+title: "[BUG] Mô tả ngắn"
+labels: ["bug"]
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Các bước tái hiện
+      description: Ghi trang/API, vai trò tài khoản và thao tác; dùng tài khoản thử nghiệm.
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: Kết quả hiện tại và kết quả mong đợi
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Minh chứng
+      description: Ảnh, mã lỗi, correlation ID và phiên bản; che thông tin riêng, cookie và token.

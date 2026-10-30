@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Categories | Culinary Blog</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f5f7fb;
+      color: #1d2433;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 32px;
+      background: linear-gradient(135deg, #1b2a41, #2d4a78);
+      color: white;
+    }
+    .topbar .nav a {
+      color: white;
+      text-decoration: none;
+      margin-left: 18px;
+      font-weight: 600;
+    }
+    .container { max-width: 1200px; margin: 26px auto; padding: 0 20px 40px; }
+    .panel {
+      background: white;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+    h2 { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+    }
+    th, td {
+      border: 1px solid #e6ebf2;
+      padding: 10px 12px;
+      text-align: left;
+    }
+    th { background: #f3f7ff; }
+    .actions button {
+      margin-right: 8px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      color: white;
+      font-weight: 700;
+    }
+    .edit { background: #f59e0b; }
+    .delete { background: #ef4444; }
+    .form-group { margin-bottom: 14px; }
+    label {
+      display: block;
+      margin-bottom: 7px;
+      font-weight: 600;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #dfe6f3;
+    }
+    textarea { min-height: 80px; }
+    button.submit-btn {
+      background: linear-gradient(135deg, #2d9cdb, #39c3ad);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .message {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      display: none;
+      font-size: 14px;
+    }
+    .message.error { display: block; background: #fff1f0; color: #b42318; }
+    .message.success { display: block; background: #ecfdf3; color: #027a48; }
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip {
+      background: #edf6ff;
+      color: #2a4d9b;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div><strong>CulinaryBlog</strong></div>
+    <div class="nav">
+      <a href="/home">Trang chủ</a>
+      <a href="/categories">Categories</a>
+      <a href="/recipes">Recipes</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>Nhóm Categories</h2>
+      <div class="chip-list">
+        <span class="chip">Món khai vị</span>
+        <span class="chip">Món chính</span>
+        <span class="chip">Tráng miệng</span>
+        <span class="chip">Đồ uống</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Danh sách danh mục món ăn</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>ID</th>
+              <th>Danh mục</th>
+              <th>Mô tả</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="categoryTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <h2>Thêm danh mục mới</h2>
+        <div class="form-group">
+          <label for="categoryName">Tên danh mục</label>
+          <input id="categoryName" type="text" placeholder="Ví dụ: Món chính" />
+        </div>
+        <div class="form-group">
+          <label for="categoryDescription">Mô tả</label>
+          <textarea id="categoryDescription" placeholder="Mô tả danh mục..."></textarea>
+        </div>
+        <button class="submit-btn" id="createCategoryBtn">Thêm danh mục</button>
+        <div id="categoryMessage" class="message"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:5152/api';
+    const token = localStorage.getItem('accessToken');
+
+    function showMessage(elementId, type, text) {
+      const el = document.getElementById(elementId);
+      el.className = `message ${type}`;
+      el.textContent = text;
+    }
+
+    async function fetchCategories() {
+      const res = await fetch(`${API}/categories`);
+      const data = await res.json();
+      const body = document.getElementById('categoryTableBody');
+      body.innerHTML = '';
+
+      data.forEach((item, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${index + 1}</td>
+          <td>${item.id}</td>
+          <td>${item.name}</td>
+          <td>${item.description || 'Không có mô tả'}</td>
+          <td class="actions">
+            <button class="edit" data-id="${item.id}" data-name="${item.name}" data-description="${item.description || ''}">Sửa</button>
+            <button class="delete" data-id="${item.id}">Xóa</button>
+          </td>
+        `;
+        body.appendChild(row);
+      });
+
+      document.querySelectorAll('.delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          await deleteCategory(id);
+        });
+      });
+
+      document.querySelectorAll('.edit').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const name = btn.getAttribute('data-name');
+          const description = btn.getAttribute('data-description');
+          document.getElementById('categoryName').value = name;
+          document.getElementById('categoryDescription').value = description;
+          document.getElementById('createCategoryBtn').textContent = 'Cập nhật danh mục';
+          document.getElementById('createCategoryBtn').dataset.editId = id;
+        });
+      });
+    }
+
+    async function createCategory() {
+      const name = document.getElementById('categoryName').value.trim();
+      const description = document.getElementById('categoryDescription').value.trim();
+      const editId = document.getElementById('createCategoryBtn').dataset.editId;
+
+      if (!name) {
+        showMessage('categoryMessage', 'error', 'Tên danh mục không được để trống.');
+        return;
+      }
+
+      const url = editId ? `${API}/categories/${editId}` : `${API}/categories`;
+      const method = editId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ name, description })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showMessage('categoryMessage', 'error', data.message || 'Thao tác thất bại.');
+        return;
+      }
+
+      showMessage('categoryMessage', 'success', data.message || 'Thành công');
+      document.getElementById('createCategoryBtn').textContent = 'Thêm danh mục';
+      delete document.getElementById('createCategoryBtn').dataset.editId;
+      document.getElementById('categoryName').value = '';
+      document.getElementById('categoryDescription').value = '';
+      fetchCategories();
+    }
+
+    async function deleteCategory(id) {
+      const res = await fetch(`${API}/categories/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showMessage('categoryMessage', 'error', data.message || 'Không thể xóa.');
+        return;
+      }
+      showMessage('categoryMessage', 'success', data.message || 'Đã xóa danh mục.');
+      fetchCategories();
+    }
+
+    document.getElementById('createCategoryBtn').addEventListener('click', createCategory);
+    fetchCategories();
+  </script>
+</body>
+</html>

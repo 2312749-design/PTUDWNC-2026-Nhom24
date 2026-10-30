@@ -1,0 +1,36 @@
+name: Nhiệm vụ theo phân công
+description: Theo dõi một yêu cầu, người phụ trách và minh chứng nghiệm thu
+title: "[TASK-ID] Người phụ trách — Tên nhiệm vụ"
+labels: ["type:task"]
+body:
+  - type: input
+    id: owner
+    attributes:
+      label: Người phụ trách theo README
+      description: Ghi tên thành viên và tài khoản GitHub; chọn Assignee tương ứng.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Phạm vi và nguồn yêu cầu
+      description: Liên kết tới Task ID trong README hoặc mục SRS; giữ nguyên phạm vi đã phân công.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Tiêu chí nghiệm thu
+      description: Viết checklist có thể kiểm chứng, gồm luồng thành công và luồng lỗi.
+      value: |
+        - [ ] Đáp ứng yêu cầu nghiệp vụ
+        - [ ] Có kiểm tra dữ liệu và phân quyền phù hợp
+        - [ ] Có kết quả kiểm thử hoặc demo
+        - [ ] PR được thành viên khác review trước khi merge
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Minh chứng và phần còn thiếu
+      description: Link file, commit, PR, Actions, ảnh demo; phân biệt test đã có với test đã chạy. Không đưa bí mật vào Issue.
