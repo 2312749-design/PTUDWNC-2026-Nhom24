@@ -7,6 +7,7 @@
 - [Bản code Lab 07](https://github.com/2312749-design/PTUDWNC-2026-Nhom24/tree/nguyeducthanhlab07).
 - [33 Issue theo phân công](https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues?q=is%3Aissue+label%3Atype%3Atask).
 - [Bảng đối chiếu từng Task](docs/project/TASKS.md) và [kết quả kiểm tra](docs/project/VALIDATION.md).
+- [Kết quả chốt bản nộp bước 1](docs/submission/FINAL-CHECK.md) và [checklist nghiệm thu/review](docs/submission/REVIEW-CHECKLIST.md).
 - [Milestones](https://github.com/2312749-design/PTUDWNC-2026-Nhom24/milestones), [Pull Requests](https://github.com/2312749-design/PTUDWNC-2026-Nhom24/pulls), [Actions](https://github.com/2312749-design/PTUDWNC-2026-Nhom24/actions).
 - [Bảng Projects của nhóm](https://github.com/users/2312749-design/projects/1): lọc theo Assignee, Task ID, milestone, nhãn và mức nghiệm thu.
 - [Quy trình đóng góp](CONTRIBUTING.md), [trách nhiệm review](docs/OWNERSHIP.md), [ADR](docs/adr/), [contract API](docs/api/README.md).

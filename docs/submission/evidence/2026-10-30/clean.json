@@ -1,0 +1,156 @@
+{
+  "date": "2026-10-30",
+  "sourceCommit": "e0b0493089365573c171926eee7d3753fdfc1f54",
+  "status": "passed",
+  "buildPerformed": true,
+  "workingTreeChangesExcluded": false,
+  "checks": [
+    {
+      "name": "Docker engine",
+      "passed": true,
+      "detail": "Server 29.8.0"
+    },
+    {
+      "name": "Clean source snapshot",
+      "passed": true,
+      "detail": "Exported committed source e0b0493089365573c171926eee7d3753fdfc1f54."
+    },
+    {
+      "name": "Isolated Compose configuration",
+      "passed": true,
+      "detail": "Unique containers, new named volumes, source-only read-only binds and localhost-only ports."
+    },
+    {
+      "name": "Docker build from committed source",
+      "passed": true,
+      "detail": "All buildable services built successfully; Docker layer cache may be reused."
+    },
+    {
+      "name": "HTTP readiness",
+      "passed": true,
+      "detail": "API /health/ready and Nginx website both returned HTTP 200."
+    },
+    {
+      "name": "Redis service",
+      "passed": true,
+      "detail": "redis-cli ping returned PONG."
+    },
+    {
+      "name": "MinIO service",
+      "passed": true,
+      "detail": "MinIO liveness returned HTTP 200; upload/read verification is a separate runtime check."
+    },
+    {
+      "name": "Clean migration and Lab 2 seed",
+      "passed": true,
+      "detail": "Categories=20, recipes=1013, below-minimum recipes=0; both arrays and structured children require 10 ingredients / 5 steps."
+    },
+    {
+      "name": "Restart without duplicate seed data",
+      "passed": true,
+      "detail": "Category, recipe, user, community, article and migration counts remain unchanged after API restart."
+    },
+    {
+      "name": "All Docker services remain running",
+      "passed": true,
+      "detail": "Every long-running Compose service is running and all configured health checks are healthy; jaeger-init completed with exit code 0."
+    }
+  ],
+  "initialSeed": {
+    "categories": 20,
+    "recipes": 1013,
+    "publishedRecipes": 700,
+    "users": 50,
+    "communityPosts": 50,
+    "articles": 50,
+    "migrations": 27,
+    "minimumIngredients": 10,
+    "minimumSteps": 5,
+    "minimumStructuredIngredients": 10,
+    "minimumStructuredSteps": 5,
+    "recipesBelowMinimum": 0
+  },
+  "seedAfterRestart": {
+    "categories": 20,
+    "recipes": 1013,
+    "publishedRecipes": 700,
+    "users": 50,
+    "communityPosts": 50,
+    "articles": 50,
+    "migrations": 27,
+    "minimumIngredients": 10,
+    "minimumSteps": 5,
+    "minimumStructuredIngredients": 10,
+    "minimumStructuredSteps": 5,
+    "recipesBelowMinimum": 0
+  },
+  "services": [
+    {
+      "service": "api",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "db",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0
+    },
+    {
+      "service": "frontend",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "grafana",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "jaeger",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "jaeger-init",
+      "state": "exited",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "minio",
+      "state": "running",
+      "health": "healthy",
+      "exitCode": 0
+    },
+    {
+      "service": "nginx",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "otel-collector",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "prometheus",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    },
+    {
+      "service": "redis",
+      "state": "running",
+      "health": "",
+      "exitCode": 0
+    }
+  ],
+  "scope": "Isolated Docker project exported from committed Git source with new volumes; existing application data untouched."
+}

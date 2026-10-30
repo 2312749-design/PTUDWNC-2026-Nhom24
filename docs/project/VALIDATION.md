@@ -1,5 +1,7 @@
 # Kết quả kiểm tra khi bổ sung hồ sơ GitHub
 
+> Cập nhật 30/10/2026: bước chốt bản nộp đã thêm kiểm tra database trắng, Docker thật và phiên trình duyệt. Xem [FINAL-CHECK.md](../submission/FINAL-CHECK.md), [PR #34 checks](https://github.com/2312749-design/PTUDWNC-2026-Nhom24/pull/34/checks) và workflow **Final submission verification**. Các số liệu 28/10 bên dưới là mốc lịch sử, không phải kết quả của mọi lần sửa tiếp theo.
+
 Ngày ghi nhận: 28/10/2026. Code đang chạy được giữ nguyên; thay đổi trong đợt tổ chức repository là CI, tài liệu, biểu mẫu và hồ sơ công việc.
 
 | Kiểm tra | Kết quả | Phạm vi và giới hạn |
