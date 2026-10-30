@@ -169,8 +169,7 @@ export default function AppHeader() {
     clearSession()
     setMe(null)
     setUnreadCount(0)
-    router.push('/community')
-    window.location.reload()
+    router.replace('/community')
   }
 
   return (

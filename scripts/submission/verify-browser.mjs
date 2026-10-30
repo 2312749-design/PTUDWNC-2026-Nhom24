@@ -246,6 +246,7 @@ try {
       logoutButton.click({ timeout: 15_000 }),
     ])
     expect([200, 204]).toContain(loggedOut.status())
+    await expect(page).toHaveURL(`${baseURL}/community`)
     await expect(page.locator('.community-nav-account').getByRole('link', { name: 'Đăng nhập', exact: true })).toBeVisible()
     expect((await context.request.get('/api/v1/auth/me')).status()).toBe(401)
     await page.goto('/account', { waitUntil: 'domcontentloaded' })
