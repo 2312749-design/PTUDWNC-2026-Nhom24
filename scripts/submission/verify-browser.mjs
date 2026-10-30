@@ -187,8 +187,11 @@ try {
   })
 
   await verify('Home shows categories and newly listed recipes', async () => {
-    await page.locator('.community-nav nav').getByRole('link', { name: 'Trang chủ', exact: true }).click()
-    await expect(page).toHaveURL(`${baseURL}/home`)
+    const homeLink = page.locator('.community-nav nav').getByRole('link', { name: 'Trang chủ', exact: true })
+    await expect(homeLink).toHaveAttribute('href', '/home')
+    await homeLink.click()
+    // /home intentionally redirects to the canonical home route in App Router.
+    await expect(page).toHaveURL(`${baseURL}/`)
     await expect(page.getByRole('heading', { name: 'Nấu món ngon, kể chuyện bếp nhà', exact: true })).toBeVisible()
     await expect.poll(() => page.locator('.home-recipe-grid article').count()).toBeGreaterThan(0)
     await expect.poll(() => page.locator('nav[aria-label="Danh mục món ăn"] a').count()).toBeGreaterThan(0)
