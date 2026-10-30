@@ -60,6 +60,7 @@ $report = [ordered]@{
     checks = [Collections.Generic.List[object]]::new()
     initialSeed = $null
     seedAfterRestart = $null
+    schema = $null
     resources = $null
     services = $null
     error = $null
@@ -185,7 +186,7 @@ SELECT json_build_object(
 }
 
 try {
-    foreach ($requiredCommand in @('git', 'docker')) {
+    foreach ($requiredCommand in @('git', 'docker', 'dotnet')) {
         if (-not (Get-Command $requiredCommand -ErrorAction SilentlyContinue)) {
             throw "Required command is missing: $requiredCommand"
         }
@@ -376,6 +377,21 @@ try {
     Add-Check 'Redis service' ($redisPing.Trim() -eq 'PONG') 'redis-cli ping returned PONG.'
     $minioResponse = Invoke-WebRequest -Uri "$($report.endpoints.minio)/minio/health/live" -TimeoutSec 10 -SkipHttpErrorCheck
     Add-Check 'MinIO service' ($minioResponse.StatusCode -eq 200) 'MinIO liveness returned HTTP 200; upload/read verification is a separate runtime check.'
+
+    $savedEnvironment['SCHEMA_CHECK_CONNECTION_STRING'] = [Environment]::GetEnvironmentVariable('SCHEMA_CHECK_CONNECTION_STRING', 'Process')
+    [Environment]::SetEnvironmentVariable('SCHEMA_CHECK_CONNECTION_STRING',
+        "Host=127.0.0.1;Port=$PostgresPort;Database=CulinaryBlogSubmission;Username=postgres;Password=$localPassword;SSL Mode=Disable", 'Process')
+    $schemaLines = [Collections.Generic.List[string]]::new()
+    & dotnet run --project (Join-Path $sourceDirectory 'tests/CulinaryBlog.SchemaCheck/CulinaryBlog.SchemaCheck.csproj') --configuration Release --artifacts-path (Join-Path $runDirectory 'schema-build') 2>&1 | ForEach-Object {
+        $safeLine = Protect-Output ([string]$_)
+        $schemaLines.Add($safeLine)
+        Add-Content -LiteralPath (Join-Path $runDirectory 'schema-check.log') -Value $safeLine -Encoding utf8
+        Write-Host $safeLine
+    }
+    $schemaExitCode = $LASTEXITCODE
+    $schemaResult = $schemaLines | Where-Object { $_.StartsWith('SCHEMA_CHECK_RESULT=') } | Select-Object -Last 1
+    if ($schemaResult) { $report.schema = $schemaResult.Substring('SCHEMA_CHECK_RESULT='.Length) | ConvertFrom-Json -AsHashtable }
+    Add-Check 'Migrated schema contains every mapped table and column' ($schemaExitCode -eq 0 -and $null -ne $report.schema -and $report.schema.passed) 'The read-only schema checker compares the EF relational model with PostgreSQL information_schema; see schema-check.log.'
 
     $report.initialSeed = Get-SeedStatistics
     $seed = $report.initialSeed

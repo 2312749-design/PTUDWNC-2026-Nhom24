@@ -248,6 +248,18 @@ try {
     Expect-Status 'Publish recipe' (Request-Api POST "/api/v1/recipes/$($created.recipeId)/publish" $owner) @(200)
     $publicRecipe = Read-Recipe $guest
     Check 'Published recipe is visible to guests' (Is-Status $publicRecipe.status 'Published' 1)
+    $emptyReviews = Request-Api GET "/api/v1/features/recipes/$($created.recipeId)/reviews"
+    Expect-Status 'Read reviews from the migrated PostgreSQL schema' $emptyReviews @(200)
+    Check 'New recipe starts without reviews' ((Payload $emptyReviews).count -eq 0)
+    $reviewBody = @{ rating = 5; content = 'Đã nấu trong lượt kiểm tra riêng.'; isCooked = $true; photoUrl = $avatar.avatarUrl }
+    $reviewSave = Request-Api POST "/api/v1/features/recipes/$($created.recipeId)/reviews" $other $reviewBody
+    Expect-Status 'Save a cooked review with a photo URL' $reviewSave @(200)
+    $savedReviews = Payload (Request-Api GET "/api/v1/features/recipes/$($created.recipeId)/reviews")
+    Check 'Review rating and photo URL survive a fresh query' ($savedReviews.count -eq 1 -and $savedReviews.averageRating -eq 5 -and $savedReviews.items[0].photoUrl -eq $avatar.avatarUrl)
+    $reviewBody.rating = 4
+    Expect-Status 'Update the same member review' (Request-Api POST "/api/v1/features/recipes/$($created.recipeId)/reviews" $other $reviewBody) @(200)
+    $updatedReviews = Payload (Request-Api GET "/api/v1/features/recipes/$($created.recipeId)/reviews")
+    Check 'Review update replaces rather than duplicates the rating' ($updatedReviews.count -eq 1 -and $updatedReviews.averageRating -eq 4)
     $search = Request-Api GET ('/api/v1/search/recipes?q=' + [uri]::EscapeDataString($runId) + '&page=1&pageSize=12')
     Expect-Status 'PostgreSQL full-text search request' $search @(200)
     Check 'Search finds published recipe and reports pagination' (@((Payload $search) | Where-Object id -eq $created.recipeId).Count -eq 1 -and $search.Json.meta.total -ge 1)

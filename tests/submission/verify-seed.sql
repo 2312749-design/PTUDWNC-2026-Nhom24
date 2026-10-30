@@ -12,7 +12,7 @@ DECLARE
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM "__EFMigrationsHistory"
-        WHERE "MigrationId" = '20261026133000_AddCommunityAndStudioExtensions'
+        WHERE "MigrationId" = '20261030100000_EnsureRecipeReviewPhotoUrl'
     ) THEN
         RAISE EXCEPTION 'The latest submission migration has not been applied.';
     END IF;

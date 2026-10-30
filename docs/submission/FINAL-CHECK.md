@@ -37,6 +37,9 @@ Test trình duyệt chuẩn trong CI có API giả lập. Bộ `verify-browser.m
 5. Frontend không làm mất token trong bộ nhớ khi đồng bộ metadata hồ sơ; dùng cookie hiện có trước, chỉ refresh khi API trả 401. Lỗi mạng/429/5xx không tự xóa metadata phiên.
 6. Lỗi tải thông báo không làm header hiện khách; phản hồi cũ không ghi đè trạng thái phiên mới. Các thao tác công thức/danh mục dùng API client để xử lý phiên, không tự refresh để kiểm tra một điều kiện giao diện.
 7. Ghim .NET SDK 10 ổn định trong `global.json`, tránh tự chọn SDK preview đang cài trên máy.
+8. Bộ Chromium thật phát hiện API đánh giá lỗi 500 trên database mới. Bổ sung migration tiến tới `20261030100000_EnsureRecipeReviewPhotoUrl` để tạo cột ảnh đánh giá còn thiếu, dùng `IF NOT EXISTS` và không xóa dữ liệu khi rollback. Chuỗi migration mới có thêm một bước so với bằng chứng local 27 migration ở trên.
+9. Bổ sung công cụ chỉ đọc để đối chiếu mọi tên bảng/cột của EF với PostgreSQL. Model hiện có 42 bảng/287 cột; chế độ model-only đã dựng thành công nhưng không thay thế kết quả đối chiếu database thật trong workflow. Bộ API còn kiểm tra đọc, tạo và cập nhật đánh giá kèm ảnh.
+10. Đăng xuất dùng một lần điều hướng về Bảng tin, bỏ việc vừa push route vừa reload gây xung đột điều hướng.
 
 ## Giới hạn và việc còn cần người thực hiện
 

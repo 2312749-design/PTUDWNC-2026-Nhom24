@@ -67,7 +67,10 @@ Script không tự xóa tài nguyên. `verify-clean.ps1 -StopAfterVerification` 
 ## Phạm vi và giới hạn
 
 - Clean-start kiểm tra Docker build, khởi động các service, HTTP, migration/seed và restart không nhân đôi dữ liệu.
+- Clean-start còn đối chiếu mọi bảng/cột trong EF relational model với `information_schema` PostgreSQL, giúp phát hiện migration chạy xong nhưng vẫn thiếu cột. Công cụ `tests/CulinaryBlog.SchemaCheck` chỉ đọc schema, không sửa database.
 - Runtime kiểm tra các thao tác API được liệt kê trong JSON, dùng PostgreSQL/Redis/MinIO thật. Nó chỉ tạo và thay đổi dữ liệu kiểm thử trong stack riêng.
 - Browser kiểm tra các thao tác UI được liệt kê trong JSON, không chặn hoặc giả lập API.
 - Các kết quả không thay thế kiểm thử mọi tính năng mở rộng, Google OAuth thật, thư đến hộp thư thật, khả năng chịu lỗi khi dịch vụ bị ngắt hoặc triển khai production.
 - Review và xác nhận bàn giao phải do thành viên thực sự thực hiện. CI đạt không phải là một bản Approve của đồng đội.
+
+Khi không có database/Docker local, có thể kiểm tra khả năng dựng model PostgreSQL bằng `dotnet run --project tests/CulinaryBlog.SchemaCheck -- --model-only`. Chế độ này không kết nối database và không chứng minh schema của database đã đúng; kiểm tra schema thật vẫn chạy trong workflow.
