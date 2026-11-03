@@ -121,7 +121,10 @@ public static class ExtensionEndpoints
     {
         var reactions = await db.PostReactions.AsNoTracking().GroupBy(item => item.UserId).Select(group => new { userId = group.Key, points = group.Count() }).ToDictionaryAsync(item => item.userId, item => item.points);
         var challenges = await db.ChallengeSubmissions.AsNoTracking().GroupBy(item => item.UserId).Select(group => new { userId = group.Key, points = group.Count() * 10 }).ToDictionaryAsync(item => item.userId, item => item.points);
-        var users = await db.Users.AsNoTracking().Where(user => reactions.ContainsKey(user.Id) || challenges.ContainsKey(user.Id)).Select(user => new { user.Id, user.UserName, user.FullName, user.AvatarUrl }).ToListAsync();
+        // Materialize the eligible IDs before the database query: dictionary
+        // ContainsKey cannot be translated by EF Core's relational providers.
+        var activeUserIds = reactions.Keys.Union(challenges.Keys).ToArray();
+        var users = await db.Users.AsNoTracking().Where(user => activeUserIds.Contains(user.Id)).Select(user => new { user.Id, user.UserName, user.FullName, user.AvatarUrl }).ToListAsync();
         var items = users.Select(user => new { user.UserName, user.FullName, user.AvatarUrl, points = reactions.GetValueOrDefault(user.Id) + challenges.GetValueOrDefault(user.Id) }).OrderByDescending(item => item.points).Take(20).ToList();
         return new ApiResponseResult(200, new { items });
     }

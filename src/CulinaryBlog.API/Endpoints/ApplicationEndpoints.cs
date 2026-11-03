@@ -31,6 +31,8 @@ public static class ApplicationEndpoints
         app.MapCommunity();
         app.MapOpenAI();
         app.MapRecipeFeatures();
+        app.MapRecipeQuestions();
+        app.MapCookingSessions();
         app.MapRecipeIngredients();
         app.MapRecipes();
         app.MapRecipeSteps();

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Link } from './navigation.jsx'
 import { useLocation, useNavigate, useParams } from './navigation-hooks.js'
 import { toast } from 'react-toastify'
@@ -9,13 +9,19 @@ import RecipeProPanel from './RecipeProPanel.jsx'
 import { useLocale } from './locale-context.js'
 import { apiRequest, clearSession, getAccessToken as getStoredAccessToken, getSessionUser, hasSession } from './api/session.js'
 import AppFooter from './components/layout/AppFooter.jsx'
+import RecipeContentFields from './features/recipes/RecipeContentFields.jsx'
+import { recipeToForm, recipeFormToPayload } from './features/recipes/recipe-form.js'
+import { uploadRecipeImage, validateRecipeImageFile } from './api/recipe-images.js'
+import { useAuthStore } from './store/auth-store'
 
 const RECIPE_CATALOG_UPDATED_EVENT = 'culinary:recipe-catalog-updated'
 
 function notifyRecipeCatalogUpdated() {
   if (typeof window === 'undefined') return
   // The value lets a second open tab know it must re-fetch its category counts.
-  window.localStorage.setItem(RECIPE_CATALOG_UPDATED_EVENT, String(Date.now()))
+  try { window.localStorage.setItem(RECIPE_CATALOG_UPDATED_EVENT, String(Date.now())) } catch {
+    // The current tab still updates when browser privacy settings block storage.
+  }
   window.dispatchEvent(new Event(RECIPE_CATALOG_UPDATED_EVENT))
 }
 function getStoredToken() {
@@ -23,7 +29,10 @@ function getStoredToken() {
 }
 
 export function ProtectedRoute({ children }) {
-  const token = getStoredToken() || getSessionUser()
+  const hydrated = useAuthStore(state => state.hydrated)
+  const token = useAuthStore(state => state.isAuthenticated || Boolean(state.user))
+
+  if (!hydrated) return <div className="empty-state">Đang kiểm tra phiên đăng nhập...</div>
 
   if (!token) {
     return <Navigate to="/login" replace />
@@ -216,7 +225,7 @@ export function CategoriesPage() {
   const [categoryDetailLoading, setCategoryDetailLoading] = useState(false)
   const [canManageCategories, setCanManageCategories] = useState(false)
 
-  const token = getStoredToken() || getSessionUser() || ''
+  const token = useAuthStore(state => state.isAuthenticated || Boolean(state.user))
 
   function closeCategoryDialog() {
     setSelectedCategoryId(null)
@@ -482,49 +491,49 @@ export function RecipesPage() {
   const [editingId, setEditingId] = useState(null)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    imageUrl: '',
-    categoryId: '',
-    ingredients: '',
-    instructions: '',
-    prepTimeMinutes: 1,
-    cookTimeMinutes: 0,
-    servings: 2,
-    difficulty: 'Medium',
-    isVegetarian: false,
-    nutrition: { calories: '', protein: '', carbohydrates: '', fat: '', fiber: '', sodium: '' },
-  })
+  const [saving, setSaving] = useState(false)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState('')
+  const previewUrl = useRef('')
+  const [saveNotice, setSaveNotice] = useState('')
+  const saveInProgress = useRef(false)
+  const savedRecipeId = useRef(null)
+  const uploadedImage = useRef(null)
+  const [form, setForm] = useState(() => recipeToForm())
   const [maxMinutesFilter, setMaxMinutesFilter] = useState('')
   const [difficultyFilter, setDifficultyFilter] = useState('all')
   const [vegetarianFilter, setVegetarianFilter] = useState('all')
   const [ingredientSearch, setIngredientSearch] = useState('')
   const [currentUser, setCurrentUser] = useState(null)
 
-  const token = getStoredToken()
+  const token = useAuthStore(state => state.isAuthenticated || Boolean(state.user))
 
   useEffect(() => {
     const categoryFromUrl = new URLSearchParams(location.search).get('category')
     setCategoryFilter(categoryFromUrl || 'all')
   }, [location.search])
 
+  const busy = saving || uploadingImage
+
+  useEffect(() => () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current)
+  }, [])
+
+  const selectImageFile = (file) => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current)
+    previewUrl.current = file ? URL.createObjectURL(file) : ''
+    setImageFile(file)
+    setImagePreview(previewUrl.current)
+  }
+
   const resetForm = () => {
-    setForm({
-      title: '',
-      description: '',
-      imageUrl: '',
-      categoryId: categories[0]?.id || '',
-      ingredients: '',
-      instructions: '',
-      prepTimeMinutes: 1,
-      cookTimeMinutes: 0,
-      servings: 2,
-      difficulty: 'Medium',
-      isVegetarian: false,
-      nutrition: { calories: '', protein: '', carbohydrates: '', fat: '', fiber: '', sodium: '' },
-    })
+    if (saveInProgress.current) return
+    setForm(recipeToForm({}, categories[0]?.id || ''))
     setEditingId(null)
+    savedRecipeId.current = null
+    uploadedImage.current = null
+    selectImageFile(null)
+    setSaveNotice('')
     setIsFormOpen(false)
   }
 
@@ -534,7 +543,7 @@ export function RecipesPage() {
     setForm((current) => (current.categoryId || !data[0])
       ? current
       : { ...current, categoryId: data[0].id })
-  }, [])
+  }, [setForm])
 
   const fetchRecipes = useCallback(async () => {
     const activeToken = hasSession()
@@ -576,142 +585,89 @@ export function RecipesPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
-
-    const activeToken = hasSession()
-    if (!activeToken) {
+    if (saveInProgress.current) return
+    if (!hasSession()) {
       toast.error('Phiên đã hết hạn. Vui lòng đăng nhập lại để lưu công thức.')
       navigate('/login')
       return
     }
 
-    if (!form.title.trim()) {
-      toast.error('Tiêu đề công thức không được để trống.')
-      return
-    }
-
-    if (!form.categoryId) {
-      toast.error('Vui lòng chọn danh mục cho công thức.')
-      return
-    }
-
-    const ingredientValues = form.ingredients.split(/\n|,/).map((item) => item.trim()).filter(Boolean)
-    const stepValues = form.instructions.split(/\n|\./).map((item) => item.trim()).filter(Boolean)
-    if (ingredientValues.length < 10) {
-      toast.error('Mỗi công thức cần ít nhất 10 nguyên liệu.')
-      return
-    }
-    if (stepValues.length < 5) {
-      toast.error('Mỗi công thức cần ít nhất 5 bước làm.')
-      return
-    }
-    const nutritionValues = Object.fromEntries(Object.entries(form.nutrition)
-      .map(([key, value]) => [key, value === '' ? null : Number(value)]))
-    const hasNutrition = Object.values(form.nutrition).some((value) => value !== '')
-    const payload = {
-      title: form.title.trim(),
-      description: form.description.trim(),
-      imageUrl: form.imageUrl || null,
-      ingredients: ingredientValues,
-      instructions: stepValues,
-      recipeIngredients: ingredientValues.map((name, index) => ({ name, orderIndex: index + 1 })),
-      recipeSteps: stepValues.map((description) => ({ title: null, description })),
-      categoryId: form.categoryId,
-      prepTimeMinutes: Number(form.prepTimeMinutes),
-      cookTimeMinutes: Number(form.cookTimeMinutes),
-      servings: Number(form.servings),
-      difficulty: form.difficulty,
-      isVegetarian: form.isVegetarian,
-      nutrition: hasNutrition ? nutritionValues : null,
-    }
-
-    try {
-      await apiRequest(`/recipes${editingId ? `/${editingId}` : ''}`, {
-        method: editingId ? 'PUT' : 'POST',
-        body: JSON.stringify(payload),
-      })
-
-      notifyRecipeCatalogUpdated()
-      toast.success(editingId ? 'Cập nhật công thức thành công.' : 'Thêm công thức thành công.')
-      resetForm()
-      await fetchRecipes()
-    } catch (error) {
+    let payload
+    try { payload = recipeFormToPayload(form) } catch (error) {
       toast.error(error.message)
+      return
+    }
+    saveInProgress.current = true
+    setSaving(true)
+    setSaveNotice('')
+    let completed = false
+    try {
+      // Keep the saved ID on image failure so retry updates this draft instead
+      // of creating a second recipe. File upload and primary selection each
+      // have their own checkpoint for the same reason.
+      const id = editingId || savedRecipeId.current
+      const saved = await apiRequest(`/recipes${id ? `/${id}` : ''}`, {
+        method: id ? 'PUT' : 'POST', body: JSON.stringify(payload),
+      })
+      const recipeId = id || saved?.id
+      if (!recipeId) throw new Error('Máy chủ chưa trả về mã công thức. Vui lòng tải lại danh sách trước khi thử lại.')
+      savedRecipeId.current = recipeId
+      notifyRecipeCatalogUpdated()
+      if (imageFile) {
+        setUploadingImage(true)
+        if (!uploadedImage.current) uploadedImage.current = await uploadRecipeImage(recipeId, imageFile)
+        const photo = uploadedImage.current
+        if (!photo?.id || !photo?.url) throw new Error('Máy chủ chưa trả về thông tin ảnh hợp lệ.')
+        await apiRequest(`/recipes/${recipeId}/images/${photo.id}/primary`, { method: 'PUT' })
+        setForm(current => ({ ...current, imageUrl: photo.url }))
+        notifyRecipeCatalogUpdated()
+      }
+      // Refresh while the editor is still locked. Closing before this request
+      // completed let a quick second edit reopen the old ingredient/step data.
+      await fetchRecipes()
+      completed = true
+      toast.success(editingId ? 'Cập nhật công thức thành công.' : 'Thêm công thức thành công.')
+    } catch (error) {
+      if (savedRecipeId.current) {
+        setSaveNotice('Nội dung công thức đã được lưu. Có thao tác chưa hoàn tất; bạn có thể bấm lưu để thử lại trên cùng công thức.')
+      }
+      toast.error(error.message)
+    } finally {
+      saveInProgress.current = false
+      setSaving(false)
+      setUploadingImage(false)
+    }
+    if (completed) {
+      resetForm()
     }
   }
 
   const handleEdit = (recipe) => {
-    const ingredientLines = recipe.recipeIngredients?.length
-      ? recipe.recipeIngredients
-        .map((item) => [item.quantity, item.unit, item.name].filter(Boolean).join(' '))
-        .filter(Boolean)
-      : Array.isArray(recipe.ingredients) ? recipe.ingredients : []
-    const instructionLines = recipe.recipeSteps?.length
-      ? recipe.recipeSteps
-        .map((item) => [item.title, item.description].filter(Boolean).join(': '))
-        .filter(Boolean)
-      : Array.isArray(recipe.instructions) ? recipe.instructions : []
-
+    if (saveInProgress.current) return
+    savedRecipeId.current = null
+    uploadedImage.current = null
+    selectImageFile(null)
+    setSaveNotice('')
     setEditingId(recipe.id)
-    setForm({
-      title: recipe.title,
-      description: recipe.description || '',
-      imageUrl: recipe.imageUrl || '',
-      categoryId: recipe.categoryId,
-      ingredients: ingredientLines.join('\n'),
-      instructions: instructionLines.join('\n'),
-      prepTimeMinutes: recipe.prepTimeMinutes ?? 1,
-      cookTimeMinutes: recipe.cookTimeMinutes ?? 0,
-      servings: recipe.servings ?? 1,
-      difficulty: recipe.difficulty || 'Medium',
-      isVegetarian: recipe.isVegetarian ?? false,
-      nutrition: {
-        calories: recipe.nutrition?.calories ?? '',
-        protein: recipe.nutrition?.protein ?? '',
-        carbohydrates: recipe.nutrition?.carbohydrates ?? '',
-        fat: recipe.nutrition?.fat ?? '',
-        fiber: recipe.nutrition?.fiber ?? '',
-        sodium: recipe.nutrition?.sodium ?? '',
-      },
-    })
+    setForm(recipeToForm(recipe))
     setIsFormOpen(true)
   }
 
-  const handleImageUpload = async (event) => {
+  const handleImageUpload = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
-      toast.error('Chỉ hỗ trợ ảnh JPG, PNG, WebP hoặc AVIF.')
-      event.target.value = ''
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Ảnh món ăn tối đa 5 MB.')
-      event.target.value = ''
-      return
-    }
-
-    const activeToken = hasSession()
-    if (!activeToken) {
-      toast.error('Phiên đã hết hạn. Vui lòng đăng nhập lại để tải ảnh.')
-      navigate('/login')
-      return
-    }
-    const body = new FormData()
-    body.append('file', file)
-    setUploadingImage(true)
     try {
-      const data = await apiRequest('/community/upload-media', {
-        method: 'POST',
-        body,
-      })
-      setForm(current => ({ ...current, imageUrl: data.mediaUrl }))
-      toast.success('Đã tải ảnh món ăn lên.')
-    } catch (error) {
-      toast.error(error.message)
-    } finally {
-      setUploadingImage(false)
-      event.target.value = ''
-    }
+      validateRecipeImageFile(file)
+      selectImageFile(file)
+      uploadedImage.current = null
+    } catch (error) { toast.error(error.message) }
+    event.target.value = ''
+  }
+
+  const removeCoverImage = () => {
+    selectImageFile(null)
+    uploadedImage.current = null
+    setForm(current => ({ ...current, imageUrl: '' }))
   }
 
   const openCreateForm = () => {
@@ -882,9 +838,10 @@ export function RecipesPage() {
           <section className="recipe-form-card recipe-modal" role="dialog" aria-modal="true" aria-labelledby="recipe-form-title">
             <header className="recipe-modal-heading">
               <div><p className="eyebrow">CULINARY BLOG</p><h2 id="recipe-form-title">{editingId ? 'Chỉnh sửa công thức' : 'Thêm công thức mới'}</h2></div>
-              <button type="button" className="recipe-modal-close" onClick={resetForm} aria-label="Đóng">×</button>
+              <button type="button" className="recipe-modal-close" onClick={resetForm} disabled={busy} aria-label="Đóng">×</button>
             </header>
-            <form onSubmit={handleSubmit} className="recipe-form">
+            <form onSubmit={handleSubmit} className="recipe-form" aria-busy={busy}>
+            <fieldset className="recipe-editor-controls" disabled={busy}>
             <div className="form-group">
               <label htmlFor="recipe-title">Tiêu đề</label>
               <input
@@ -911,9 +868,9 @@ export function RecipesPage() {
               <label htmlFor="recipe-image">Ảnh món ăn</label>
               <div className="recipe-image-upload">
                 <input id="recipe-image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={handleImageUpload} disabled={uploadingImage} />
-                <small>{uploadingImage ? 'Đang tải ảnh...' : 'JPG, PNG, WebP hoặc AVIF · tối đa 5 MB'}</small>
+                <small>{uploadingImage ? 'Đang tải ảnh...' : imageFile ? `${imageFile.name} · ảnh sẽ được tải khi lưu công thức` : 'JPG, PNG, WebP hoặc AVIF · tối đa 5 MB'}</small>
               </div>
-              {form.imageUrl ? <div className="recipe-image-preview"><img src={form.imageUrl} alt="Xem trước món ăn" /><button type="button" onClick={() => setForm({ ...form, imageUrl: '' })}>Gỡ ảnh</button></div> : <div className="recipe-image-placeholder">Ảnh món ăn sẽ hiển thị tại đây</div>}
+              {imagePreview || form.imageUrl ? <div className="recipe-image-preview"><img src={imagePreview || form.imageUrl} alt="Xem trước món ăn" /><button type="button" onClick={removeCoverImage}>Gỡ ảnh</button></div> : <div className="recipe-image-placeholder">Ảnh món ăn sẽ hiển thị tại đây</div>}
             </div>
 
             <div className="form-group">
@@ -953,34 +910,16 @@ export function RecipesPage() {
               ))}
             </fieldset>
 
-            <div className="form-group">
-              <label htmlFor="recipe-ingredients">Nguyên liệu</label>
-              <textarea
-                id="recipe-ingredients"
-                rows="5"
-                value={form.ingredients}
-                onChange={(event) => setForm({ ...form, ingredients: event.target.value })}
-                placeholder="Mỗi nguyên liệu trên 1 dòng hoặc cách nhau bằng dấu phẩy"
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="recipe-instructions">Các bước làm</label>
-              <textarea
-                id="recipe-instructions"
-                rows="5"
-                value={form.instructions}
-                onChange={(event) => setForm({ ...form, instructions: event.target.value })}
-                placeholder="Mỗi bước trên 1 dòng"
-              />
-            </div>
+            <RecipeContentFields form={form} setForm={setForm} />
+            </fieldset>
+            {saveNotice && <p className="recipe-editor-notice" role="status">{saveNotice}</p>}
 
             <div className="form-actions">
-              <button type="submit" className="primary-btn compact-btn">
-                {editingId ? 'Lưu thay đổi' : 'Thêm mới'}
+              <button type="submit" className="primary-btn compact-btn" disabled={busy}>
+                {busy ? (uploadingImage ? 'Đang tải ảnh...' : 'Đang lưu...') : editingId ? 'Lưu thay đổi' : 'Thêm mới'}
               </button>
               {editingId && (
-                <button type="button" className="secondary-btn compact-btn" onClick={resetForm}>
+                <button type="button" className="secondary-btn compact-btn" onClick={resetForm} disabled={busy}>
                   Hủy
                 </button>
               )}

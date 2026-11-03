@@ -96,8 +96,10 @@ test('API failure appears as a dismissible HUD toast', async ({ page }) => {
   const notification = page.locator('.Toastify__toast').filter({ hasText: /fetch|kết nối|máy chủ/i }).first()
   await expect(notification).toBeVisible()
   await expect(notification.locator('.Toastify__close-button')).toBeVisible()
-  await notification.locator('.Toastify__close-button').click()
-  await expect(notification).toHaveCount(0)
+  const id = await notification.getAttribute('id')
+  const clickedNotification = page.locator('.Toastify__toast').and(page.locator(`[id="${id}"]`))
+  await clickedNotification.locator('.Toastify__close-button').click()
+  await expect(clickedNotification).toHaveCount(0)
 })
 
 test('the sound switch gates synthesized interface tones', async ({ page }) => {
@@ -131,10 +133,18 @@ test('the sound switch gates synthesized interface tones', async ({ page }) => {
 
 test('the existing music audio element survives internal navigation', async ({ page }) => {
   await page.goto('/home')
+  // /home is an alias. Its initial server redirect must finish before the
+  // persistent player is captured; that redirect is not an internal menu click.
+  await expect(page).toHaveURL('/')
   await expect(page.locator('audio')).toHaveCount(1)
+  const documentNavigations = []
+  page.on('request', request => {
+    if (request.isNavigationRequest()) documentNavigations.push(request.url())
+  })
   await page.evaluate(() => { window.__cosmicMusicElement = document.querySelector('audio') })
   await page.locator('.community-nav').getByRole('link', { name: 'Bảng tin', exact: true }).click()
   await expect(page).toHaveURL(/\/community$/)
   await expect(page.locator('audio')).toHaveCount(1)
   expect(await page.evaluate(() => window.__cosmicMusicElement === document.querySelector('audio'))).toBe(true)
+  expect(documentNavigations).toEqual([])
 })

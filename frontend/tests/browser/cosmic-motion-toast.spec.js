@@ -27,8 +27,13 @@ test('the notification close button removes the toast with reduced motion enable
   await page.goto('/community')
   const notification = page.locator('.Toastify__toast').first()
   await expect(notification).toBeVisible()
-  await notification.locator('.Toastify__close-button').click()
-  await expect(notification).toHaveCount(0, { timeout: 1500 })
+  // Development Strict Mode can report the failed request twice. Keep the
+  // clicked notification's identity rather than rebinding `.first()` to another.
+  const notificationId = await notification.getAttribute('id')
+  expect(notificationId).toBeTruthy()
+  const clickedNotification = page.locator('.Toastify__toast').and(page.locator(`[id="${notificationId}"]`))
+  await clickedNotification.locator('.Toastify__close-button').click()
+  await expect(clickedNotification).toHaveCount(0, { timeout: 1500 })
 })
 
 test('a toast expires after five seconds even while hovered and after window blur', async ({ page }) => {

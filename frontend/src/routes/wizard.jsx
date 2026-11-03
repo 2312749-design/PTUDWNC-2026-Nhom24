@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'react-toastify'
 import { useNavigate } from '../navigation-hooks.js'
-import { apiRequest, getFreshAccessToken } from '../api/session.js'
+import { apiRequest, hasSession } from '../api/session.js'
+import { uploadRecipeImage, validateRecipeImageFile } from '../api/recipe-images.js'
 
 function CreateRecipeWizard() {
   const navigate = useNavigate()
@@ -24,10 +25,13 @@ function CreateRecipeWizard() {
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [imageFile, setImageFile] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [savedDraftId, setSavedDraftId] = useState(null)
+  const createdRecipeId = useRef(null)
+  const uploadedImage = useRef(null)
+  const savingRequest = useRef(false)
 
   useEffect(() => {
     const loadCategories = async () => {
-      await getFreshAccessToken()
       try {
         const data = await apiRequest('/categories')
         setCategories(data)
@@ -118,10 +122,50 @@ function CreateRecipeWizard() {
   }
 
   const handleSubmit = async () => {
-    const token = await getFreshAccessToken()
-    if (!token) {
+    if (savingRequest.current) return
+    if (!hasSession()) {
       toast.error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.')
       return
+    }
+
+    if (form.title.trim().length < 3 || form.title.trim().length > 160 || !form.categoryId) {
+      toast.error('Tiêu đề cần từ 3 đến 160 ký tự và phải chọn danh mục.')
+      setStep(1)
+      return
+    }
+    if (form.description.trim().length > 2000) {
+      toast.error('Mô tả công thức tối đa 2000 ký tự.')
+      setStep(1)
+      return
+    }
+    const numericFields = [
+      [form.prepTimeMinutes, 1, 1440],
+      [form.cookTimeMinutes, 0, 1440],
+      [form.servings, 1, 100],
+    ]
+    if (numericFields.some(([value, min, max]) => String(value).trim() === '' || !Number.isInteger(Number(value)) || Number(value) < min || Number(value) > max)) {
+      toast.error('Thời gian chuẩn bị từ 1–1440 phút, thời gian nấu từ 0–1440 phút và khẩu phần từ 1–100 người.')
+      setStep(1)
+      return
+    }
+    if (form.ingredients.length < 10 || form.ingredients.some(item => !item.name.trim() || item.name.trim().length > 200 || item.quantity.length > 100 || item.unit.length > 50 || item.notes.length > 500)) {
+      toast.error('Cần ít nhất 10 nguyên liệu hợp lệ: tên tối đa 200 ký tự, số lượng 100, đơn vị 50 và ghi chú 500 ký tự.')
+      setStep(2)
+      return
+    }
+    if (form.steps.length < 5 || form.steps.some(item => !item.description.trim() || item.description.trim().length > 2000 || item.title.trim().length > 200 || (item.timerMinutes !== '' && (!Number.isInteger(Number(item.timerMinutes)) || Number(item.timerMinutes) < 0 || Number(item.timerMinutes) > 1440)))) {
+      toast.error('Cần ít nhất 5 bước hợp lệ: mô tả tối đa 2000 ký tự, tên bước 200 ký tự và hẹn giờ từ 0–1440 phút.')
+      setStep(3)
+      return
+    }
+    if (imageFile) {
+      try {
+        validateRecipeImageFile(imageFile)
+      } catch (error) {
+        toast.error(error.message)
+        setStep(1)
+        return
+      }
     }
 
     const payload = {
@@ -164,25 +208,41 @@ function CreateRecipeWizard() {
         .map((item) => ({
           title: item.title.trim(),
           description: item.description.trim(),
-          timerMinutes: item.timerMinutes ? Number(item.timerMinutes) : null,
+          timerMinutes: item.timerMinutes === '' ? null : Number(item.timerMinutes),
         }))
         .filter((item) => item.description),
     }
 
+    savingRequest.current = true
     setSaving(true)
     try {
-      const created = await apiRequest('/recipes', { method: 'POST', body: JSON.stringify(payload) })
-      if (imageFile && created?.id) {
-        const image = new FormData()
-        image.append('file', imageFile)
-        await apiRequest(`/recipes/${created.id}/images`, { method: 'POST', body: image })
+      if (createdRecipeId.current) {
+        await apiRequest(`/recipes/${createdRecipeId.current}`, { method: 'PUT', body: JSON.stringify(payload) })
+      } else {
+        const created = await apiRequest('/recipes', { method: 'POST', body: JSON.stringify(payload) })
+        if (!created?.id) throw new Error('Máy chủ chưa trả về mã công thức. Vui lòng kiểm tra danh sách trước khi thử lại.')
+        createdRecipeId.current = created.id
+        setSavedDraftId(created.id)
+      }
+      if (imageFile) {
+        if (!uploadedImage.current) uploadedImage.current = await uploadRecipeImage(createdRecipeId.current, imageFile)
+        const uploaded = uploadedImage.current
+        if (!uploaded?.id || !uploaded?.url) throw new Error('Máy chủ chưa trả về thông tin ảnh hợp lệ.')
+        if (uploaded?.id && !uploaded.isPrimary) {
+          await apiRequest(`/recipes/${createdRecipeId.current}/images/${uploaded.id}/primary`, { method: 'PUT' })
+        }
       }
 
+      try { window.localStorage.setItem('culinary:recipe-catalog-updated', String(Date.now())) } catch { /* Cross-tab notifications are optional when browser storage is unavailable. */ }
+      window.dispatchEvent(new Event('culinary:recipe-catalog-updated'))
       toast.success('Tạo công thức thành công!')
       navigate('/recipes')
     } catch (error) {
-      toast.error(error.message)
+      toast.error(createdRecipeId.current
+        ? `Công thức đã lưu ở bản nháp. ${error.message} Bấm Hoàn tất để thử lại trên bản nháp này.`
+        : error.message)
     } finally {
+      savingRequest.current = false
       setSaving(false)
     }
   }
@@ -197,6 +257,8 @@ function CreateRecipeWizard() {
       </div>
 
       <div className="wizard-shell">
+        {savedDraftId && !saving && <p role="status">Bản nháp đã được lưu. Nếu tải ảnh chưa thành công, bấm Hoàn tất để thử lại; hệ thống sẽ cập nhật bản nháp này.</p>}
+        <fieldset disabled={saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="wizard-progress">
           {[1, 2, 3].map((value) => (
             <div key={value} className={`step-pill ${step === value ? 'active' : ''}`}>
@@ -245,17 +307,15 @@ function CreateRecipeWizard() {
               <label htmlFor="wizard-recipe-image">Ảnh món ăn (không bắt buộc)</label>
               <input id="wizard-recipe-image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={event => {
                 const file = event.target.files?.[0] || null
-                if (file && !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) {
-                  toast.error('Chỉ hỗ trợ ảnh JPEG, PNG, WebP hoặc AVIF.')
-                  event.target.value = ''
-                  return
-                }
-                if (file && file.size > 5 * 1024 * 1024) {
-                  toast.error('Ảnh món ăn tối đa 5 MB.')
-                  event.target.value = ''
-                  return
-                }
+                try {
+                  if (file) validateRecipeImageFile(file)
                 setImageFile(file)
+                uploadedImage.current = null
+                } catch (error) {
+                  toast.error(error.message)
+                  setImageFile(null)
+                  event.target.value = ''
+                }
               }} />
               <small>{imageFile ? imageFile.name : 'JPEG, PNG, WebP hoặc AVIF · tối đa 5 MB'}</small>
             </div>
@@ -345,6 +405,7 @@ function CreateRecipeWizard() {
             <button type="button" className="primary-btn" onClick={handleSubmit} disabled={saving}>{saving ? 'Đang lưu...' : 'Hoàn tất'}</button>
           )}
         </div>
+        </fieldset>
       </div>
     </div>
   )

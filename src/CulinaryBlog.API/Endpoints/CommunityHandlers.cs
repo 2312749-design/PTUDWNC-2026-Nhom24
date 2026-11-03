@@ -241,7 +241,7 @@ public class CommunityHandlers : EndpointHandler
     {
         var content = (request.Content ?? string.Empty).Trim();
         if (content.Length == 0 || content.Length > 1000) return BadRequest(new { message = "Bình luận cần có nội dung từ 1 đến 1000 ký tự." });
-        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id && !item.IsDraft);
+        var post = await _context.CommunityPosts.FirstOrDefaultAsync(item => item.Id == id && !item.IsDraft && !item.IsHidden);
         if (post == null) return NotFound();
         if (!post.CommentsEnabled) return BadRequest(new { message = "Tác giả đã tắt bình luận cho bài viết này." });
         Guid? parentCommentId = null;
