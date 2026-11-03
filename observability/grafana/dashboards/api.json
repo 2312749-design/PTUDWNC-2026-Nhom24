@@ -1,0 +1,13 @@
+{
+  "uid": "culinary-api",
+  "title": "CulinaryBlog API",
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    { "id": 1, "type": "timeseries", "title": "Requests / second", "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 0, "w": 12, "h": 9 }, "targets": [{ "expr": "sum(rate(http_server_request_duration_seconds_count[5m]))", "refId": "A" }] },
+    { "id": 2, "type": "timeseries", "title": "P95 request duration (seconds)", "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 12, "y": 0, "w": 12, "h": 9 }, "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket[5m])))", "refId": "A" }] },
+    { "id": 3, "type": "timeseries", "title": "Server errors / second", "datasource": { "type": "prometheus", "uid": "prometheus" }, "gridPos": { "x": 0, "y": 9, "w": 24, "h": 8 }, "targets": [{ "expr": "sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m]))", "refId": "A" }] }
+  ]
+}

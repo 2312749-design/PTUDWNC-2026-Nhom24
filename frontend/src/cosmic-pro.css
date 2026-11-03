@@ -1,0 +1,234 @@
+/* VIP presentation additions. Existing route markup and business handlers stay intact. */
+@property --holo-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+html[data-cosmic-theme] {
+  --cosmic-accent: #73f3ff;
+  --cosmic-accent-rgb: 115, 243, 255;
+  --cosmic-secondary: #b18cff;
+  --cosmic-secondary-rgb: 177, 140, 255;
+  --cosmic-cyan: var(--cosmic-accent);
+  --cosmic-line: rgba(var(--cosmic-accent-rgb), .2);
+}
+html[data-cosmic-theme][data-cosmic-palette='purple'] {
+  --cosmic-accent: #d0a3ff;
+  --cosmic-accent-rgb: 208, 163, 255;
+  --cosmic-secondary: #ff8ae1;
+  --cosmic-secondary-rgb: 255, 138, 225;
+  --cosmic-line: rgba(208, 163, 255, .23);
+}
+html[data-cosmic-theme][data-cosmic-palette='emerald'] {
+  --cosmic-accent: #70ffc4;
+  --cosmic-accent-rgb: 112, 255, 196;
+  --cosmic-secondary: #7dcfff;
+  --cosmic-secondary-rgb: 125, 207, 255;
+  --cosmic-line: rgba(112, 255, 196, .21);
+}
+html[data-cosmic-theme] .cosmic-aurora {
+  background: radial-gradient(ellipse at 18% 35%, rgba(var(--cosmic-secondary-rgb), .17), transparent 34%), radial-gradient(ellipse at 80% 20%, rgba(var(--cosmic-accent-rgb), .12), transparent 35%), radial-gradient(ellipse at 55% 85%, rgba(var(--cosmic-secondary-rgb), .085), transparent 38%);
+}
+html[data-cosmic-theme][data-cosmic-effects='on'] .cosmic-aurora { will-change: transform; }
+html[data-cosmic-theme] .cosmic-grid { background-image: linear-gradient(rgba(var(--cosmic-accent-rgb), .045) 1px, transparent 1px), linear-gradient(90deg, rgba(var(--cosmic-accent-rgb), .045) 1px, transparent 1px); }
+html[data-cosmic-theme] ::selection { background: rgba(var(--cosmic-secondary-rgb), .36); color: #fff; }
+html[data-cosmic-theme] :is(input, textarea, select) { accent-color: var(--cosmic-accent); }
+html[data-cosmic-theme] :is(input, textarea, select):focus { border-color: rgba(var(--cosmic-accent-rgb), .7) !important; box-shadow: 0 0 0 3px rgba(var(--cosmic-accent-rgb), .1); }
+html[data-cosmic-theme] :is(.community-kicker, .home-recipe-content > span, .recipe-category-tag, .home-section-head > div > p, .home-sidebar-head > div > p) { color: var(--cosmic-accent) !important; }
+html[data-cosmic-theme] :is(.feed-hero, .home-hero, .pro-hero, .studio-hero) { border-color: rgba(var(--cosmic-accent-rgb), .3) !important; box-shadow: 0 24px 60px rgba(0, 0, 0, .3), 0 0 45px rgba(var(--cosmic-secondary-rgb), .06); }
+html[data-cosmic-theme] :is(.nav-join, .primary-btn, .cb-button--primary, .home-music-player__play, .cosmic-roulette-button) { background: linear-gradient(115deg, rgba(var(--cosmic-accent-rgb), .28), rgba(var(--cosmic-secondary-rgb), .46)) !important; border: 1px solid rgba(var(--cosmic-accent-rgb), .45) !important; color: #f7ffff !important; box-shadow: 0 0 22px rgba(var(--cosmic-secondary-rgb), .14); }
+html[data-cosmic-theme] :is(.community-nav-group-links, .site-music__panel, .cb-dialog-content) { border-color: rgba(var(--cosmic-accent-rgb), .34) !important; }
+html[data-cosmic-theme] :is(.wordmark-mark, .feed-hero-copy > a, .home-hero a, .site-music__toggle) { border-color: rgba(var(--cosmic-accent-rgb), .38) !important; color: var(--cosmic-accent) !important; }
+html[data-cosmic-theme] .community-nav nav a.active,
+html[data-cosmic-theme] .community-nav-group[open] > summary { border-color: rgba(var(--cosmic-accent-rgb), .4); color: var(--cosmic-accent); background: linear-gradient(110deg, rgba(var(--cosmic-accent-rgb), .13), rgba(var(--cosmic-secondary-rgb), .17)); box-shadow: inset 0 0 0 1px rgba(var(--cosmic-accent-rgb), .22), 0 0 18px rgba(var(--cosmic-accent-rgb), .08); }
+
+/* Room for the expanded control deck without removing a navigation item. */
+html[data-cosmic-theme] .community-nav {
+  grid-template-columns: minmax(170px, 1fr) minmax(0, 2fr);
+  grid-template-areas: 'brand account' 'controls controls' 'navigation navigation';
+  gap: 10px 20px;
+  min-height: 155px;
+  padding-top: 12px;
+  border-bottom-color: rgba(var(--cosmic-accent-rgb), .24);
+}
+html[data-cosmic-theme] .cosmic-controls { width: 100%; justify-self: stretch; justify-content: center; flex-wrap: wrap; gap: 7px; }
+html[data-cosmic-theme] .cosmic-toggle { min-height: 32px; border-color: rgba(var(--cosmic-secondary-rgb), .32); }
+html[data-cosmic-theme] .cosmic-toggle[aria-checked='true'] { color: var(--cosmic-accent); border-color: rgba(var(--cosmic-accent-rgb), .4); background: linear-gradient(115deg, rgba(var(--cosmic-accent-rgb), .13), rgba(var(--cosmic-secondary-rgb), .15)); }
+html[data-cosmic-theme] .cosmic-toggle:hover { border-color: var(--cosmic-accent); box-shadow: 0 0 24px rgba(var(--cosmic-accent-rgb), .18); }
+html[data-cosmic-theme] .cosmic-sfx-level { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 10px; border: 1px solid rgba(var(--cosmic-accent-rgb), .24); border-radius: 999px; background: rgba(13, 24, 45, .8); color: #bed0e9; font-size: 10px; white-space: nowrap; }
+html[data-cosmic-theme] .cosmic-sfx-level input { width: 74px; height: 15px; margin: 0; padding: 0; accent-color: var(--cosmic-accent); cursor: pointer; }
+html[data-cosmic-theme] .cosmic-sfx-level output { min-width: 31px; color: var(--cosmic-accent); font-family: var(--font-space-grotesk), sans-serif; font-size: 11px; font-weight: 700; }
+html[data-cosmic-theme] .cosmic-boost { min-height: 31px; padding: 6px 10px; border: 1px solid rgba(var(--cosmic-secondary-rgb), .4); border-radius: 999px; background: rgba(var(--cosmic-secondary-rgb), .1); color: #d6c9f2; font-size: 10px; font-weight: 800; cursor: pointer; }
+html[data-cosmic-theme] .cosmic-boost[aria-pressed='true'] { background: rgba(var(--cosmic-secondary-rgb), .25); color: #fff; box-shadow: 0 0 17px rgba(var(--cosmic-secondary-rgb), .18), inset 0 0 0 1px rgba(var(--cosmic-secondary-rgb), .24); }
+html[data-cosmic-theme] .cosmic-theme-select { display: inline-flex; min-width: 145px; }
+html[data-cosmic-theme] .cosmic-theme-select select { width: 100%; min-height: 32px; max-height: 34px; padding: 5px 28px 5px 10px; border: 1px solid rgba(var(--cosmic-secondary-rgb), .32); border-radius: 999px; color: var(--cosmic-accent) !important; font-size: 10px; font-weight: 700; cursor: pointer; }
+html[data-cosmic-theme] .cosmic-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+html[data-cosmic-theme] .community-nav > nav { gap: clamp(5px, 1vw, 16px); }
+html[data-cosmic-theme] .cosmic-command-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; width: min(220px, 100%); padding: 7px 10px; border: 1px solid rgba(var(--cosmic-accent-rgb), .25); border-radius: 9px; background: rgba(11, 22, 42, .85); color: #a9bfd9; cursor: pointer; font-size: 10px; text-align: left; }
+html[data-cosmic-theme] .cosmic-command-trigger:hover { border-color: rgba(var(--cosmic-accent-rgb), .65); color: var(--cosmic-accent); box-shadow: 0 0 25px rgba(var(--cosmic-accent-rgb), .08); }
+html[data-cosmic-theme] :is(.cosmic-command-trigger kbd, .cosmic-command-dialog kbd) { padding: 2px 5px; border: 1px solid rgba(var(--cosmic-accent-rgb), .18); border-radius: 4px; background: rgba(136, 161, 218, .08); color: #8ca9c8; font-family: var(--font-space-grotesk), monospace; font-size: 9px; white-space: nowrap; }
+
+/* Procedural companion remains a transparent overlay with no hit testing. */
+html[data-cosmic-theme] .cosmic-canvas { contain: strict; will-change: transform; transform: translateZ(0); }
+html[data-cosmic-theme] .cyber-spider-canvas { position: fixed; left: 0; top: 0; z-index: 30; width: 320px; height: 280px; pointer-events: none; }
+html[data-cosmic-theme] .cyber-spider-scan { position: fixed; z-index: 29; left: 0; top: 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(var(--cosmic-accent-rgb), .65), transparent); box-shadow: 0 0 9px rgba(var(--cosmic-accent-rgb), .28); opacity: .45; pointer-events: none; will-change: transform; }
+html[data-cosmic-theme] .cyber-spider-scan[hidden] { display: none !important; }
+html[data-cosmic-theme] .cyber-spider-hud { box-sizing: border-box; width: max-content; max-width: min(340px, calc(100vw - 24px)); padding: 9px 12px; border: 1px solid rgba(var(--cosmic-accent-rgb), .55); border-radius: 6px 13px 13px 13px; background: rgba(6, 15, 34, .94); color: #d4f6ff; box-shadow: 0 0 24px rgba(var(--cosmic-accent-rgb), .13), inset 3px 0 0 var(--cosmic-accent); font: 500 10px/1.7 var(--font-be-vietnam), sans-serif; letter-spacing: .02em; white-space: normal; pointer-events: none; backdrop-filter: blur(8px); }
+html[data-cosmic-theme] .cyber-spider-hud[hidden] { display: none !important; }
+
+/* One active hologram gets glare and a moving edge; idle cards stay cheap. */
+html[data-cosmic-theme] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar) { position: relative; isolation: isolate; border-color: rgba(var(--cosmic-accent-rgb), .2) !important; transform-style: preserve-3d; }
+/* Animated canvases below every large backdrop blur forced full-card raster
+   passes each frame. The translucent layered glass stays; true blur remains
+   on focused UI such as menus, notifications and dialogs. */
+html[data-cosmic-theme] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar, .home-music-player) { backdrop-filter: none; -webkit-backdrop-filter: none; }
+html[data-cosmic-theme] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar)::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--holo-angle), transparent 12%, rgba(var(--cosmic-accent-rgb), .15) 24%, var(--cosmic-accent) 38%, transparent 48%, var(--cosmic-secondary) 68%, transparent 85%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+html[data-cosmic-theme] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: radial-gradient(ellipse 75% 65% at var(--cosmic-pointer-x, 50%) var(--cosmic-pointer-y, 35%), rgba(var(--cosmic-accent-rgb), .15), rgba(var(--cosmic-secondary-rgb), .045) 40%, transparent 72%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .24s;
+}
+html[data-cosmic-theme][data-cosmic-effects='on'] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar):hover { border-color: rgba(var(--cosmic-accent-rgb), .55) !important; box-shadow: 0 22px 48px rgba(0, 0, 0, .38), 0 0 30px rgba(var(--cosmic-accent-rgb), .12), inset 0 1px 0 rgba(216, 243, 255, .09); }
+html[data-cosmic-theme][data-cosmic-effects='on'] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar):hover::before { opacity: .9; animation: cosmic-holo-edge 3s linear infinite; }
+html[data-cosmic-theme][data-cosmic-effects='on'] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar):hover::after { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  html[data-cosmic-theme][data-cosmic-effects='on'] [data-cosmic-tilt] { transform: perspective(1100px) translateY(-4px) translateZ(8px) rotateX(var(--cosmic-tilt-x, 0deg)) rotateY(var(--cosmic-tilt-y, 0deg)); transform-origin: center; }
+}
+
+/* Holographic DJ station, driven by analyser output rather than fake animation. */
+html[data-cosmic-theme] .home-music-player { --music-bass: 0; grid-template-rows: auto auto auto auto auto; border-left-color: rgba(var(--cosmic-accent-rgb), .24); background: radial-gradient(ellipse at 50% 0%, rgba(var(--cosmic-secondary-rgb), .13), transparent 65%), rgba(11, 18, 38, .94); }
+html[data-cosmic-theme] .home-music-player__cover { border-radius: 50%; border: 2px solid rgba(var(--cosmic-accent-rgb), .65); overflow: visible; box-shadow: 0 0 0 5px rgba(var(--cosmic-accent-rgb), .055), 0 0 24px rgba(var(--cosmic-secondary-rgb), .23); }
+html[data-cosmic-theme] .home-music-player__cover img { display: block; border-radius: 50%; object-fit: cover; }
+html[data-cosmic-theme] .home-music-player__cover::after { content: ''; position: absolute; top: 50%; left: 50%; width: 12px; height: 12px; border: 2px solid rgba(211, 239, 255, .65); border-radius: 50%; background: #0b1227; box-shadow: 0 0 0 4px rgba(5, 13, 31, .65); transform: translate(-50%, -50%); pointer-events: none; }
+html[data-cosmic-theme] .home-music-player__cover span { z-index: 2; bottom: 2px; right: -5px; padding: 4px 7px; border: 1px solid rgba(var(--cosmic-accent-rgb), .38); border-radius: 99px; background: #101b36; color: var(--cosmic-accent); font-size: 7px; }
+html[data-cosmic-theme][data-cosmic-effects='on'] .home-music-player[data-playing='true'] .home-music-player__cover img { animation: cosmic-vinyl-spin 12s linear infinite; }
+html[data-cosmic-theme][data-cosmic-effects='on'] .home-music-player[data-playing='true'] .home-music-player__cover { box-shadow: 0 0 0 calc(4px + var(--music-bass) * 7px) rgba(var(--cosmic-accent-rgb), .1), 0 0 calc(18px + var(--music-bass) * 42px) rgba(var(--cosmic-secondary-rgb), .6); }
+html[data-cosmic-theme] .music-visualizer { grid-column: 1 / -1; min-width: 0; margin-top: 8px; padding: 10px 10px 7px; border: 1px solid rgba(var(--cosmic-accent-rgb), .16); border-radius: 9px; background: linear-gradient(180deg, rgba(7, 18, 35, .2), rgba(var(--cosmic-secondary-rgb), .07)); overflow: hidden; }
+html[data-cosmic-theme] .music-visualizer__bars { display: flex; align-items: flex-end; justify-content: space-between; gap: 3px; height: 49px; padding-top: 2px; }
+html[data-cosmic-theme] .music-visualizer__bar { display: block; flex: 1 1 0; min-width: 2px; max-width: 13px; height: 100%; border-radius: 3px 3px 1px 1px; background: linear-gradient(0deg, var(--cosmic-secondary), var(--cosmic-accent) 80%, #f0ffff); box-shadow: 0 0 7px rgba(var(--cosmic-accent-rgb), .25); transform-origin: center bottom; }
+html[data-cosmic-theme] .music-visualizer[data-playing='false'] { opacity: .5; }
+
+/* Keyboard-friendly command palette. Radix owns focus and dismissal. */
+html[data-cosmic-theme] .cosmic-command-dialog.cb-dialog-content { width: min(680px, calc(100vw - 28px)); max-width: 680px; padding: 23px; border-radius: 22px; border: 1px solid rgba(var(--cosmic-accent-rgb), .4); background: linear-gradient(135deg, rgba(21, 31, 58, .98), rgba(14, 17, 39, .98)) !important; box-shadow: 0 35px 100px rgba(0, 0, 0, .65), 0 0 55px rgba(var(--cosmic-secondary-rgb), .16); backdrop-filter: blur(20px); }
+html[data-cosmic-theme] .cosmic-command-dialog h2 { margin: 0 0 6px; font-size: 20px; }
+html[data-cosmic-theme] .cosmic-command-dialog > p { margin: 0 0 15px; color: #98adc9; font-size: 11px; }
+html[data-cosmic-theme] .cosmic-command-search { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid rgba(var(--cosmic-accent-rgb), .37); border-radius: 13px; background: rgba(5, 13, 30, .75); color: var(--cosmic-accent); }
+html[data-cosmic-theme] .cosmic-command-search input { width: 100%; min-width: 0; min-height: 30px; padding: 0; border: 0 !important; border-radius: 0 !important; background: transparent !important; color: #eef5ff !important; box-shadow: none !important; font-size: 13px; }
+html[data-cosmic-theme] .cosmic-command-list { display: grid; max-height: min(53vh, 410px); gap: 4px; margin-top: 15px; overflow-y: auto; overscroll-behavior: contain; }
+html[data-cosmic-theme] .cosmic-command-group { margin: 13px 2px 6px; color: var(--cosmic-accent); font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+html[data-cosmic-theme] .cosmic-command-result { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-width: 0; width: 100%; padding: 11px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #cbd9ed; cursor: pointer; text-align: left; font-size: 12px; }
+html[data-cosmic-theme] .cosmic-command-result[aria-selected='true'], html[data-cosmic-theme] .cosmic-command-result:hover { border-color: rgba(var(--cosmic-accent-rgb), .3); background: linear-gradient(100deg, rgba(var(--cosmic-accent-rgb), .12), rgba(var(--cosmic-secondary-rgb), .13)); color: #effbff; }
+html[data-cosmic-theme] .cosmic-command-result img { flex: 0 0 auto; width: 42px; height: 42px; border-radius: 8px; object-fit: cover; }
+html[data-cosmic-theme] .cosmic-command-result > span { display: grid; min-width: 0; flex: 1; gap: 3px; }
+html[data-cosmic-theme] .cosmic-command-result b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-cosmic-theme] .cosmic-command-result small { color: #8da6c5; font-size: 10px; }
+html[data-cosmic-theme] .cosmic-command-result > .cosmic-command-icon { flex: 0 0 28px; color: var(--cosmic-accent); font-size: 20px; }
+html[data-cosmic-theme] .cosmic-command-result > span:last-child { flex: 0 0 auto; color: var(--cosmic-accent); }
+html[data-cosmic-theme] .cosmic-command-status { min-height: 24px; margin-top: 10px; color: #9cafca; font-size: 11px; line-height: 1.6; }
+html[data-cosmic-theme] .editorial-column { top: calc(var(--cosmic-header-height, 155px) + 16px); max-height: calc(100dvh - var(--cosmic-header-height, 155px) - 38px); }
+html[data-cosmic-theme] .admin-sidebar { top: var(--cosmic-header-height, 155px); height: calc(100dvh - var(--cosmic-header-height, 155px)); }
+html[data-cosmic-theme] { scroll-padding-top: calc(var(--cosmic-header-height, 155px) + 20px); }
+@media(max-width:900px) { html[data-cosmic-theme] .admin-sidebar { height: auto; } }
+html[data-cosmic-theme] .cosmic-command-empty { margin: 10px 0; padding: 24px 12px; border: 1px dashed rgba(var(--cosmic-accent-rgb), .2); border-radius: 10px; color: #a4b7d2; text-align: center; font-size: 12px; line-height: 1.7; }
+
+/* Food roulette uses real recipe links and never replaces the recipe list. */
+html[data-cosmic-theme] .cosmic-roulette-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 42px; padding: 10px 12px; margin-top: 17px; border-radius: 11px; cursor: pointer; font-size: 11px; font-weight: 800; }
+html[data-cosmic-theme] .cosmic-roulette-button:disabled { cursor: wait; }
+html[data-cosmic-theme] .cosmic-roulette-dialog.cb-dialog-content { width: min(490px, calc(100vw - 28px)); padding: 26px; border-radius: 23px; text-align: center; border-color: rgba(var(--cosmic-accent-rgb), .5); background: radial-gradient(ellipse at 50% 0%, rgba(var(--cosmic-secondary-rgb), .19), transparent 65%), #0d162d !important; }
+html[data-cosmic-theme] .cosmic-roulette-dialog h2 { margin: 5px 0 8px; font-size: 23px; }
+html[data-cosmic-theme] .cosmic-roulette-dialog > p { margin: 0 0 18px; color: #a6bcd8; font-size: 12px; }
+html[data-cosmic-theme] .roulette-preview { position: relative; min-height: 190px; overflow: hidden; padding: 12px; border: 1px solid rgba(var(--cosmic-accent-rgb), .2); border-radius: 17px; background: rgba(19, 32, 58, .68); }
+html[data-cosmic-theme] .roulette-preview img { display: block; width: 100%; height: 190px; border-radius: 11px; object-fit: cover; }
+html[data-cosmic-theme] .roulette-preview h3 { margin: 16px 0 7px; font-size: 21px; line-height: 1.45; }
+html[data-cosmic-theme] .roulette-preview p { margin: 0 0 6px; color: #a3b9d6; font-size: 12px; }
+html[data-cosmic-theme] .roulette-scan { position: absolute; z-index: 2; top: 0; left: 0; width: 100%; height: 3px; background: var(--cosmic-accent); box-shadow: 0 0 19px var(--cosmic-accent), 0 0 45px rgba(var(--cosmic-accent-rgb), .7); pointer-events: none; }
+html[data-cosmic-theme][data-cosmic-effects='on'] .roulette-scan { animation: cosmic-roulette-scan 1.1s linear infinite; }
+html[data-cosmic-theme] .roulette-winner { color: var(--cosmic-accent); text-shadow: 0 0 20px rgba(var(--cosmic-accent-rgb), .28); }
+html[data-cosmic-theme] .roulette-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+html[data-cosmic-theme] .roulette-actions :is(a, button) { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 9px 15px; border: 1px solid rgba(var(--cosmic-accent-rgb), .35); border-radius: 10px; background: rgba(var(--cosmic-accent-rgb), .1); color: var(--cosmic-accent); font-size: 12px; font-weight: 750; cursor: pointer; }
+html[data-cosmic-theme] .roulette-actions a { background: linear-gradient(115deg, rgba(var(--cosmic-accent-rgb), .24), rgba(var(--cosmic-secondary-rgb), .31)); color: #f4ffff; }
+html[data-cosmic-theme][data-cosmic-effects='on'] .home-page[data-roulette-scanning='true'] .home-recipe-grid article { animation: cosmic-roulette-pulse .7s ease-in-out infinite alternate; }
+html[data-cosmic-theme][data-cosmic-effects='on'] .home-page[data-roulette-scanning='true'] .home-recipe-grid article:nth-child(3n + 1) { animation-delay: .13s; }
+html[data-cosmic-theme][data-cosmic-effects='on'] .home-page[data-roulette-scanning='true'] .home-recipe-grid article:nth-child(3n + 2) { animation-delay: .26s; }
+
+@keyframes cosmic-holo-edge { to { --holo-angle: 360deg; } }
+@keyframes cosmic-vinyl-spin { to { transform: rotate(360deg); } }
+@keyframes cosmic-roulette-scan { from { transform: translateY(0); } to { transform: translateY(290px); } }
+@keyframes cosmic-roulette-pulse { from { box-shadow: 0 0 0 rgba(var(--cosmic-accent-rgb), 0); } to { border-color: rgba(var(--cosmic-accent-rgb), .65); box-shadow: 0 0 28px rgba(var(--cosmic-accent-rgb), .23); } }
+
+html[data-cosmic-theme][data-cosmic-effects='off'] :is(.music-visualizer__bar, .home-music-player__cover img, .roulette-scan, .home-recipe-grid article) { animation: none !important; }
+html[data-cosmic-theme][data-cosmic-effects='off'] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar)::before,
+html[data-cosmic-theme][data-cosmic-effects='off'] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar)::after { animation: none !important; opacity: 0 !important; }
+
+@media (max-width: 1100px) {
+  html[data-cosmic-theme] .community-nav { padding-left: 20px; padding-right: 20px; }
+  html[data-cosmic-theme] .cosmic-controls { gap: 6px; }
+  html[data-cosmic-theme] .cosmic-toggle { font-size: 9px; padding: 6px 9px; }
+  html[data-cosmic-theme] .cosmic-sfx-level { font-size: 9px; padding-left: 8px; padding-right: 8px; }
+  html[data-cosmic-theme] .cosmic-sfx-level input { width: 64px; }
+  html[data-cosmic-theme] .community-nav > nav { gap: 3px; }
+  html[data-cosmic-theme] .cosmic-command-trigger { width: 185px; }
+}
+@media (max-width: 760px) {
+  html[data-cosmic-theme] { scroll-padding-top: 250px; }
+  html[data-cosmic-theme] .community-nav { min-height: 0; grid-template-columns: minmax(130px, 1fr) minmax(0, auto); gap: 8px; padding: 10px 14px 8px; }
+  html[data-cosmic-theme] .cosmic-controls { justify-content: flex-start; gap: 6px; }
+  html[data-cosmic-theme] .cosmic-toggle { min-height: 31px; }
+  html[data-cosmic-theme] .cosmic-theme-select { min-width: 141px; }
+  html[data-cosmic-theme] .cosmic-command-trigger { width: auto; flex: 1 1 150px; max-width: 230px; }
+  html[data-cosmic-theme] .community-nav > nav { justify-content: flex-start; }
+  html[data-cosmic-theme] .community-nav-group-links { left: 14px; right: 14px; max-height: min(54vh, 420px); }
+  html[data-cosmic-theme] .community-nav-account { max-width: 235px; flex-wrap: wrap; }
+  html[data-cosmic-theme] .community-nav-account > :is(a, button) { padding: 6px; }
+  html[data-cosmic-theme] .home-music-player { padding: 24px 20px; }
+  html[data-cosmic-theme] .music-visualizer__bars { height: 42px; gap: 2px; }
+  html[data-cosmic-theme] .cosmic-command-dialog.cb-dialog-content { padding: 22px 16px 17px; max-height: 85dvh; }
+  html[data-cosmic-theme] .cosmic-command-result { padding: 10px 7px; }
+  html[data-cosmic-theme] .cosmic-command-result kbd { display: none; }
+  html[data-cosmic-theme] .cosmic-roulette-dialog.cb-dialog-content { padding: 25px 17px 20px; }
+}
+@media (max-width: 420px) {
+  html[data-cosmic-theme] .cosmic-toggle { font-size: 8px; padding: 6px 8px; gap: 4px; }
+  html[data-cosmic-theme] .cosmic-sfx-level { gap: 5px; padding: 5px 7px; font-size: 8px; }
+  html[data-cosmic-theme] .cosmic-sfx-level input { width: 60px; }
+  html[data-cosmic-theme] .cosmic-sfx-level output { font-size: 10px; min-width: 28px; }
+  html[data-cosmic-theme] .cosmic-boost { min-height: 30px; padding: 6px 8px; font-size: 9px; }
+  html[data-cosmic-theme] .cosmic-theme-select { min-width: 131px; }
+  html[data-cosmic-theme] .cosmic-theme-select select { font-size: 9px; }
+  html[data-cosmic-theme] .community-nav nav :is(a, summary) { padding: 7px 8px; font-size: 9px; }
+  html[data-cosmic-theme] .cosmic-command-trigger { flex-basis: 142px; min-height: 32px; font-size: 9px; }
+  html[data-cosmic-theme] .home-music-player__metadata h2 { font-size: 15px; }
+}
+@media (hover: none), (pointer: coarse) {
+  html[data-cosmic-theme] :is(.cyber-spider-canvas, .cyber-spider-hud, .cyber-spider-scan) { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-cosmic-theme]:not([data-cosmic-effects='on']) :is(.home-music-player__cover img, .roulette-scan, .home-recipe-grid article) { animation: none !important; }
+}
+@media print {
+  html[data-cosmic-theme] :is(.cyber-spider-canvas, .cyber-spider-hud, .cyber-spider-scan, .music-visualizer, .cosmic-command-trigger, .cosmic-roulette-button, .roulette-scan, .cosmic-controls) { display: none !important; }
+  html[data-cosmic-theme] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar)::before,
+  html[data-cosmic-theme] :is(.recipe-summary-card, .category-tile, .home-recipe-grid article, .home-sidebar)::after { display: none !important; }
+}

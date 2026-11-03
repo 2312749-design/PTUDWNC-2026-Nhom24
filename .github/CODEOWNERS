@@ -1,0 +1,30 @@
+# Trách nhiệm review theo phân công; không thay đổi tác giả của commit.
+* @2312749-design
+/src/CulinaryBlog.Domain/ @2312749-design @Long10205
+/src/CulinaryBlog.Application/ @Long10205 @2312749-design
+/src/CulinaryBlog.Infrastructure/ @2312711-kina @2312749-design
+/src/CulinaryBlog.API/Endpoints/Auth* @2312749-design
+/src/CulinaryBlog.API/Endpoints/Account* @2312749-design
+/src/CulinaryBlog.API/Endpoints/RecipeIngredients* @Long10205
+/src/CulinaryBlog.API/Endpoints/RecipeSteps* @Long10205
+/src/CulinaryBlog.API/Endpoints/Search* @Long10205
+/src/CulinaryBlog.API/Endpoints/Recipes* @Long10205
+/src/CulinaryBlog.API/Endpoints/Categories* @2314487-Somsavath
+/src/CulinaryBlog.API/Endpoints/RecipeImages* @2312711-kina
+/src/CulinaryBlog.API/Program.cs @2312749-design @2312711-kina
+/src/CulinaryBlog.Infrastructure/Persistence/ApplicationDbContext.cs @2312749-design @Long10205
+/src/CulinaryBlog.Infrastructure/Migrations/ @2312749-design @Long10205
+/src/CulinaryBlog.Infrastructure/Jobs/ @2314487-Somsavath @2312711-kina
+/frontend/ @2314487-Somsavath
+/frontend/src/RecipePages.jsx @2314487-Somsavath @2312711-kina @Long10205
+/frontend/src/routes/wizard.jsx @2314487-Somsavath
+/frontend/src/api/ @2312749-design @2314487-Somsavath
+/frontend/src/store/ @2312749-design @2314487-Somsavath
+/frontend/app/sitemap.js @2312711-kina
+/.github/workflows/ @2312711-kina @2312749-design
+/docker-compose.yml @2312711-kina @2312749-design
+/docker/ @2312711-kina
+/nginx/ @2312711-kina
+/observability/ @2312711-kina
+/tests/ @2312749-design @Long10205 @2314487-Somsavath @2312711-kina
+/docs/ @2312749-design @Long10205 @2314487-Somsavath @2312711-kina

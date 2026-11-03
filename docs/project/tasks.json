@@ -1,0 +1,332 @@
+[
+  {
+    "taskId": "TH-01",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Khởi tạo Solution & Clean Architecture",
+    "status": "partial",
+    "issueNumber": 1,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/1",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "TH-02",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Database & Core Entities",
+    "status": "complete",
+    "issueNumber": 2,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/2",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "TH-03",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "API Xác thực: Register & Login",
+    "status": "partial",
+    "issueNumber": 3,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/3",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "TH-04",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Refresh Token & CORS",
+    "status": "complete",
+    "issueNumber": 4,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/4",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "TH-05",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Google OAuth 2.0",
+    "status": "config-needed",
+    "issueNumber": 5,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/5",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "TH-06",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Resource-Based Authorization",
+    "status": "partial",
+    "issueNumber": 6,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/6",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "TH-07",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Logout & Profile Management",
+    "status": "complete",
+    "issueNumber": 7,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/7",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "TH-08",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "API Versioning, Swagger & Global Error Handling",
+    "status": "partial",
+    "issueNumber": 8,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/8",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "TH-09",
+    "owner": "Nguyễn Đức Thành",
+    "assignee": "2312749-design",
+    "title": "Seed Data & Security Tests",
+    "status": "partial",
+    "issueNumber": 9,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/9",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "ML-01",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "Model & Fluent API dữ liệu phụ",
+    "status": "complete",
+    "issueNumber": 10,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/10",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "ML-02",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "API CRUD Ingredient & Step",
+    "status": "complete",
+    "issueNumber": 11,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/11",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "ML-03",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "Database cho Full-Text Search",
+    "status": "complete",
+    "issueNumber": 12,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/12",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "ML-04",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "API Search, Filter, Sort & Pagination",
+    "status": "partial",
+    "issueNumber": 13,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/13",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "ML-05",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "Giao diện tìm kiếm",
+    "status": "partial",
+    "issueNumber": 14,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/14",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "ML-06",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "Recipe Core CRUD & Lifecycle",
+    "status": "partial",
+    "issueNumber": 15,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/15",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "ML-07",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "Redis Cache & Cache Invalidation",
+    "status": "partial",
+    "issueNumber": 16,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/16",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "ML-08",
+    "owner": "Minh Long",
+    "assignee": "Long10205",
+    "title": "Recipe/Search Automated Tests",
+    "status": "partial",
+    "issueNumber": 17,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/17",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "OV-01",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Validation Recipe Form",
+    "status": "partial",
+    "issueNumber": 18,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/18",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "OV-02",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Form Tạo Recipe Đa Bước",
+    "status": "partial",
+    "issueNumber": 19,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/19",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "OV-03",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Xử lý lỗi & Toast",
+    "status": "partial",
+    "issueNumber": 20,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/20",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "OV-04",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Cài đặt Hangfire",
+    "status": "complete",
+    "issueNumber": 21,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/21",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "OV-05",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Welcome Email Job",
+    "status": "partial",
+    "issueNumber": 22,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/22",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "OV-06",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Category CRUD & Category UI",
+    "status": "complete",
+    "issueNumber": 23,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/23",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "OV-07",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Author Recipe Dashboard",
+    "status": "complete",
+    "issueNumber": 24,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/24",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "OV-08",
+    "owner": "Oven",
+    "assignee": "2314487-Somsavath",
+    "title": "Frontend Common Components & Integration Tests",
+    "status": "partial",
+    "issueNumber": 25,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/25",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "KN-01",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "Tích hợp MinIO Object Storage",
+    "status": "partial",
+    "issueNumber": 26,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/26",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "KN-02",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "API Upload Ảnh An Toàn",
+    "status": "complete",
+    "issueNumber": 27,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/27",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "KN-03",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "Xóa Ảnh & Dọn File",
+    "status": "partial",
+    "issueNumber": 28,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/28",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "KN-04",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "UI Trang Chi Tiết Recipe",
+    "status": "partial",
+    "issueNumber": 29,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/29",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "KN-05",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "SEO & Tối Ưu Hình Ảnh",
+    "status": "partial",
+    "issueNumber": 30,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/30",
+    "milestone": "Sprint 1 & 2 — Nền tảng và các module chính"
+  },
+  {
+    "taskId": "KN-06",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "Image Processing & Thumbnail Job",
+    "status": "partial",
+    "issueNumber": 31,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/31",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "KN-07",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "Sitemap & SEO Completion",
+    "status": "partial",
+    "issueNumber": 32,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/32",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  },
+  {
+    "taskId": "KN-08",
+    "owner": "Kina Niê",
+    "assignee": "2312711-kina",
+    "title": "Health Check, Logging, Docker & CI/CD",
+    "status": "partial",
+    "issueNumber": 33,
+    "issueUrl": "https://github.com/2312749-design/PTUDWNC-2026-Nhom24/issues/33",
+    "milestone": "Sprint 3 & 4 — Tích hợp, kiểm thử và vận hành"
+  }
+]

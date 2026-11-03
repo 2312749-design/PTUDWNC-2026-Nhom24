@@ -1,0 +1,450 @@
+{
+  "sourceCommit": "bf7b48b2d3d4b5bbe564e69acdc2f1fd2bbff59c",
+  "checkedAtLocal": "2026-10-30T01:18:18.5663111+07:00",
+  "scope": "Isolated HTTP API with PostgreSQL, Redis and MinIO; no mocked API",
+  "passed": true,
+  "checksPassed": 87,
+  "checksTotal": 87,
+  "checks": [
+    {
+      "name": "API health endpoint",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Real database readiness",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Real redis readiness",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Real minio readiness",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Public category list",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Seed has at least 20 visible categories",
+      "passed": true,
+      "detail": "Visible categories: 20."
+    },
+    {
+      "name": "Anonymous cannot read private profile",
+      "passed": true,
+      "detail": "HTTP 401; expected 401."
+    },
+    {
+      "name": "Register owner test account",
+      "passed": true,
+      "detail": "HTTP 200; expected 200/201."
+    },
+    {
+      "name": "HttpOnly session cookies for owner",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Login owner using password",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Register other test account",
+      "passed": true,
+      "detail": "HTTP 200; expected 200/201."
+    },
+    {
+      "name": "HttpOnly session cookies for other",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Login other using password",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Cookie authentication identifies owner",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Update profile with cookie authentication",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Profile survives a new HTTP request",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Account settings API identifies the same owner",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Save account settings profile",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Account settings persist after reload",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Ordinary account cannot access admin overview",
+      "passed": true,
+      "detail": "HTTP 403; expected 403."
+    },
+    {
+      "name": "Create recipe with 10 ingredients and 5 steps",
+      "passed": true,
+      "detail": "HTTP 201; expected 201."
+    },
+    {
+      "name": "Created recipe has an identifier",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "New recipe starts as Draft",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Structured content persisted at creation",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Guest cannot read another author draft",
+      "passed": true,
+      "detail": "HTTP 404; expected 404."
+    },
+    {
+      "name": "Other account cannot read owner draft",
+      "passed": true,
+      "detail": "HTTP 404; expected 404."
+    },
+    {
+      "name": "Other account cannot modify owner recipe",
+      "passed": true,
+      "detail": "HTTP 403; expected 403."
+    },
+    {
+      "name": "Other account cannot delete owner recipe",
+      "passed": true,
+      "detail": "HTTP 403; expected 403."
+    },
+    {
+      "name": "Invalid recipe is rejected",
+      "passed": true,
+      "detail": "HTTP 400; expected 400/422."
+    },
+    {
+      "name": "Invalid input uses Problem Details",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Add ingredient",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Update ingredient",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Ingredient update and reorder persist",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Delete own added ingredient",
+      "passed": true,
+      "detail": "HTTP 200; expected 200/204."
+    },
+    {
+      "name": "Ingredient order is contiguous after delete",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Add step",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Update step",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Step update persists",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Delete own added step",
+      "passed": true,
+      "detail": "HTTP 200; expected 200/204."
+    },
+    {
+      "name": "Step sequence is contiguous after delete",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Upload actual PNG to configured storage",
+      "passed": true,
+      "detail": "HTTP 201; expected 201."
+    },
+    {
+      "name": "Upload returns original and resized image URLs",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Original image is publicly readable",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Hangfire creates readable thumbnail and medium variants",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Upload avatar to real storage",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Avatar image is publicly readable",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Avatar URL survives profile reload",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Read recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Recipe main image survives reload",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Update recipe while preserving uploaded image",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Read recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Updated recipe and image both persist",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Submit recipe for review",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Publish recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Read recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Published recipe is visible to guests",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "PostgreSQL full-text search request",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Search finds published recipe and reports pagination",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Category automatically includes published recipe",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Unpublish recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Unpublished recipe leaves public detail cache",
+      "passed": true,
+      "detail": "HTTP 404; expected 404."
+    },
+    {
+      "name": "Archive recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Read recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Archive status persists",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Restore archived recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Read recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Restored recipe returns to Draft",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Delete own uploaded image",
+      "passed": true,
+      "detail": "HTTP 204; expected 200/204."
+    },
+    {
+      "name": "Read recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Deleting main image clears its recipe reference",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Soft delete only smoke-created recipe",
+      "passed": true,
+      "detail": "HTTP 200; expected 200/204."
+    },
+    {
+      "name": "Deleted recipe is hidden from owner detail",
+      "passed": true,
+      "detail": "HTTP 404; expected 404."
+    },
+    {
+      "name": "Refresh session using HttpOnly cookie",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Profile remains accessible after refresh",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Change password on smoke account",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Old password no longer logs in",
+      "passed": true,
+      "detail": "HTTP 401; expected 401."
+    },
+    {
+      "name": "New password logs in",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Logout new session",
+      "passed": true,
+      "detail": "HTTP 204; expected 200/204."
+    },
+    {
+      "name": "Profile is private after logout",
+      "passed": true,
+      "detail": "HTTP 401; expected 401."
+    },
+    {
+      "name": "Logged-out session cannot refresh",
+      "passed": true,
+      "detail": "HTTP 400; expected 400/401."
+    },
+    {
+      "name": "Admin logs in",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Admin reads overview",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Admin reads users",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Admin reads recipes",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Admin reads categories",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Admin reads audit-logs",
+      "passed": true,
+      "detail": "HTTP 200; expected 200."
+    },
+    {
+      "name": "Admin logs out",
+      "passed": true,
+      "detail": "HTTP 204; expected 200/204."
+    }
+  ],
+  "limits": [
+    "Only smoke-created records are changed; test accounts remain in the isolated database.",
+    "Browser UI, actual Google OAuth and external SMTP delivery are not covered.",
+    "A healthy service check does not prove resilience to that service failing later."
+  ]
+}

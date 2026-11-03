@@ -1,0 +1,30 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  min-height: 100%;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: #f4f7fb;
+  color: #1f2937;
+}
+
+/* System UI fonts render Vietnamese combining accents consistently on Chrome,
+   Cốc Cốc and Edge. Display headings use the same reliable family. */
+:root {
+  --bep-nha-display-font: "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  text-decoration: none;
+}
+
+button,
+input {
+  font: inherit;
+}
