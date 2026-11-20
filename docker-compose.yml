@@ -45,6 +45,7 @@ services:
       context: ./docker/minio
       args:
         MINIO_RELEASE: ${MINIO_RELEASE:-RELEASE.2025-10-15T17-29-55Z}
+    image: culinaryblog-minio:portable
     depends_on:
       minio-init:
         condition: service_completed_successfully
@@ -136,6 +137,7 @@ services:
     build:
       context: .
       dockerfile: src/CulinaryBlog.API/Dockerfile
+    image: culinaryblog-api:portable
     container_name: culinaryblog-api
     depends_on:
       db:
@@ -197,6 +199,7 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
         NEXT_PUBLIC_MEDIA_ORIGIN: ${MINIO_PUBLIC_BASE_URL:-http://localhost:9000}
+    image: culinaryblog-frontend:portable
     container_name: culinaryblog-frontend
     depends_on:
       - api

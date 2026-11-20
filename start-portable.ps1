@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$NoBuild
+    [switch]$NoBuild,
+    [switch]$SkipBrowser
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +15,25 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 try {
     docker info *> $null
 } catch {
-    throw "Docker Desktop chua san sang. Hay mo Docker Desktop va doi den khi engine khoi dong xong."
+    $dockerDesktop = Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"
+    if (Test-Path -LiteralPath $dockerDesktop) {
+        Write-Host "Dang mo Docker Desktop..." -ForegroundColor Yellow
+        Start-Process -FilePath $dockerDesktop -WindowStyle Hidden
+        $ready = $false
+        for ($attempt = 0; $attempt -lt 90; $attempt++) {
+            Start-Sleep -Seconds 2
+            docker info *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $ready = $true
+                break
+            }
+        }
+        if (-not $ready) {
+            throw "Docker Desktop khong khoi dong sau 3 phut. Hay mo Docker Desktop va chay lai START.bat."
+        }
+    } else {
+        throw "Chua cai Docker Desktop. Hay cai Docker Desktop truoc khi chay bai."
+    }
 }
 
 $envPath = Join-Path $projectRoot ".env"
@@ -35,8 +54,43 @@ if (-not (Test-Path -LiteralPath $envPath)) {
     Write-Host "Da tao file .env cho may nay." -ForegroundColor Green
 }
 
+$imageBundle = Join-Path $projectRoot "docker-images.tar"
+$requiredImages = @(
+    "culinaryblog-api:portable",
+    "culinaryblog-frontend:portable",
+    "culinaryblog-minio:portable",
+    "postgres:16-alpine",
+    "redis:7-alpine",
+    "busybox:1.36",
+    "otel/opentelemetry-collector-contrib:0.123.0",
+    "jaegertracing/all-in-one:1.76.0",
+    "prom/prometheus:v3.2.1",
+    "grafana/grafana:11.6.0",
+    "nginx:1.27-alpine"
+)
+
+$missingImages = @()
+foreach ($requiredImage in $requiredImages) {
+    docker image inspect $requiredImage *> $null
+    if ($LASTEXITCODE -ne 0) {
+        $missingImages += $requiredImage
+    }
+}
+
+if ($missingImages.Count -gt 0 -and (Test-Path -LiteralPath $imageBundle)) {
+    Write-Host "Dang nap Docker image dong goi san. Buoc nay chi chay o lan dau..." -ForegroundColor Yellow
+    docker load --input $imageBundle
+    if ($LASTEXITCODE -ne 0) {
+        throw "Khong nap duoc Docker image dong goi san."
+    }
+    $missingImages = @()
+}
+
 $composeArgs = @("compose", "up", "-d")
-if (-not $NoBuild) {
+if ($missingImages.Count -eq 0) {
+    $composeArgs += "--no-build"
+} elseif (-not $NoBuild) {
+    Write-Host "Khong co goi image dung san; Docker se build source o lan dau." -ForegroundColor Yellow
     $composeArgs += "--build"
 }
 
@@ -56,3 +110,8 @@ Write-Host "Grafana:  http://localhost:3001"
 Write-Host ""
 Write-Host "Tai khoan Admin: admin@culinaryblog.com / chefdemo" -ForegroundColor Yellow
 Write-Host "Lan khoi dong dau co the mat vai phut de build image va phuc hoi database."
+
+if (-not $SkipBrowser) {
+    Start-Sleep -Seconds 3
+    Start-Process "http://localhost:3000"
+}

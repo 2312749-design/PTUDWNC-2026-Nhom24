@@ -3,9 +3,14 @@
 ## Cách nhanh nhất
 
 1. Giải nén toàn bộ thư mục.
-2. Cài và mở Docker Desktop.
-3. Mở PowerShell tại thư mục vừa giải nén.
-4. Chạy:
+2. Cài Docker Desktop.
+3. Nhấp đúp `START.bat`.
+
+Không cần cài PowerShell 7, không cần chỉnh Execution Policy và không cần nhập
+lệnh. Script tự mở Docker Desktop, nạp Docker image đóng gói sẵn, tạo `.env`,
+phục hồi database, bật website và mở trình duyệt.
+
+Nếu muốn chạy thủ công bằng PowerShell:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -13,8 +18,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 Script sẽ tự tạo `.env`, build container, phục hồi dữ liệu PostgreSQL và khởi
-động toàn bộ hệ thống. Lần chạy đầu cần kết nối Internet để tải/build Docker
-image và có thể mất vài phút.
+động toàn bộ hệ thống. Nếu gói có `docker-images.tar`, source sẽ không phải
+build lại trên máy nhận. Lần đầu chỉ cần thời gian nạp image và khởi tạo volume.
 
 ## Địa chỉ sử dụng
 

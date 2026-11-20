@@ -33,6 +33,9 @@ src/CulinaryBlog.API/wwwroot/uploads/
 CulinaryBlog.rar
 CulinaryBlog-clean.zip
 .codex/
+docker-images.tar
+CulinaryBlog-one-click.zip
+.portable-package/
 
 # Runtime-generated sitemap content
 src/CulinaryBlog.API/wwwroot/sitemap-recipes.xml
