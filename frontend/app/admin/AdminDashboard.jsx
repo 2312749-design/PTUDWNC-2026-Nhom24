@@ -9,6 +9,7 @@ import ErrorState from '../../src/components/common/ErrorState'
 import { Dialog, DialogContent } from '../../src/components/ui/Dialog'
 import './admin.css'
 import './member-management.css'
+import './recipe-timeline.css'
 
 const TABS = [
   ['overview', 'Tổng quan'],
@@ -27,13 +28,15 @@ const TABS = [
 
 const recipeStatus = ['Bản nháp', 'Đã xuất bản', 'Lưu trữ']
 
-async function request(path, { method = 'GET', body } = {}) {
+async function request(path, { method = 'GET', body, ...options } = {}) {
   try {
     return await apiRequest(path, {
+      ...options,
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   } catch (error) {
+    if (error?.name === 'AbortError' || error?.name === 'TimeoutError') throw new Error('Dịch vụ phụ phản hồi quá lâu. Vui lòng kiểm tra MinIO rồi thử lại.')
     if (error?.status === 401) throw new Error('Vui lòng đăng nhập bằng tài khoản quản trị.')
     if (error?.status === 403) throw new Error('Tài khoản này không có quyền quản trị.')
     throw error
@@ -91,11 +94,9 @@ export default function AdminDashboard() {
         request('/admin/reviews'),
         request('/admin/categories'),
         request('/admin/analytics?days=30'),
-        request('/admin/media/summary'),
-        request('/admin/system-status'),
         request('/admin/audit-logs'),
       ])
-      const [summaryResult, recipeResult, postResult, articleResult, memberResult, reportResult, reviewResult, categoryResult, analyticsResult, mediaResult, statusResult, auditResult] = requests.map((result) => result.status === 'fulfilled' ? result.value : null)
+      const [summaryResult, recipeResult, postResult, articleResult, memberResult, reportResult, reviewResult, categoryResult, analyticsResult, auditResult] = requests.map((result) => result.status === 'fulfilled' ? result.value : null)
       // The overview is the entry point and must load successfully. Optional
       // panels fall back to an empty state when a supporting endpoint is down.
       if (!summaryResult) {
@@ -112,8 +113,6 @@ export default function AdminDashboard() {
       setReviews(reviewResult || { items: [], totalPages: 1 })
       setCategories(categoryResult || { items: [] })
       setAnalytics(analyticsResult)
-      setMedia(mediaResult || { groups: [], storageAvailable: false, totalBytes: 0, recipeImageRecords: 0 })
-      setSystemStatus(statusResult)
       setAuditLogs(auditResult || { items: [], totalPages: 1 })
     } catch (loadError) {
       setError(loadError.message)
@@ -123,6 +122,33 @@ export default function AdminDashboard() {
   }, [articlePage, postPage, recipePage, recipeQuery, reportPage, resolved, userPage, userFilters])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    if (activeTab !== 'media' && activeTab !== 'system') return
+    let active = true
+    const loadOperationalPanel = async () => {
+      setBusy(true)
+      setError('')
+      const controller = new AbortController()
+      const timeout = window.setTimeout(() => controller.abort(), 8000)
+      try {
+        if (activeTab === 'media') {
+          const result = await request('/admin/media/summary', { signal: controller.signal })
+          if (active) setMedia(result)
+        } else {
+          const result = await request('/admin/system-status', { signal: controller.signal })
+          if (active) setSystemStatus(result)
+        }
+      } catch (panelError) {
+        if (active) setError(panelError.message)
+      } finally {
+        window.clearTimeout(timeout)
+        if (active) setBusy(false)
+      }
+    }
+    loadOperationalPanel()
+    return () => { active = false }
+  }, [activeTab])
 
   const executeAction = async (path, options) => {
     setBusy(true)
@@ -202,7 +228,8 @@ export default function AdminDashboard() {
     return 0
   })
   const renderRecipes = () => <section className="admin-panel">
-    <div className="admin-section-heading"><div><p className="admin-label">NỘI DUNG CỐT LÕI</p><h2>Kiểm duyệt công thức</h2><p>Admin có thể xem mọi tác giả, đổi trạng thái hoặc xóa mềm công thức.</p></div><Link className="admin-primary-link" href="/recipes/new">Tạo công thức</Link></div>
+    <div className="admin-section-heading"><div><p className="admin-label">NỘI DUNG CỐT LÕI</p><h2>Kiểm duyệt công thức</h2><p>Admin có thể xem mọi tác giả, trạng thái và đầy đủ mốc thời gian kiểm duyệt.</p></div><Link className="admin-primary-link" href="/dashboard/recipes/new">Tạo công thức</Link></div>
+    <div className="admin-review-timeline">{visibleRecipes.slice(0, 4).map(recipe => <article key={`time-${recipe.id}`}><strong>{recipe.title}</strong><span>Tạo: {recipe.createdAt ? new Date(recipe.createdAt).toLocaleString('vi-VN') : '—'}</span><span>Gửi duyệt: {recipe.reviewRequestedAt ? new Date(recipe.reviewRequestedAt).toLocaleString('vi-VN') : '—'}</span><span>Duyệt: {recipe.reviewedAt ? new Date(recipe.reviewedAt).toLocaleString('vi-VN') : '—'}</span></article>)}</div>
     <div className="admin-toolbar"><label>Tìm công thức<input value={recipeQuery} onChange={event => { setRecipeQuery(event.target.value); setRecipePage(1) }} placeholder="Tên công thức…" /></label><label>Trạng thái<select value={recipeStatusFilter} onChange={event => setRecipeStatusFilter(event.target.value)}><option value="all">Tất cả</option><option value="0">Bản nháp</option><option value="1">Đã xuất bản</option><option value="2">Lưu trữ</option></select></label><label>Sắp xếp<select value={recipeSort} onChange={event => setRecipeSort(event.target.value)}><option value="newest">Mới nhất</option><option value="title">Tên A–Z</option><option value="status">Trạng thái</option></select></label>{selectedRecipeIds.length > 0 && <div className="admin-bulk-actions"><span>Đã chọn {selectedRecipeIds.length}</span><ActionButton disabled={busy} onClick={() => bulkRecipeAction('archive')}>Lưu trữ đã chọn</ActionButton><ActionButton destructive disabled={busy} onClick={() => bulkRecipeAction('delete')}>Xóa đã chọn</ActionButton></div>}</div>
     {visibleRecipes.length === 0 ? <p className="admin-empty">Không có công thức phù hợp với bộ lọc.</p> : <div className="admin-table"><table><thead><tr><th><input aria-label="Chọn tất cả công thức đang hiện" type="checkbox" checked={visibleRecipes.length > 0 && visibleRecipes.every(recipe => selectedRecipeIds.includes(recipe.id))} onChange={event => setSelectedRecipeIds(event.target.checked ? [...new Set([...selectedRecipeIds, ...visibleRecipes.map(recipe => recipe.id)])] : selectedRecipeIds.filter(id => !visibleRecipes.some(recipe => recipe.id === id)))} /></th><th>Công thức</th><th>Danh mục</th><th>Tác giả</th><th>Xuất bản / duyệt</th><th>Thao tác</th></tr></thead><tbody>{visibleRecipes.map(recipe => <tr key={recipe.id}><td><input aria-label={`Chọn ${recipe.title}`} type="checkbox" checked={selectedRecipeIds.includes(recipe.id)} onChange={() => toggleRecipe(recipe.id)} /></td><td><Link href={`/recipes/${recipe.id}`}>{recipe.title}</Link></td><td>{recipe.categoryName || 'Chưa phân loại'}</td><td>{recipe.authorName || recipe.authorId}</td><td><span className={`admin-status status-${recipe.status}`}>{recipeStatus[recipe.status] || recipe.status}</span><br /><small>{recipe.reviewStatus === 'PendingReview' ? 'Chờ duyệt' : recipe.reviewStatus === 'ChangesRequested' ? 'Cần chỉnh sửa' : recipe.reviewStatus === 'Approved' ? 'Đã duyệt' : 'Chưa gửi duyệt'}</small></td><td className="admin-row-actions">{recipe.status === 0 && <ActionButton disabled={busy} onClick={() => act(`/recipes/${recipe.id}/publish`, { method: 'POST' }, `Xuất bản công thức “${recipe.title}”? Công thức sẽ xuất hiện công khai.`)}>Xuất bản</ActionButton>}{recipe.status === 1 && <><ActionButton disabled={busy} onClick={() => act(`/recipes/${recipe.id}/unpublish`, { method: 'POST' }, `Gỡ công thức “${recipe.title}” khỏi trang công khai?`)}>Gỡ đăng</ActionButton><ActionButton disabled={busy} onClick={() => act(`/admin/recipes/${recipe.id}/moderate`, { method: 'POST', body: { action: 'archive', note: 'Lưu trữ bởi quản trị viên.' } }, `Lưu trữ công thức “${recipe.title}”?`)}>Lưu trữ</ActionButton></>}{recipe.status === 2 && <ActionButton disabled={busy} onClick={() => act(`/admin/recipes/${recipe.id}/moderate`, { method: 'POST', body: { action: 'restore' } }, `Khôi phục công thức “${recipe.title}” về bản nháp?`)}>Khôi phục</ActionButton>}<ActionButton destructive disabled={busy} onClick={() => act(`/admin/recipes/${recipe.id}/moderate`, { method: 'POST', body: { action: 'delete', note: 'Xóa mềm bởi quản trị viên.' } }, `Xóa mềm công thức “${recipe.title}”? Công thức sẽ không còn hiển thị.`)}>Xóa</ActionButton></td></tr>)}</tbody></table></div>}
     <Pagination page={recipePage} totalPages={recipes.totalPages} onPageChange={setRecipePage} disabled={busy} />
@@ -223,7 +250,7 @@ export default function AdminDashboard() {
   const renderUsers = () => <section className="admin-panel">
     <div className="admin-section-heading"><div><p className="admin-label">TÀI KHOẢN</p><h2>Quản lý thành viên và quyền</h2><p>Mở hồ sơ để xem hoạt động, nội dung, phiên đăng nhập; chỉnh thông tin và đặt mật khẩu tạm an toàn.</p></div></div>
     <div className="admin-filter-bar"><input value={userFilters.q} placeholder="Tìm tên, username hoặc email" onChange={event => { setUserFilters(current => ({ ...current, q: event.target.value })); setUserPage(1) }} /><select value={userFilters.role} onChange={event => { setUserFilters(current => ({ ...current, role: event.target.value })); setUserPage(1) }}><option value="">Mọi vai trò</option><option value="User">User</option><option value="Author">Author</option><option value="Admin">Admin</option></select><select value={userFilters.suspended} onChange={event => { setUserFilters(current => ({ ...current, suspended: event.target.value })); setUserPage(1) }}><option value="">Mọi trạng thái</option><option value="false">Đang hoạt động</option><option value="true">Đang khóa</option></select><select value={userFilters.twoFactorEnabled} onChange={event => { setUserFilters(current => ({ ...current, twoFactorEnabled: event.target.value })); setUserPage(1) }}><option value="">2FA: tất cả</option><option value="true">Đã bật 2FA</option><option value="false">Chưa bật 2FA</option></select><button type="button" className="admin-action" onClick={() => { setUserFilters({ q: '', role: '', suspended: '', twoFactorEnabled: '' }); setUserPage(1) }}>Xóa bộ lọc</button></div>
-    <div className="admin-table"><table><thead><tr><th>Thành viên</th><th>Email</th><th>Ngày tạo</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{users.items.map(user => <tr key={user.id}><td><Link href={`/members/${encodeURIComponent(user.userName || '')}`}>{user.fullName || user.userName}</Link></td><td>{user.email}</td><td>{user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : '—'}</td><td><span className="admin-role">{user.role}</span></td><td>{user.isSuspended ? <span className="admin-status status-2">Đang khóa</span> : <span className="admin-status status-1">Đang hoạt động</span>}</td><td className="admin-row-actions"><ActionButton disabled={busy} onClick={() => openMemberDetail(user.id)}>Hồ sơ đầy đủ</ActionButton>{['User', 'Author', 'Admin'].filter(role => role !== user.role).map(role => <ActionButton key={role} disabled={busy} onClick={() => act(`/admin/users/${user.id}/role`, { method: 'PUT', body: { role } }, `Đổi quyền của ${user.fullName || user.userName} thành ${role}?`)}>{role}</ActionButton>)}<ActionButton disabled={busy} onClick={() => user.isSuspended ? act(`/admin/users/${user.id}/suspension`, { method: 'PUT', body: { suspended: false } }, `Mở khóa ${user.fullName || user.userName}?`) : (() => { const reason = window.prompt('Lý do khóa tài khoản:'); if (reason) act(`/admin/users/${user.id}/suspension`, { method: 'PUT', body: { suspended: true, reason } }, `Khóa ${user.fullName || user.userName} và thu hồi phiên?`) })()}>{user.isSuspended ? 'Mở khóa' : 'Khóa'}</ActionButton><ActionButton destructive disabled={busy} onClick={() => act(`/admin/users/${user.id}/sessions/revoke`, { method: 'POST' }, `Thu hồi mọi phiên làm mới của ${user.fullName || user.userName}?`)}>Thu hồi phiên</ActionButton></td></tr>)}</tbody></table></div>
+    <div className="admin-table"><table><thead><tr><th>Thành viên</th><th>Email</th><th>Ngày tạo</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{users.items.map(user => <tr key={user.id}><td><Link href={`/members/${encodeURIComponent(user.userName || '')}`}>{user.fullName || user.userName}</Link></td><td>{user.email}</td><td>{user.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : '—'}</td><td><span className="admin-role">{user.role}</span></td><td>{user.isSuspended ? <span className="admin-status status-2">Đang khóa</span> : <span className="admin-status status-1">Đang hoạt động</span>}</td><td className="admin-row-actions"><ActionButton disabled={busy} onClick={() => openMemberDetail(user.id)}>Hồ sơ đầy đủ</ActionButton>{['User', 'Author', 'Admin'].filter(role => role !== user.role).map(role => <ActionButton key={role} disabled={busy} onClick={() => act(`/admin/users/${user.id}/role`, { method: 'PUT', body: { role } }, `Đổi quyền của ${user.fullName || user.userName} thành ${role}?`)}>{role}</ActionButton>)}<ActionButton disabled={busy} onClick={() => user.isSuspended ? act(`/admin/users/${user.id}/suspension`, { method: 'PUT', body: { suspended: false } }, `Mở khóa ${user.fullName || user.userName}?`) : (() => { const reason = window.prompt('Lý do khóa tài khoản:'); if (reason) act(`/admin/users/${user.id}/suspension`, { method: 'PUT', body: { suspended: true, reason } }, `Khóa ${user.fullName || user.userName} và thu hồi phiên?`) })()}>{user.isSuspended ? 'Mở khóa' : 'Khóa'}</ActionButton><ActionButton disabled={busy} onClick={() => act(`/admin/users/${user.id}/sessions/revoke`, { method: 'POST' }, `Thu hồi mọi phiên làm mới của ${user.fullName || user.userName}? Người này sẽ phải đăng nhập lại trên mọi thiết bị.`)}>Thu hồi phiên</ActionButton><ActionButton destructive disabled={busy} onClick={() => act(`/admin/users/${user.id}`, { method: 'DELETE' }, `Xóa tài khoản ${user.fullName || user.userName}? Thông tin cá nhân và quyền đăng nhập sẽ bị xóa vĩnh viễn, mọi phiên bị thu hồi. Công thức và bài viết đã đăng được giữ lại dưới tên “Tài khoản đã xóa” để không làm hỏng nội dung website.`)}>Xóa tài khoản</ActionButton></td></tr>)}</tbody></table></div>
     <Pagination page={userPage} totalPages={users.totalPages} onPageChange={setUserPage} disabled={busy} />
   </section>
 
@@ -266,8 +293,8 @@ export default function AdminDashboard() {
   const panels = { recipes: renderRecipes(), reviews: renderReviews(), categories: renderCategories(), posts: renderPosts(), articles: renderArticles(), users: renderUsers(), reports: renderReports(), analytics: renderAnalytics(), media: renderMedia(), system: renderSystem(), audit: renderAudit() }
 
   const activeLabel = TABS.find(([key]) => key === activeTab)?.[1] || 'Tổng quan'
-  return <div className="community-app admin-shell"><aside className="admin-sidebar"><Link href="/community" className="admin-brand">Bếp Nhà <small>QUẢN TRỊ</small></Link><nav aria-label="Điều hướng quản trị">{TABS.map(([key, label]) => <button key={key} type="button" onClick={() => setActiveTab(key)} className={activeTab === key ? 'active' : ''}>{label}</button>)}</nav><button type="button" className="admin-sidebar-refresh" disabled={busy} onClick={load}>↻ Làm mới dữ liệu</button></aside><main className="admin-main">
-    <header className="admin-hero"><p className="admin-breadcrumb"><Link href="/community">Trang chủ</Link><span>/</span><b>Quản trị</b><span>/</span><b>{activeLabel}</b></p><p className="community-kicker">CULINARYBLOG · ADMIN</p><h1>{activeLabel}</h1><p>Kiểm soát công thức, danh mục, thành viên, nội dung cộng đồng và báo cáo từ một nơi.</p></header>
+  return <div className="community-app admin-shell"><aside className="admin-sidebar"><Link href="/" className="admin-brand">Bếp Nhà <small>QUẢN TRỊ</small></Link><nav aria-label="Điều hướng quản trị">{TABS.map(([key, label]) => <button key={key} type="button" onClick={() => setActiveTab(key)} className={activeTab === key ? 'active' : ''}>{label}</button>)}</nav><button type="button" className="admin-sidebar-refresh" disabled={busy} onClick={load}>↻ Làm mới dữ liệu</button></aside><main className="admin-main">
+    <header className="admin-hero"><p className="admin-breadcrumb"><Link href="/">Trang chủ</Link><span>/</span><b>Quản trị</b><span>/</span><b>{activeLabel}</b></p><p className="community-kicker">CULINARYBLOG · ADMIN</p><h1>{activeLabel}</h1><p>Kiểm soát công thức, danh mục, thành viên, nội dung cộng đồng và nhật ký hệ thống từ một nơi.</p></header>
     {error && <div className="admin-error"><ErrorState title="Không thể tải khu vực quản trị" message={error} retry={load} /></div>}
     {busy && <LoadingState label="Đang đồng bộ dữ liệu quản trị…" compact />}
     {!busy && overview && activeTab === 'overview' && <section className="admin-panel"><div className="admin-section-heading"><div><p className="admin-label">TOÀN HỆ THỐNG</p><h2>Tổng quan hoạt động</h2><p>Chọn một khu vực ở thanh bên để kiểm duyệt dữ liệu chi tiết.</p></div></div><div className="admin-stats">{Object.entries({ users: 'Thành viên', recipes: 'Công thức', categories: 'Danh mục', posts: 'Bài cộng đồng', articles: 'Bài biên tập', pendingReports: 'Báo cáo chờ xử lý' }).map(([key, label]) => <article key={key}><strong>{overview[key] ?? 0}</strong><span>{label}</span></article>)}</div></section>}

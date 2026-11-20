@@ -2,6 +2,8 @@ using System.Security.Claims;
 using System.Text.Json;
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
+using CulinaryBlog.Application.CQRS.Recipes.Commands;
+using CulinaryBlog.Application.CQRS.Recipes.Handlers;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
@@ -130,7 +132,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         await _context.SaveChangesAsync();
         var controller = CreateRecipesHandlers("other-user");
 
-        ResponseAssert.Status(403, await controller.DeleteRecipe(recipe.Id));
+        await Assert.ThrowsAsync<CulinaryBlog.Domain.Exceptions.ForbiddenException>(() => controller.DeleteRecipe(recipe.Id));
         Assert.False(recipe.IsDeleted);
     }
 
@@ -143,7 +145,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         _context.RecipeSteps.Add(RecipeStep.Create(recipe.Id, null, "Roast until tender", 1, null, null));
         await _context.SaveChangesAsync();
 
-        ResponseAssert.Status(403, await CreateRecipesHandlers("other-user").PublishRecipe(recipe.Id));
+        await Assert.ThrowsAsync<ForbiddenException>(() => CreateRecipesHandlers("other-user").PublishRecipe(recipe.Id));
         Assert.Equal(RecipeStatus.Draft, recipe.Status);
     }
 
@@ -184,16 +186,13 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         var removed = steps[1];
         _context.RecipeSteps.AddRange(steps);
         await _context.SaveChangesAsync();
-        var controller = new RecipeStepsHandlers(_context)
-        {
-            HttpContext = CreateHttpContext(_owner.Id)
-        };
+        var controller = CreateRecipeStepsHandlers(_owner.Id);
 
         ResponseAssert.Status(200, await controller.DeleteStep(recipe.Id, removed.Id));
         var remaining = await _context.RecipeSteps.Where(step => step.RecipeId == recipe.Id)
             .OrderBy(step => step.StepNumber).ToListAsync();
-        Assert.Equal([1, 2, 3, 4, 5], remaining.Select(step => step.StepNumber).ToArray());
-        Assert.Equal(["Step 1", "Step 3", "Step 4", "Step 5", "Step 6"], remaining.Select(step => step.Description).ToArray());
+        Assert.Equal(Enumerable.Range(1, Recipe.MinimumStepCount), remaining.Select(step => step.StepNumber));
+        Assert.Equal(["Step 1"], remaining.Select(step => step.Description).ToArray());
     }
 
     [Fact]
@@ -202,10 +201,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         var recipe = CreateRecipe();
         _context.Recipes.Add(recipe);
         await _context.SaveChangesAsync();
-        var controller = new RecipeStepsHandlers(_context)
-        {
-            HttpContext = CreateHttpContext(_owner.Id)
-        };
+        var controller = CreateRecipeStepsHandlers(_owner.Id);
 
         ResponseAssert.Status(201, await controller.CreateStep(recipe.Id, new CreateRecipeStepDto
         {
@@ -223,10 +219,7 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
         _context.Recipes.Add(recipe);
         _context.RecipeSteps.Add(RecipeStep.Create(recipe.Id, null, "Bước riêng tư", 1, null, null));
         await _context.SaveChangesAsync();
-        var controller = new RecipeStepsHandlers(_context)
-        {
-            HttpContext = CreateHttpContext("other-user")
-        };
+        var controller = CreateRecipeStepsHandlers("other-user");
 
         ResponseAssert.Status(404, await controller.GetSteps(recipe.Id));
     }
@@ -245,11 +238,29 @@ public sealed class RecipeLifecycleTests : IAsyncLifetime
 
     private RecipesHandlers CreateRecipesHandlers(string userId)
     {
-        var controller = new RecipesHandlers(new Mock<IMediator>().Object, _context, _cache)
+        var handler = new ChangeRecipeStatusCommandHandler(new UnitOfWork(_context), _cache);
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(item => item.Send(It.IsAny<ChangeRecipeStatusCommand>(), It.IsAny<CancellationToken>()))
+            .Returns((ChangeRecipeStatusCommand command, CancellationToken token) => handler.Handle(command, token));
+        var controller = new RecipesHandlers(mediator.Object, _context, _cache)
         {
             HttpContext = CreateHttpContext(userId)
         };
         return controller;
+    }
+
+    private RecipeStepsHandlers CreateRecipeStepsHandlers(string userId)
+    {
+        var handler = new RecipeContentCommandHandlers(new UnitOfWork(_context), new CulinaryBlog.Infrastructure.Services.RecipeContentService(_context));
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(item => item.Send(It.IsAny<CreateRecipeStepCommand>(), It.IsAny<CancellationToken>()))
+            .Returns((CreateRecipeStepCommand command, CancellationToken token) => handler.Handle(command, token));
+        mediator.Setup(item => item.Send(It.IsAny<DeleteRecipeStepCommand>(), It.IsAny<CancellationToken>()))
+            .Returns((DeleteRecipeStepCommand command, CancellationToken token) => handler.Handle(command, token));
+        var queryHandler = new CulinaryBlog.Application.CQRS.Recipes.Handlers.RecipeContentQueryHandlers(new UnitOfWork(_context));
+        mediator.Setup(item => item.Send(It.IsAny<CulinaryBlog.Application.CQRS.Recipes.Queries.GetRecipeStepsQuery>(), It.IsAny<CancellationToken>()))
+            .Returns((CulinaryBlog.Application.CQRS.Recipes.Queries.GetRecipeStepsQuery query, CancellationToken token) => queryHandler.Handle(query, token));
+        return new RecipeStepsHandlers(mediator.Object) { HttpContext = CreateHttpContext(userId) };
     }
 
     private static DefaultHttpContext CreateHttpContext(string userId) => new()

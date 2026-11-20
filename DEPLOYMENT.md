@@ -77,6 +77,11 @@ SMTP_FROM_ADDRESS=no-reply@ten-mien-cua-ban.example
 SMTP_FROM_NAME=Bep Nha
 ```
 
+`PUBLIC_SITE_URL` là địa chỉ công khai dùng trong liên kết đặt lại mật khẩu khi
+chạy Docker Compose. Khi chạy backend trực tiếp, dùng `PublicSiteUrl` (mặc định
+`http://localhost:3000`). Sau khi bật SMTP, gửi yêu cầu từ trang quên mật khẩu
+cho một tài khoản thử nghiệm và mở liên kết từ hộp thư nhận để xác nhận luồng.
+
 Không dùng mật khẩu đăng nhập email cá nhân thông thường. Nếu nhà cung cấp yêu
 cầu xác thực hai lớp, tạo app password hoặc SMTP credential riêng. Khi thiếu
 host hoặc FromAddress, API sẽ báo lỗi cấu hình thay vì âm thầm nói rằng email

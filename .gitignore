@@ -23,11 +23,16 @@ frontend/.next-culinary/
 .artifacts/
 .testbuild/
 artifacts/
+backups/
+tmp/
+frontend/.lighthouseci/
 frontend/test-results/
 frontend/playwright-report/
 frontend/response.txt
 src/CulinaryBlog.API/wwwroot/uploads/
 CulinaryBlog.rar
+CulinaryBlog-clean.zip
+.codex/
 
 # Runtime-generated sitemap content
 src/CulinaryBlog.API/wwwroot/sitemap-recipes.xml

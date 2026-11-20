@@ -18,9 +18,8 @@ export default function PasswordRecoveryPage({ mode }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [developmentToken, setDevelopmentToken] = useState('')
   const [busy, setBusy] = useState(false)
-  const token = params.get('token') || developmentToken
+  const token = params.get('token')
   const isReset = mode === 'reset'
 
   const requestReset = async (event) => {
@@ -30,10 +29,6 @@ export default function PasswordRecoveryPage({ mode }) {
     try {
       const result = await requestJson('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email: email.trim() }) })
       toast.success(result.message)
-      if (result.developmentResetToken) {
-        setDevelopmentToken(result.developmentResetToken)
-        toast.info('Chế độ local: bạn có thể tiếp tục đặt lại mật khẩu ngay trên trang này.')
-      }
     } catch (error) { toast.error(error.message || 'Không thể gửi yêu cầu đặt lại mật khẩu.') }
     finally { setBusy(false) }
   }
@@ -48,7 +43,7 @@ export default function PasswordRecoveryPage({ mode }) {
     try {
       const result = await requestJson('/auth/reset-password', { method: 'POST', body: JSON.stringify({ token, newPassword: password, confirmPassword }) })
       toast.success(result.message)
-      router.push('/login')
+      router.push('/auth/login')
     } catch (error) { toast.error(error.message || 'Không thể đặt lại mật khẩu.') }
     finally { setBusy(false) }
   }
@@ -65,7 +60,6 @@ export default function PasswordRecoveryPage({ mode }) {
       <div className="form-group"><label htmlFor="reset-email">Email</label><input id="reset-email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="ban@email.com" /></div>
       <button className="primary-btn" type="submit" disabled={busy}>{busy ? 'Đang gửi...' : 'Gửi liên kết đặt lại'}</button>
     </form>}
-    {!isReset && developmentToken && <p className="auth-local-reset"><Link href={`/reset-password?token=${encodeURIComponent(developmentToken)}`}>Mở trang đặt lại mật khẩu (demo local)</Link></p>}
-    <p className="switch-text"><Link href="/login">← Quay lại đăng nhập</Link></p>
+    <p className="switch-text"><Link href="/auth/login">← Quay lại đăng nhập</Link></p>
   </div></div>
 }

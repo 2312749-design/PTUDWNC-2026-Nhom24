@@ -19,7 +19,7 @@ public static class ApiSecurity
 
         services.AddCors(options => options.AddPolicy("FrontendPolicy", policy => policy
             .WithOrigins(allowedOrigins)
-            .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
+            .AllowAnyHeader().AllowAnyMethod().WithExposedHeaders("ETag").AllowCredentials()));
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -36,9 +36,13 @@ public static class ApiSecurity
                     .ExecuteAsync(context.HttpContext);
             };
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-                RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => Window("Default", 200)));
+                RateLimitPartition.GetFixedWindowLimiter(
+                    context.User.Identity?.IsAuthenticated == true
+                        ? $"user:{context.User.Identity.Name}"
+                        : $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}",
+                    _ => Window("Default", 4000)));
             options.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(
-                context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => Window("Login", 5)));
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => Window("Login", 10)));
             options.AddPolicy("registration", context => RateLimitPartition.GetFixedWindowLimiter(
                 context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => Window("Registration", 3)));
             options.AddPolicy("upload", context => RateLimitPartition.GetFixedWindowLimiter(

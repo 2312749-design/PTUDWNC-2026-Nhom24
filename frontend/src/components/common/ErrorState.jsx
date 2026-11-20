@@ -16,11 +16,10 @@ function ErrorHud({ title, message, retry }) {
   }, [])
 
   if (dismissed) return null
-  return <section className="cb-error cosmic-error-hud" role="alert" aria-live="assertive">
+  return <section className="cb-error" role="alert" aria-live="assertive">
     <AlertTriangle size={30} aria-hidden="true" />
     <div><h2>{title}</h2><p>{message || 'Vui lòng kiểm tra kết nối và thử lại.'}</p></div>
     {retry && <Button type="button" variant="secondary" onClick={retry}><RefreshCw size={16} /> Thử lại</Button>}
-    <button type="button" className="cosmic-error-close" aria-label="Đóng thông báo lỗi" onClick={() => setDismissed(true)}><X size={16} /></button>
-    <span className="cosmic-error-timer" aria-hidden="true" />
+    <button type="button" className="cb-error-close" aria-label="Đóng thông báo lỗi" onClick={() => setDismissed(true)}><X size={16} /></button>
   </section>
 }

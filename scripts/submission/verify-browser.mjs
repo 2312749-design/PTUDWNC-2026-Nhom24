@@ -114,13 +114,14 @@ try {
     expect([200, 201]).toContain(response.status())
     accountId = payload(await response.json()).user.id
     expect(accountId).toBeTruthy()
-    const logout = await context.request.post('/api/v1/auth/logout', { data: {} })
+    const csrf = (await context.cookies()).find(cookie => cookie.name === 'culinary_csrf_token')?.value
+    const logout = await context.request.post('/api/v1/auth/logout', { data: {}, headers: { 'X-CSRF-Token': csrf || '' } })
     expect([200, 204]).toContain(logout.status())
     expect((await context.request.get('/api/v1/auth/me')).status()).toBe(401)
   })
 
   await verify('Login using the actual browser form', async () => {
-    const response = await page.goto('/login', { waitUntil: 'domcontentloaded' })
+    const response = await page.goto('/auth/login', { waitUntil: 'domcontentloaded' })
     expect(response.status()).toBe(200)
     await page.getByLabel('Tên đăng nhập', { exact: true }).fill(username)
     await page.getByLabel('Mật khẩu', { exact: true }).fill(password)
@@ -130,16 +131,13 @@ try {
       page.getByRole('button', { name: 'Đăng nhập', exact: true }).click(),
     ])
     expect(request.status()).toBe(200)
-    await expect(page).toHaveURL(`${baseURL}/community`)
+    await expect(page).toHaveURL(`${baseURL}/dashboard`)
     await expect(page.locator('.community-nav-account').getByRole('button', { name: 'Đăng xuất', exact: true })).toBeVisible()
     await assertSessionStorageIsSafe()
   })
 
   await verify('Account settings opens without redirecting to login', async () => {
-    await page.locator('.community-nav-group').filter({ has: page.locator('summary', { hasText: 'Tài khoản' }) })
-      .locator('summary').click()
-    await page.locator('.community-nav-group-links').getByRole('link', { name: 'Cài đặt tài khoản', exact: true }).click()
-    await expect(page).toHaveURL(`${baseURL}/account`)
+    await page.goto('/account', { waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: 'Cài đặt hồ sơ', exact: true })).toBeVisible()
     await expect(page.getByLabel('Username', { exact: true })).toHaveValue(username)
   })
@@ -188,7 +186,7 @@ try {
 
   await verify('Home shows categories and newly listed recipes', async () => {
     const homeLink = page.locator('.community-nav nav').getByRole('link', { name: 'Trang chủ', exact: true })
-    await expect(homeLink).toHaveAttribute('href', '/home')
+    await expect(homeLink).toHaveAttribute('href', '/')
     await homeLink.click()
     // /home intentionally redirects to the canonical home route in App Router.
     await expect(page).toHaveURL(`${baseURL}/`)
@@ -200,40 +198,33 @@ try {
     await page.screenshot({ path: path.join(outputDirectory, 'home.png'), fullPage: true })
   })
 
-  await verify('Category list opens and both close controls work', async () => {
-    await page.locator('.home-sidebar').getByRole('link', { name: 'Xem tất cả', exact: true }).click()
-    await expect(page).toHaveURL(`${baseURL}/categories`)
-    await expect.poll(() => page.locator('.category-tile-select').count()).toBeGreaterThanOrEqual(20)
-    const firstCategory = page.locator('.category-tile-select').first()
-    await firstCategory.click()
-    const dialog = page.getByRole('dialog', { name: /Các món trong danh mục/ })
-    await expect(dialog).toBeVisible()
-    await expect.poll(() => dialog.locator('.category-recipe-list a').count()).toBeGreaterThan(0)
-    await dialog.getByRole('button', { name: 'Đóng danh sách công thức', exact: true }).click()
-    await expect(dialog).toHaveCount(0)
-    await firstCategory.click()
-    await expect(dialog).toBeVisible()
-    await dialog.getByRole('button', { name: 'Đã hiểu, đóng danh sách', exact: true }).click()
-    await expect(dialog).toHaveCount(0)
-  })
-
-  await verify('Category recipe link opens cooking instructions', async () => {
-    await page.locator('.category-tile-select').first().click()
-    const dialog = page.getByRole('dialog', { name: /Các món trong danh mục/ })
-    const link = dialog.locator('.category-recipe-list a').first()
+  await verify('Categories link to published recipes and cooking instructions', async () => {
+    await page.goto('/categories')
+    await expect.poll(() => page.locator('.category-tile a').count()).toBeGreaterThanOrEqual(20)
+    await page.screenshot({ path: path.join(outputDirectory, 'categories.png'), fullPage: true })
+    await page.locator('.category-tile a').first().click()
+    await expect(page).toHaveURL(/\/categories\/[^/]+$/)
+    const link = page.locator('a[href^="/recipes/"]').first()
     await expect(link).toBeVisible()
-    const destination = await link.getAttribute('href')
-    expect(destination).toMatch(/^\/recipes\/[a-zA-Z0-9-]+$/)
     await link.click()
-    await expect(page).toHaveURL(`${baseURL}${destination}`)
     await expect(page.locator('.recipe-detail-header h1')).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Nguyên liệu', exact: true }).first()).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Các bước làm', exact: true })).toBeVisible()
     expect(await page.locator('.recipe-detail-grid ul li').count()).toBeGreaterThanOrEqual(10)
     expect(await page.locator('.recipe-detail-grid ol li').count()).toBeGreaterThanOrEqual(5)
     await page.screenshot({ path: path.join(outputDirectory, 'recipe-from-category.png'), fullPage: true })
-    await page.goto('/account', { waitUntil: 'domcontentloaded' })
-    await expect(page.getByLabel('Họ và tên', { exact: true })).toHaveValue(updatedName)
+    await page.goto('/account')
+  })
+
+  await verify('Search filters are shareable URL state and return server content', async () => {
+    await page.goto('/search')
+    await page.getByLabel('Từ khóa', { exact: true }).fill('gà')
+    await page.getByRole('button', { name: /Tìm/ }).click()
+    await expect(page).toHaveURL(/q=/)
+    await expect.poll(() => page.locator('.home-recipe-grid article').count()).toBeGreaterThan(0)
+    const html = await (await context.request.get(page.url())).text()
+    expect(html).toContain('home-recipe-content')
+    await page.screenshot({ path: path.join(outputDirectory, 'search.png'), fullPage: true })
   })
 
   await verify('Logout revokes browser session and protects account settings', async () => {
@@ -246,7 +237,7 @@ try {
       logoutButton.click({ timeout: 15_000 }),
     ])
     expect([200, 204]).toContain(loggedOut.status())
-    await expect(page).toHaveURL(`${baseURL}/community`)
+    await expect(page).toHaveURL(`${baseURL}/`)
     await expect(page.locator('.community-nav-account').getByRole('link', { name: 'Đăng nhập', exact: true })).toBeVisible()
     expect((await context.request.get('/api/v1/auth/me')).status()).toBe(401)
     await page.goto('/account', { waitUntil: 'domcontentloaded' })

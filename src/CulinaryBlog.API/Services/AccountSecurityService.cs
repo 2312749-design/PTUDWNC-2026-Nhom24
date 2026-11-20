@@ -15,11 +15,6 @@ public sealed class AccountSecurityService(IDataProtectionProvider protectionPro
     public string CreateProtectedSecret() => _protector.Protect(CreateSecret());
     public string ProtectSecret(string secret) => _protector.Protect(secret);
     public string UnprotectSecret(string protectedSecret) => _protector.Unprotect(protectedSecret);
-    public string CreateRecoveryCode()
-    {
-        var bytes = RandomNumberGenerator.GetBytes(5);
-        return $"{Convert.ToHexString(bytes)[..5]}-{Convert.ToHexString(bytes)[5..]}";
-    }
     public static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim().ToUpperInvariant())));
     public static string CreateEmailCode() => RandomNumberGenerator.GetInt32(100000, 1000000).ToString(System.Globalization.CultureInfo.InvariantCulture);
 

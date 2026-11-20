@@ -43,7 +43,7 @@ try {
     $fixtureId = [string]$registered.user.id
     if ($username -notmatch '^lab8admin\d{14}[a-f0-9]{6}$' -or $fixtureId -notmatch '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$') { throw 'Generated fixture identity did not pass strict safety validation.' }
     $grantSql = @"
-UPDATE "Users" SET "Role"='Admin' WHERE "Id"='$fixtureId' AND "UserName"='$username' AND "Role"='User' RETURNING "Id";
+UPDATE "Users" SET "Role"='Admin' WHERE "Id"='$fixtureId' AND "UserName"='$username' AND "Role"='Author' RETURNING "Id";
 "@
     $granted = @(Invoke-FixtureSql $grantSql)
     if (($granted -join "`n") -notmatch [regex]::Escape($fixtureId)) { throw 'Only the newly generated fixture may receive temporary administrator access.' }

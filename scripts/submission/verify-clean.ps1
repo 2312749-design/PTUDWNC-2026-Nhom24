@@ -27,6 +27,7 @@ param(
     [ValidateRange(1024, 65535)][int]$MinioConsolePort = 29001,
     [ValidateRange(30, 1800)][int]$StartupTimeoutSeconds = 900,
     [switch]$SkipBuild,
+    [switch]$UseWorkingTree,
     [switch]$StopAfterVerification
 )
 
@@ -216,16 +217,32 @@ try {
     $report.sourceCommit = $gitCommit.Trim()
     $workingChanges = (& git -C $repositoryRoot status --porcelain) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect the Git working tree.' }
-    $report.workingTreeChangesExcluded = -not [string]::IsNullOrWhiteSpace($workingChanges)
+    $report.workingTreeChangesExcluded = -not $UseWorkingTree -and -not [string]::IsNullOrWhiteSpace($workingChanges)
     if ($report.workingTreeChangesExcluded) { Write-Host 'Working-tree changes exist; this run intentionally exports committed HEAD only.' }
 
     $archivePath = Join-Path $runDirectory 'source.zip'
     $sourceDirectory = Join-Path $runDirectory 'source'
-    & git -C $repositoryRoot archive --format=zip "--output=$archivePath" HEAD
-    if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
-    Expand-Archive -LiteralPath $archivePath -DestinationPath $sourceDirectory
+    if ($UseWorkingTree) {
+        New-Item -ItemType Directory -Path $sourceDirectory -Force | Out-Null
+        $sourceFiles = & git -C $repositoryRoot -c core.quotePath=false ls-files --cached --others --exclude-standard
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate working-tree source.' }
+        foreach ($relativePath in ($sourceFiles | Sort-Object -Unique)) {
+            if ($relativePath -match '^(artifacts|\.artifacts|tmp|node_modules)/' -or $relativePath -match '(^|/)\.env($|\.(?!example$))') { continue }
+            $sourcePath = Join-Path $repositoryRoot $relativePath
+            $destinationPath = Join-Path $sourceDirectory $relativePath
+            if (-not (Test-WithinDirectory $sourcePath $repositoryRoot) -or -not (Test-WithinDirectory $destinationPath $sourceDirectory)) { throw 'Unsafe snapshot path.' }
+            if (Test-Path -LiteralPath $sourcePath -PathType Leaf) {
+                New-Item -ItemType Directory -Path (Split-Path $destinationPath -Parent) -Force | Out-Null
+                Copy-Item -LiteralPath $sourcePath -Destination $destinationPath
+            }
+        }
+    } else {
+        & git -C $repositoryRoot archive --format=zip "--output=$archivePath" HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $sourceDirectory
+    }
     $report.sourceSnapshot = $sourceDirectory
-    Add-Check 'Clean source snapshot' $true "Exported committed source $($report.sourceCommit)."
+    Add-Check 'Clean source snapshot' $true "Source base $($report.sourceCommit); working tree included: $UseWorkingTree."
 
     $localPassword = 'Local-' + [Guid]::NewGuid().ToString('N') + '-9a!'
     $localMinioUser = 'submission-' + [Guid]::NewGuid().ToString('N').Substring(0, 10)
@@ -425,7 +442,7 @@ try {
                 continue
             }
             $state = $matchingServices[0]
-            if ($expectedService -eq 'jaeger-init') {
+            if ($expectedService -in @('jaeger-init', 'minio-init')) {
                 if ($state.state -ne 'exited' -or [int]$state.exitCode -ne 0) {
                     $servicesNotReady.Add("$expectedService state=$($state.state), exit=$($state.exitCode)")
                 }

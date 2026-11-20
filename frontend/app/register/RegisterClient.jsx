@@ -93,7 +93,7 @@ export default function RegisterClient() {
 
     saveSession(result.data)
     toast.success(result.message || 'Đăng ký thành công!')
-    window.setTimeout(() => router.push('/community'), 700)
+    window.setTimeout(() => router.push('/dashboard'), 700)
   }
 
   return (
@@ -180,7 +180,7 @@ export default function RegisterClient() {
             </button>
           </form>
           <p className="switch-text">
-            Đã có tài khoản? <Link href="/login">Đăng nhập</Link>
+            Đã có tài khoản? <Link href="/auth/login">Đăng nhập</Link>
           </p>
         </div>
       </div>

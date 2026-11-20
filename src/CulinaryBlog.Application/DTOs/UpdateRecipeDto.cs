@@ -9,7 +9,7 @@ namespace CulinaryBlog.Application.DTOs;
 
 public class UpdateRecipeDto
 {
-    [Required, MinLength(3), MaxLength(160)]
+    [Required, MinLength(5), MaxLength(160)]
     public string Title { get; set; } = string.Empty;
     [MaxLength(2000)]
     public string? Description { get; set; }

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.ComponentModel.DataAnnotations.Schema;
 using CulinaryBlog.Domain.Exceptions;
 
 namespace CulinaryBlog.Domain.Entities;
@@ -12,8 +12,11 @@ public enum RecipeStatus
 
 public class Recipe
 {
-    public const int MinimumIngredientCount = 10;
-    public const int MinimumStepCount = 5;
+    // SRS FR-RCP-005: a recipe can be published when it has at least one
+    // usable ingredient and one usable step. Rich seed data may contain more,
+    // but the domain must not reject simple recipes.
+    public const int MinimumIngredientCount = 1;
+    public const int MinimumStepCount = 1;
 
     private static readonly HashSet<string> AllowedDifficulties = new(StringComparer.Ordinal)
     {
@@ -35,6 +38,8 @@ public class Recipe
     public bool IsVegetarian { get; private set; }
     public RecipeNutrition? Nutrition { get; private set; }
     public ICollection<RecipeImage> Images { get; private set; } = new List<RecipeImage>();
+    public ICollection<RecipeIngredient> StructuredIngredients { get; private set; } = new List<RecipeIngredient>();
+    public ICollection<RecipeStep> StructuredSteps { get; private set; } = new List<RecipeStep>();
 
     [NotMapped]
     public List<string> Steps
@@ -59,6 +64,8 @@ public class Recipe
     public DateTime? DeletedAt { get; private set; }
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; private set; } = DateTime.UtcNow;
+
+    public void Touch() => UpdatedAt = DateTime.UtcNow;
 
     public static Recipe Create(
         string title,
@@ -306,9 +313,9 @@ public class Recipe
     private static string ValidateTitle(string title)
     {
         var normalizedTitle = title?.Trim() ?? string.Empty;
-        if (normalizedTitle.Length is < 3 or > 160)
+        if (normalizedTitle.Length is < 5 or > 160)
         {
-            throw new ValidationException("Tiêu đề công thức phải có từ 3 đến 160 ký tự.");
+            throw new ValidationException("Tiêu đề công thức phải có từ 5 đến 160 ký tự.");
         }
 
         return normalizedTitle;

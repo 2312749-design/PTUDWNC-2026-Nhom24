@@ -1,5 +1,7 @@
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
+using CulinaryBlog.Application.CQRS.Recipes.Commands;
+using CulinaryBlog.Application.CQRS.Recipes.Handlers;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
@@ -30,7 +32,7 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
         await _context.Database.EnsureCreatedAsync();
         _cache = new InMemoryCacheService();
         _controller = new RecipesHandlers(
-            new MockMediator(),
+            new MockMediator(_context, _cache),
             _context,
             _cache)
         {
@@ -96,7 +98,7 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
         _context.Categories.Add(category);
         _context.Users.Add(user);
         var recipe = Recipe.Create(
-            "Cake",
+            "Cake recipe",
             "Cake description",
             ["Flour"],
             ["Mix"],
@@ -105,10 +107,19 @@ public class RecipeCacheInvalidationTests : IAsyncLifetime
         return recipe;
     }
 
-    private sealed class MockMediator : MediatR.IMediator
+    private sealed class MockMediator(ApplicationDbContext context, ICacheService cache) : MediatR.IMediator
     {
-        public Task<TResponse> Send<TResponse>(MediatR.IRequest<TResponse> request, CancellationToken cancellationToken = default) =>
+        public async Task<TResponse> Send<TResponse>(MediatR.IRequest<TResponse> request, CancellationToken cancellationToken = default)
+        {
+            if (request is UpdateRecipeCommand command)
+            {
+                var handler = new UpdateRecipeCommandHandler(new UnitOfWork(context), cache);
+                return (TResponse)(object)await handler.Handle(command, cancellationToken);
+            }
+            if (request is ChangeRecipeStatusCommand transition)
+                return (TResponse)(object)await new ChangeRecipeStatusCommandHandler(new UnitOfWork(context), cache).Handle(transition, cancellationToken);
             throw new NotSupportedException();
+        }
 
         public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default)
             where TRequest : MediatR.IRequest =>

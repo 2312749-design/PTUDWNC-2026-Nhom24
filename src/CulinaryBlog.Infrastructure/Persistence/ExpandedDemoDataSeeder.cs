@@ -36,7 +36,6 @@ public static class ExpandedDemoDataSeeder
     private static readonly string[] DishBases = ["Bữa cơm", "Món ngon", "Gợi ý bếp", "Công thức nhà làm", "Món cuối tuần", "Bữa sáng nhanh", "Món ấm bụng", "Món nhẹ nhàng", "Bếp xanh", "Món đãi khách"];
     private static readonly string[] FlavorNotes = ["vị truyền thống", "rau củ theo mùa", "sốt tiêu thơm", "nước dùng trong", "gia vị nhà làm", "ít dầu", "đậm đà", "thanh mát", "dễ nấu", "cho cả gia đình"];
     private static readonly string[] PostOpeners = ["Hôm nay mình thử", "Vừa hoàn thành", "Chia sẻ một mẹo nhỏ khi làm", "Bữa tối nay có", "Cuối tuần mình nấu", "Ai có kinh nghiệm với", "Mình mới phát hiện", "Căn bếp hôm nay có"];
-    private static readonly string[] TitleStyles = ["", "kiểu gia đình", "nấu tại nhà", "cho bữa cơm tối", "phiên bản ít dầu"];
     private static readonly IReadOnlyDictionary<string, string[]> RecipeNames = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
     {
         ["Món Việt"] = ["Bún bò Huế", "Cơm gà Hội An", "Bún riêu cua đồng", "Mì Quảng gà", "Bánh cuốn Thanh Trì", "Hủ tiếu Nam Vang", "Bún chả Hà Nội", "Bánh canh cua", "Cá kho tộ", "Nem rán miền Bắc"],
@@ -63,6 +62,12 @@ public static class ExpandedDemoDataSeeder
 
     public static async Task SeedAsync(ApplicationDbContext context, ApplicationUser admin)
     {
+        // A curated real catalog replaces the generated presentation dataset.
+        // Once it is present, never add, rename, normalize or republish demo
+        // recipes on application restart.
+        if (await context.Recipes.AnyAsync(recipe => !recipe.IsDeleted && recipe.Slug.StartsWith("real-")))
+            return;
+
         // The previous seed revision used the slug as its sole marker. The
         // catalog normalizer could replace that slug, so remove only the
         // second copy that still has the old marker slug, then recognize the
@@ -96,7 +101,12 @@ public static class ExpandedDemoDataSeeder
         await EnsureRecipesAsync(context, categories, authors);
         await EnsureCategoryCoverageAsync(context, categories, authors);
         await EnsurePublicRecipeCoverageAsync(context, categories, authors);
-        await NormalizeDemoRecipeNamesAsync(context);
+        // The presentation catalog may deliberately keep only a compact set
+        // per category. Renaming those rows again can collide with slugs that
+        // belong to soft-deleted recipes retained for recovery.
+        if (await context.Recipes.CountAsync(recipe => !recipe.IsDeleted) > 300)
+            await NormalizeDemoRecipeNamesAsync(context);
+        await WikimediaRecipeImageCatalog.ApplyToDemoRecipesAsync(context);
         var recipes = await context.Recipes.Where(recipe => !recipe.IsDeleted).OrderBy(recipe => recipe.CreatedAt).ToListAsync();
         await EnsurePostsAndArticlesAsync(context, users, recipes, admin);
         await EnsureChallengesAsync(context, users, recipes);
@@ -133,17 +143,16 @@ public static class ExpandedDemoDataSeeder
             (recipe.Description.Contains(ExpandedMarker) || recipe.Description.Contains(LegacyExpandedDescription)));
         if (existing >= ExtraRecipeCount) return;
 
-        var difficulties = new[] { "Easy", "Medium", "Hard", "Expert" };
-        var random = new Random(20261026);
         var batch = new List<Recipe>();
         for (var index = existing; index < ExtraRecipeCount; index++)
         {
             var category = categories[index % categories.Count];
             var number = index + 1;
             var title = $"{DishBases[index % DishBases.Length]} {category.Name.ToLowerInvariant()} {FlavorNotes[(index / categories.Count) % FlavorNotes.Length]} {number:000}";
-            var ingredients = CreateIngredients(category.Name, number);
-            var instructions = CreateInstructions(category.Name);
-            var recipe = Recipe.Create(title, $"{ExpandedMarker}. {title} là công thức dễ theo dõi, nguyên liệu quen thuộc và phù hợp cho bữa ăn hằng ngày.", ingredients, instructions, category.Id, authors[index % authors.Count].Id, Images[index % Images.Length], 25 + index % 55, difficulties[index % difficulties.Length], category.Name.Contains("chay", StringComparison.OrdinalIgnoreCase) || index % 7 == 0, 8 + index % 17, 17 + index % 38, 2 + index % 5);
+            var content = DemoRecipeContentFactory.Create(title, category.Name, number);
+            var ingredients = content.Ingredients;
+            var instructions = content.Steps;
+            var recipe = Recipe.Create(title, $"{ExpandedMarker}. {content.Description}", ingredients, instructions, category.Id, authors[index % authors.Count].Id, Images[index % Images.Length], content.PrepMinutes + content.CookMinutes, content.Difficulty, content.IsVegetarian, content.PrepMinutes, content.CookMinutes, content.Servings);
             recipe.SetSlug($"bep-nha-demo-{number:000}");
             recipe.SetNutrition(new RecipeNutrition(220 + index % 260, 9 + index % 25, 18 + index % 50, 5 + index % 19, 3 + index % 9, 160 + index % 440));
             if (index % 12 != 10)
@@ -166,22 +175,13 @@ public static class ExpandedDemoDataSeeder
         }
     }
 
-    private static List<string> CreateIngredients(string category, int number) =>
-    [
-        $"300g nguyên liệu chính cho {category.ToLowerInvariant()}", "200g rau củ theo mùa", "2 tép tỏi băm", "1 củ hành tím", "1 thìa dầu ăn", "1 thìa nước mắm hoặc nước tương", "1/2 thìa muối", "1/2 thìa đường", "1/4 thìa tiêu xay", $"Rau thơm trang trí cho phần {number}"
-    ];
-
-    private static List<string> CreateInstructions(string category) =>
-    [
-        $"Sơ chế nguyên liệu cho món {category.ToLowerInvariant()}, rửa sạch và để ráo.", "Ướp phần nguyên liệu chính với gia vị trong vài phút.", "Làm nóng chảo hoặc nồi, chế biến phần chính đến khi vừa chín.", "Thêm rau củ, nêm nếm lại cho cân bằng hương vị.", "Trình bày ra đĩa, thêm rau thơm và dùng khi còn nóng."
-    ];
-
     private static string GetRecipeTitle(string categoryName, int sequence)
     {
         var names = RecipeNames.TryGetValue(categoryName, out var values) ? values : ["Món ngon bếp nhà"];
-        var baseName = names[sequence % names.Length];
-        var style = TitleStyles[(sequence / names.Length) % TitleStyles.Length];
-        return string.IsNullOrEmpty(style) ? baseName : $"{baseName} {style}";
+        // The title is only the actual dish name. Do not append marketing or
+        // serving-context phrases because they pollute full-text search (for
+        // example, searching "cơm" used to return every "bữa cơm tối" item).
+        return names[sequence % names.Length];
     }
 
     private static async Task NormalizeDemoRecipeNamesAsync(ApplicationDbContext context)
@@ -190,6 +190,8 @@ public static class ExpandedDemoDataSeeder
             .Where(recipe => !recipe.IsDeleted && recipe.Description != null &&
                 (recipe.Description.Contains(ExpandedMarker) || recipe.Description.Contains(LegacyExpandedDescription)))
             .Include(recipe => recipe.Category)
+            .Include(recipe => recipe.StructuredIngredients)
+            .Include(recipe => recipe.StructuredSteps)
             .OrderBy(recipe => recipe.Category.Name).ThenBy(recipe => recipe.CreatedAt).ThenBy(recipe => recipe.Id)
             .ToListAsync();
 
@@ -199,12 +201,16 @@ public static class ExpandedDemoDataSeeder
             foreach (var recipe in group)
             {
                 var title = GetRecipeTitle(group.Key, sequence++);
+                var content = DemoRecipeContentFactory.Create(title, group.Key, sequence);
                 recipe.Update(title,
-                    $"{ExpandedMarker}. {title} có nguyên liệu quen thuộc, định lượng rõ ràng và hướng dẫn từng bước để bạn dễ thực hiện tại nhà.",
-                    recipe.Ingredients, recipe.Instructions, recipe.CategoryId, recipe.ImageUrl,
-                    difficulty: recipe.Difficulty, isVegetarian: recipe.IsVegetarian,
-                    prepTimeMinutes: recipe.PrepTimeMinutes, cookTimeMinutes: recipe.CookTimeMinutes, servings: recipe.Servings);
+                    $"{ExpandedMarker}. {content.Description}",
+                    content.Ingredients, content.Steps, recipe.CategoryId, recipe.ImageUrl,
+                    difficulty: content.Difficulty, isVegetarian: content.IsVegetarian,
+                    prepTimeMinutes: content.PrepMinutes, cookTimeMinutes: content.CookMinutes, servings: content.Servings);
                 recipe.SetSlug($"bep-nha-{Recipe.CreateSlug(title)}-{sequence:00}");
+
+                context.RecipeIngredients.RemoveRange(recipe.StructuredIngredients);
+                context.RecipeSteps.RemoveRange(recipe.StructuredSteps);
             }
         }
 
@@ -213,7 +219,7 @@ public static class ExpandedDemoDataSeeder
 
     private static async Task EnsurePublicRecipeCoverageAsync(ApplicationDbContext context, IReadOnlyList<Category> categories, IReadOnlyList<ApplicationUser> authors)
     {
-        const int minimumPublishedRecipesPerCategory = 35;
+        const int minimumPublishedRecipesPerCategory = 15;
         foreach (var category in categories)
         {
             var publishedCount = await context.Recipes.CountAsync(recipe => recipe.CategoryId == category.Id && !recipe.IsDeleted && recipe.Status == RecipeStatus.Published);
@@ -237,15 +243,16 @@ public static class ExpandedDemoDataSeeder
             var missing = minimumPublishedRecipesPerCategory - publishedCount;
             for (var index = 0; index < missing; index++)
             {
-                var ingredients = CreateIngredients(category.Name, publishedCount + index + 1);
-                var instructions = CreateInstructions(category.Name);
                 var title = GetRecipeTitle(category.Name, publishedCount + index);
+                var content = DemoRecipeContentFactory.Create(title, category.Name, publishedCount + index);
+                var ingredients = content.Ingredients;
+                var instructions = content.Steps;
                 var recipe = Recipe.Create(title,
-                    $"{ExpandedMarker}. {title} có nguyên liệu quen thuộc, định lượng rõ ràng và hướng dẫn từng bước để bạn dễ thực hiện tại nhà.",
+                    $"{ExpandedMarker}. {content.Description}",
                     ingredients, instructions, category.Id, authors[index % authors.Count].Id,
-                    Images[(publishedCount + index) % Images.Length], 30 + index % 45,
-                    new[] { "Easy", "Medium", "Hard", "Expert" }[index % 4], category.Name.Contains("chay", StringComparison.OrdinalIgnoreCase),
-                    10 + index % 15, 20 + index % 30, 2 + index % 4);
+                    Images[(publishedCount + index) % Images.Length], content.PrepMinutes + content.CookMinutes,
+                    content.Difficulty, content.IsVegetarian,
+                    content.PrepMinutes, content.CookMinutes, content.Servings);
                 recipe.SetSlug($"bep-nha-{Recipe.CreateSlug(title)}-{publishedCount + index + 1:00}");
                 recipe.Publish(ingredients.Count, instructions.Count);
                 context.Recipes.Add(recipe);
@@ -258,7 +265,7 @@ public static class ExpandedDemoDataSeeder
     // visible category useful in the catalog instead of leaving a zero badge.
     private static async Task EnsureCategoryCoverageAsync(ApplicationDbContext context, IReadOnlyList<Category> categories, IReadOnlyList<ApplicationUser> authors)
     {
-        const int minimumRecipesPerCategory = 25;
+        const int minimumRecipesPerCategory = 15;
         foreach (var category in categories)
         {
             var count = await context.Recipes.CountAsync(recipe => recipe.CategoryId == category.Id && !recipe.IsDeleted);
@@ -268,10 +275,11 @@ public static class ExpandedDemoDataSeeder
             for (var index = 0; index < missing; index++)
             {
                 var number = count + index + 1;
-                var ingredients = CreateIngredients(category.Name, number);
-                var instructions = CreateInstructions(category.Name);
                 var title = $"Gợi ý {category.Name.ToLowerInvariant()} cho bếp nhà {number:00}";
-                var recipe = Recipe.Create(title, $"Công thức bổ sung giúp danh mục {category.Name} có thêm lựa chọn phong phú.", ingredients, instructions, category.Id, authors[index % authors.Count].Id, Images[index % Images.Length], 25 + index % 45, new[] { "Easy", "Medium", "Hard", "Expert" }[index % 4], category.Name.Contains("chay", StringComparison.OrdinalIgnoreCase), 10, 20 + index % 25, 2 + index % 4);
+                var content = DemoRecipeContentFactory.Create(title, category.Name, number);
+                var ingredients = content.Ingredients;
+                var instructions = content.Steps;
+                var recipe = Recipe.Create(title, $"{ExpandedMarker}. {content.Description}", ingredients, instructions, category.Id, authors[index % authors.Count].Id, Images[index % Images.Length], content.PrepMinutes + content.CookMinutes, content.Difficulty, content.IsVegetarian, content.PrepMinutes, content.CookMinutes, content.Servings);
                 recipe.SetSlug($"bep-nha-category-{category.Id:N}-{number:00}");
                 recipe.Publish(ingredients.Count, instructions.Count);
                 batch.Add(recipe);

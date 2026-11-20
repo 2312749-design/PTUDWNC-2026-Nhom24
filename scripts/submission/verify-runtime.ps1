@@ -46,6 +46,8 @@ function Request-Api {
         SkipHttpErrorCheck = $true; TimeoutSec = 45
         Headers = @{ Accept = 'application/json' }
     }
+    $csrfCookie = $Session.Cookies.GetCookies([uri]$uri)['culinary_csrf_token']
+    if ($null -ne $csrfCookie) { $arguments.Headers['X-CSRF-Token'] = $csrfCookie.Value }
     if ($null -ne $Form) {
         $arguments.Form = $Form
     } elseif ($PSBoundParameters.ContainsKey('Body')) {

@@ -111,7 +111,7 @@ public class AccountHandlers : EndpointHandler
             .OrderByDescending(token => token.LastUsedAt ?? token.CreatedAt).Select(token => new { token.Id, token.CreatedAt, token.ExpiresAt, token.LastUsedAt, token.IpAddress, token.UserAgent, isCurrent = token.TokenHash == currentHash }).ToListAsync();
         var activities = await _context.UserActivityLogs.AsNoTracking().Where(item => item.UserId == user.Id).OrderByDescending(item => item.CreatedAt).Take(30)
             .Select(item => new { item.Id, item.ActivityType, item.Description, item.CreatedAt, item.IpAddress }).ToListAsync();
-        return Ok(new { twoFactorEnabled = user.TwoFactorEnabled, hasPendingTwoFactorSetup = !user.TwoFactorEnabled && user.TwoFactorSecretProtected != null, recoveryCodesRemaining = await _context.TwoFactorRecoveryCodes.CountAsync(code => code.UserId == user.Id && code.UsedAt == null), user.LastLoginAt, user.LastLoginIp, sessions, activities });
+        return Ok(new { twoFactorEnabled = user.TwoFactorEnabled, hasPendingTwoFactorSetup = !user.TwoFactorEnabled && user.TwoFactorSecretProtected != null, user.LastLoginAt, user.LastLoginIp, sessions, activities });
     }
 
     public async Task<ApiResponseResult> SetupTwoFactor(CurrentPasswordRequest request)
@@ -135,13 +135,9 @@ public class AccountHandlers : EndpointHandler
         if (_security is null || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected)) return BadRequest(new { message = "Hãy bắt đầu thiết lập 2FA trước." });
         if (!_security.VerifyCode(user.TwoFactorSecretProtected, request.Code)) return BadRequest(new { message = "Mã xác thực không đúng hoặc đã hết hạn." });
         user.TwoFactorEnabled = true;
-        var oldCodes = await _context.TwoFactorRecoveryCodes.Where(code => code.UserId == user.Id).ToListAsync();
-        _context.TwoFactorRecoveryCodes.RemoveRange(oldCodes);
-        var recoveryCodes = CreateRecoveryCodes(user.Id);
-        _context.TwoFactorRecoveryCodes.AddRange(recoveryCodes.Select(code => new TwoFactorRecoveryCode { UserId = user.Id, CodeHash = AccountSecurityService.Hash(code) }));
-        await LogAsync(user.Id, "two_factor.enabled", "Bật xác thực hai lớp và tạo mã khôi phục.");
+        await LogAsync(user.Id, "two_factor.enabled", "Bật xác thực hai lớp.");
         await _context.SaveChangesAsync();
-        return Ok(new { message = "Đã bật xác thực hai lớp.", recoveryCodes });
+        return Ok(new { message = "Đã bật xác thực hai lớp." });
     }
 
     public async Task<ApiResponseResult> DisableTwoFactor(TwoFactorDisableRequest request)
@@ -149,26 +145,12 @@ public class AccountHandlers : EndpointHandler
         var user = await GetCurrentUser();
         if (user is null) return Unauthorized();
         if (!VerifyCurrentPassword(user, request.CurrentPassword)) return BadRequest(new { message = "Mật khẩu hiện tại không chính xác." });
-        if (!await VerifySecondFactorAsync(user, request.Code, request.RecoveryCode)) return BadRequest(new { message = "Mã 2FA hoặc mã khôi phục không đúng." });
+        if (!user.TwoFactorEnabled || _security is null || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected) || !_security.VerifyCode(user.TwoFactorSecretProtected, request.Code))
+            return BadRequest(new { message = "Mã 2FA sáu số không đúng hoặc đã hết hạn." });
         user.TwoFactorEnabled = false; user.TwoFactorSecretProtected = null;
-        _context.TwoFactorRecoveryCodes.RemoveRange(await _context.TwoFactorRecoveryCodes.Where(code => code.UserId == user.Id).ToListAsync());
         await LogAsync(user.Id, "two_factor.disabled", "Tắt xác thực hai lớp.");
         await _context.SaveChangesAsync();
         return Ok(new { message = "Đã tắt xác thực hai lớp." });
-    }
-
-    public async Task<ApiResponseResult> RegenerateRecoveryCodes(TwoFactorDisableRequest request)
-    {
-        var user = await GetCurrentUser();
-        if (user is null) return Unauthorized();
-        if (!user.TwoFactorEnabled) return BadRequest(new { message = "Tài khoản chưa bật 2FA." });
-        if (!VerifyCurrentPassword(user, request.CurrentPassword) || !await VerifySecondFactorAsync(user, request.Code, request.RecoveryCode)) return BadRequest(new { message = "Cần mật khẩu hiện tại và mã 2FA hoặc mã khôi phục hợp lệ." });
-        _context.TwoFactorRecoveryCodes.RemoveRange(await _context.TwoFactorRecoveryCodes.Where(code => code.UserId == user.Id).ToListAsync());
-        var recoveryCodes = CreateRecoveryCodes(user.Id);
-        _context.TwoFactorRecoveryCodes.AddRange(recoveryCodes.Select(code => new TwoFactorRecoveryCode { UserId = user.Id, CodeHash = AccountSecurityService.Hash(code) }));
-        await LogAsync(user.Id, "two_factor.recovery_codes_regenerated", "Tạo lại mã khôi phục 2FA.");
-        await _context.SaveChangesAsync();
-        return Ok(new { recoveryCodes });
     }
 
     public async Task<ApiResponseResult> RevokeSession(Guid id)
@@ -229,6 +211,49 @@ public class AccountHandlers : EndpointHandler
         return Ok(new { message = "Đổi email thành công. Vui lòng đăng nhập lại.", email = user.Email });
     }
 
+    public async Task<ApiResponseResult> DeleteAccount(DeleteAccountRequest request)
+    {
+        var user = await GetCurrentUser();
+        if (user is null) return Unauthorized();
+        if (!VerifyCurrentPassword(user, request.CurrentPassword))
+            return BadRequest(new { message = "Mật khẩu hiện tại không chính xác." });
+        if (!string.Equals(request.Confirmation, "XOA TAI KHOAN", StringComparison.Ordinal))
+            return BadRequest(new { message = "Hãy nhập chính xác XOA TAI KHOAN để xác nhận." });
+
+        var formerId = user.Id;
+        var compactId = formerId.Replace("-", string.Empty, StringComparison.Ordinal);
+        var suffix = compactId[..Math.Min(12, compactId.Length)];
+        var sessions = await _context.RefreshTokens.Where(token => token.UserId == formerId && !token.IsRevoked).ToListAsync();
+        sessions.ForEach(token => token.Revoke());
+
+        user.FullName = "Tài khoản đã xóa";
+        user.UserName = $"deleted-{suffix}";
+        user.NormalizedUserName = user.UserName.ToUpperInvariant();
+        user.Email = $"deleted-{suffix}@invalid.local";
+        user.NormalizedEmail = user.Email.ToUpperInvariant();
+        user.EmailConfirmed = false;
+        user.PhoneNumber = null;
+        user.PhoneNumberConfirmed = false;
+        user.AvatarUrl = null;
+        user.Bio = null;
+        user.BirthDate = null;
+        user.PasswordHash = Convert.ToHexString(RandomNumberGenerator.GetBytes(64));
+        user.SecurityStamp = Guid.NewGuid().ToString();
+        user.TwoFactorEnabled = false;
+        user.TwoFactorSecretProtected = null;
+        user.IsSuspended = true;
+        user.SuspendedUntil = DateTime.MaxValue;
+        user.SuspensionReason = "Tài khoản do người dùng tự xóa.";
+        user.LastLoginIp = null;
+        user.LastLoginUserAgent = null;
+
+        _context.EmailChangeRequests.RemoveRange(_context.EmailChangeRequests.Where(item => item.UserId == formerId));
+        _context.TwoFactorRecoveryCodes.RemoveRange(_context.TwoFactorRecoveryCodes.Where(item => item.UserId == formerId));
+        await _context.SaveChangesAsync();
+        HttpContext.Response.Cookies.Delete(AuthHandlers.RefreshTokenCookieName);
+        return Ok(new { message = "Tài khoản đã được xóa và dữ liệu cá nhân đã được ẩn danh.", revokedSessions = sessions.Count });
+    }
+
     private Task<ApplicationUser?> GetCurrentUser()
     {
         var id = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -240,30 +265,6 @@ public class AccountHandlers : EndpointHandler
         if (string.IsNullOrWhiteSpace(user.PasswordHash)) return false;
         try { return new PasswordHasher<ApplicationUser>().VerifyHashedPassword(user, user.PasswordHash, password ?? string.Empty) is PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded; }
         catch (FormatException) { return false; }
-    }
-
-    private async Task<bool> VerifySecondFactorAsync(ApplicationUser user, string? code, string? recoveryCode)
-    {
-        if (!user.TwoFactorEnabled || _security is null || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected)) return false;
-        if (_security.VerifyCode(user.TwoFactorSecretProtected, code)) return true;
-        if (string.IsNullOrWhiteSpace(recoveryCode)) return false;
-        var hash = AccountSecurityService.Hash(recoveryCode);
-        var saved = await _context.TwoFactorRecoveryCodes.FirstOrDefaultAsync(item => item.UserId == user.Id && item.CodeHash == hash && item.UsedAt == null);
-        if (saved is null) return false;
-        saved.UsedAt = DateTime.UtcNow;
-        return true;
-    }
-
-    private List<string> CreateRecoveryCodes(string userId)
-    {
-        _ = userId;
-        if (_security is null) throw new InvalidOperationException("Dịch vụ bảo mật chưa được cấu hình.");
-        var codes = new HashSet<string>(StringComparer.Ordinal);
-        while (codes.Count < 10)
-        {
-            codes.Add(_security.CreateRecoveryCode());
-        }
-        return codes.ToList();
     }
 
     private Task LogAsync(string userId, string activityType, string description) => _security is null
@@ -319,7 +320,8 @@ public class AccountHandlers : EndpointHandler
     }
     public sealed class CurrentPasswordRequest { public string CurrentPassword { get; set; } = string.Empty; }
     public sealed class TwoFactorCodeRequest { public string? Code { get; set; } }
-    public sealed class TwoFactorDisableRequest { public string? CurrentPassword { get; set; } public string? Code { get; set; } public string? RecoveryCode { get; set; } }
+    public sealed class TwoFactorDisableRequest { public string? CurrentPassword { get; set; } public string? Code { get; set; } }
     public sealed class EmailChangeStartRequest { public string? NewEmail { get; set; } public string? CurrentPassword { get; set; } }
     public sealed class EmailChangeConfirmRequest { public string? Code { get; set; } }
+    public sealed class DeleteAccountRequest { public string? CurrentPassword { get; set; } public string? Confirmation { get; set; } }
 }

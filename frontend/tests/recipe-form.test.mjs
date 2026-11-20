@@ -69,6 +69,6 @@ test('incomplete rows and invalid numbers are rejected instead of silently dropp
   form.steps[0].imageUrl = 'javascript:alert(1)'
   assert.throws(() => recipeFormToPayload(form), /Ảnh bước 1/)
   form.steps[0].imageUrl = ''
-  form.ingredients.pop()
-  assert.throws(() => recipeFormToPayload(form), /10 nguyên liệu/)
+  form.ingredients = []
+  assert.throws(() => recipeFormToPayload(form), /1 nguyên liệu/)
 })

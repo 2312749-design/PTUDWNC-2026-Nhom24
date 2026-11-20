@@ -7,7 +7,7 @@ import './onboarding.css'
 
 const STEPS = [
   { id: 'profile', title: 'Hoàn thiện hồ sơ', description: 'Thêm tên hiển thị, giới thiệu và ảnh đại diện để mọi người dễ nhận ra bạn.', href: '/account', action: 'Mở hồ sơ' },
-  { id: 'security', title: 'Bảo vệ tài khoản', description: 'Đặt mật khẩu mạnh, bật 2FA và lưu mã khôi phục ở nơi an toàn.', href: '/security', action: 'Mở bảo mật' },
+  { id: 'security', title: 'Bảo vệ tài khoản', description: 'Đặt mật khẩu mạnh và bật xác thực hai lớp bằng ứng dụng Authenticator.', href: '/security', action: 'Mở bảo mật' },
   { id: 'recipe', title: 'Tạo công thức đầu tiên', description: 'Thêm nguyên liệu, các bước nấu, ảnh món ăn và chọn đúng danh mục.', href: '/recipes/new', action: 'Tạo công thức' },
   { id: 'review', title: 'Gửi duyệt và xuất bản', description: 'Tác giả gửi công thức để quản trị viên góp ý; sau khi đạt yêu cầu, bạn có thể xuất bản.', href: '/recipes', action: 'Quản lý công thức' },
 ]

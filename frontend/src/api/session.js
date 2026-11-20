@@ -5,7 +5,18 @@ import { useAuthStore } from '../store/auth-store'
 const ACCESS_TOKEN_KEY = 'accessToken'
 const REFRESH_TOKEN_KEY = 'refreshToken'
 const USER_KEY = 'currentUser'
+const REFRESH_FAILURE_KEY = 'authRefreshFailure'
 let refreshPromise
+let recentRefreshFailure
+let recentRefreshFailureAt = 0
+const REFRESH_FAILURE_COOLDOWN_MS = 1_000
+
+function csrfToken() {
+  if (typeof document === 'undefined') return ''
+  const entry = document.cookie.split(';').map(value => value.trim())
+    .find(value => value.startsWith('culinary_csrf_token='))
+  return entry ? decodeURIComponent(entry.slice('culinary_csrf_token='.length)) : ''
+}
 
 function storage() {
   return typeof window === 'undefined' ? null : window.localStorage
@@ -57,14 +68,36 @@ export function getAccessToken() {
 }
 
 export async function refreshAccessToken() {
+  const runtime = typeof window !== 'undefined' ? window : globalThis
+  // Next.js may place the session module in more than one client bundle. Keep
+  // the in-flight request on window as well so header/page bundles cannot each
+  // rotate the same cookie independently.
+  refreshPromise = runtime.__culinaryRefreshPromise || refreshPromise
   const store = storage()
   const legacyRefreshToken = store?.getItem(REFRESH_TOKEN_KEY) || ''
   if (!legacyRefreshToken && !store?.getItem(USER_KEY)) return ''
+  // Several requests can receive 401 at nearly the same time. A refresh that
+  // fails very quickly (for example with 429) may finish before a later 401 is
+  // handled, so the shared promise alone is not enough to stop a refresh
+  // storm. Reuse that transient failure briefly and let a later user action or
+  // reload retry normally.
+  const persistedFailure = (() => {
+    try { return JSON.parse(window.sessionStorage.getItem(REFRESH_FAILURE_KEY) || 'null') } catch { return null }
+  })()
+  if (!refreshPromise && persistedFailure && Date.now() - persistedFailure.at < REFRESH_FAILURE_COOLDOWN_MS) {
+    throw new ApiClientError(persistedFailure.message, persistedFailure.status, persistedFailure.code)
+  }
+  if (!refreshPromise && recentRefreshFailure && Date.now() - recentRefreshFailureAt < REFRESH_FAILURE_COOLDOWN_MS) {
+    throw recentRefreshFailure
+  }
   if (!refreshPromise) {
     refreshPromise = fetch(`${getVersionedApiBaseUrl()}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(csrfToken() ? { 'X-CSRF-Token': csrfToken() } : {}),
+      },
       // Supplying the old value once lets sessions from before the upgrade
       // seamlessly move to the cookie transport.
       body: JSON.stringify(legacyRefreshToken ? { refreshToken: legacyRefreshToken } : {}),
@@ -83,9 +116,25 @@ export async function refreshAccessToken() {
     }).catch(error => {
       // Connectivity, rate limiting and server outages do not revoke the
       // refresh cookie. Keep user metadata so a later retry can recover.
-      if (error instanceof ApiClientError) throw error
-      throw new ApiClientError('Không thể kết nối để làm mới phiên. Vui lòng thử lại.', 0)
-    }).finally(() => { refreshPromise = null })
+      const failure = error instanceof ApiClientError
+        ? error
+        : new ApiClientError('Không thể kết nối để làm mới phiên. Vui lòng thử lại.', 0)
+      recentRefreshFailure = failure
+      recentRefreshFailureAt = Date.now()
+      try {
+        window.sessionStorage.setItem(REFRESH_FAILURE_KEY, JSON.stringify({
+          at: recentRefreshFailureAt,
+          message: failure.message,
+          status: failure.status,
+          code: failure.code,
+        }))
+      } catch { /* Storage may be unavailable in privacy-restricted browsers. */ }
+      throw failure
+    }).finally(() => {
+      refreshPromise = null
+      runtime.__culinaryRefreshPromise = null
+    })
+    runtime.__culinaryRefreshPromise = refreshPromise
   }
   return refreshPromise
 }

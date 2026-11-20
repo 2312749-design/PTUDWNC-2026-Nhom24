@@ -8,6 +8,8 @@ public class RecipeImage
     public string Url { get; set; } = string.Empty;
     public string ThumbnailUrl { get; set; } = string.Empty;
     public string MediumUrl { get; set; } = string.Empty;
+    public string? AltText { get; set; }
+    public int OrderIndex { get; set; }
     public bool IsPrimary { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -8,7 +8,6 @@ test.beforeEach(async ({ page, context }) => {
   await context.addCookies([{ name: 'culinary_access_token', value: 'feature-test-cookie', domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' }])
   await page.addInitScript(profile => {
     localStorage.setItem('currentUser', JSON.stringify(profile))
-    localStorage.setItem('culinary:cosmic-preferences', JSON.stringify({ soundEnabled: false, effectsEnabled: false, spiderEnabled: false }))
   }, user)
 })
 

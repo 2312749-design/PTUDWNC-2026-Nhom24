@@ -28,6 +28,13 @@ services:
       - redis-data:/data
     command: ["redis-server", "--appendonly", "yes"]
 
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    profiles: ["email-test"]
+    ports:
+      - "127.0.0.1:${MAILHOG_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${MAILHOG_UI_PORT:-8025}:8025"
+
   minio:
     # MinIO no longer publishes a public Docker Hub image. Build a pinned,
     # official source release locally instead of falling back to an unverified
@@ -36,6 +43,9 @@ services:
       context: ./docker/minio
       args:
         MINIO_RELEASE: ${MINIO_RELEASE:-RELEASE.2025-10-15T17-29-55Z}
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
     container_name: culinaryblog-minio
     environment:
       # Local development defaults; use unique values outside a local machine.
@@ -53,6 +63,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  minio-init:
+    image: busybox:1.36
+    user: "0:0"
+    command: ["sh", "-c", "chown -R 100:101 /data && chmod -R u+rwX /data"]
+    volumes:
+      - minio-data:/data
+    restart: "no"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.123.0
@@ -129,6 +147,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      Swagger__Enabled: "true"
       ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB:-CulinaryBlogDb};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment or .env file before starting Docker Compose.};SSL Mode=Disable;"
       ConnectionStrings__Redis: redis:6379,abortConnect=false
       Minio__Enabled: "true"
@@ -144,6 +163,7 @@ services:
       AuthCookies__SameSite: ${AUTH_COOKIE_SAME_SITE:-Lax}
       Google__ClientId: ${GOOGLE_CLIENT_ID:-}
       Email__Enabled: ${SMTP_ENABLED:-false}
+      PublicSiteUrl: ${PUBLIC_SITE_URL:-http://localhost}
       Email__Host: ${SMTP_HOST:-}
       Email__Port: ${SMTP_PORT:-587}
       Email__EnableSsl: ${SMTP_ENABLE_SSL:-true}
@@ -153,6 +173,7 @@ services:
       Email__FromName: ${SMTP_FROM_NAME:-Bep Nha}
       DataProtection__KeysPath: /app/data-protection-keys
       Cors__AllowedOrigins__0: ${CORS_ALLOWED_ORIGIN:-http://localhost}
+      Cors__AllowedOrigins__1: http://localhost:3000
       ReverseProxy__TrustForwardedHeaders: "true"
       OpenTelemetry__OtlpEndpoint: ${OTLP_ENDPOINT:-http://otel-collector:4317}
       OpenTelemetry__Headers: ${OTLP_HEADERS:-}
@@ -171,19 +192,22 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        NEXT_PUBLIC_MEDIA_ORIGIN: ${MINIO_PUBLIC_BASE_URL:-http://localhost:9000}
     container_name: culinaryblog-frontend
     depends_on:
       - api
     environment:
       NODE_ENV: production
       NEXT_PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost}
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/api}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080/api/v1}
     expose:
       - "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
 
   nginx:
     image: nginx:1.27-alpine

@@ -23,16 +23,6 @@ public sealed class AccountSecurityServiceTests
         Assert.False(service.VerifyCode(protectedSecret, "000000"));
     }
 
-    [Fact]
-    public void RecoveryCodeHash_IsCaseAndWhitespaceInsensitive()
-    {
-        var service = new AccountSecurityService(DataProtectionProvider.Create($"account-security-{Guid.NewGuid():N}"));
-        var recoveryCode = service.CreateRecoveryCode();
-
-        Assert.Equal(AccountSecurityService.Hash(recoveryCode), AccountSecurityService.Hash($"  {recoveryCode.ToLowerInvariant()}  "));
-        Assert.Matches("^[A-F0-9]{5}-[A-F0-9]{5}$", recoveryCode);
-    }
-
     private static string CreateCurrentTotp(string base32Secret)
     {
         const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

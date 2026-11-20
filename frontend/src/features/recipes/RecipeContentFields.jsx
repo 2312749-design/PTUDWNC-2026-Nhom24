@@ -21,7 +21,7 @@ export default function RecipeContentFields({ form, setForm }) {
   return <div className="recipe-content-fields">
     <fieldset className="recipe-content-section">
       <legend>Nguyên liệu ({form.ingredients.length})</legend>
-      <p className="recipe-editor-hint">Tối thiểu 10 nguyên liệu. Số lượng, đơn vị và ghi chú được lưu riêng.</p>
+      <p className="recipe-editor-hint">Tối thiểu 1 nguyên liệu. Số lượng, đơn vị và ghi chú được lưu riêng.</p>
       {form.ingredients.map((item, index) => <div className="recipe-editor-row" key={index}>
         <strong>Nguyên liệu {index + 1}</strong>
         <div className="recipe-ingredient-inputs">
@@ -33,14 +33,14 @@ export default function RecipeContentFields({ form, setForm }) {
         <div className="recipe-editor-row-actions">
           <button type="button" disabled={index === 0} aria-label={`Đưa nguyên liệu ${index + 1} lên`} onClick={() => move('ingredients', index, -1)}>↑</button>
           <button type="button" disabled={index === form.ingredients.length - 1} aria-label={`Đưa nguyên liệu ${index + 1} xuống`} onClick={() => move('ingredients', index, 1)}>↓</button>
-          <button type="button" disabled={form.ingredients.length <= 10} aria-label={`Xóa nguyên liệu ${index + 1}`} onClick={() => remove('ingredients', index)}>Xóa</button>
+          <button type="button" disabled={form.ingredients.length <= 1} aria-label={`Xóa nguyên liệu ${index + 1}`} onClick={() => remove('ingredients', index)}>Xóa</button>
         </div>
       </div>)}
       <button type="button" className="secondary-btn compact-btn" onClick={() => setForm(current => ({ ...current, ingredients: [...current.ingredients, emptyIngredient()] }))}>+ Thêm nguyên liệu</button>
     </fieldset>
     <fieldset className="recipe-content-section">
       <legend>Các bước làm ({form.steps.length})</legend>
-      <p className="recipe-editor-hint">Tối thiểu 5 bước. Mỗi ô mô tả là một bước, giữ nguyên dấu chấm và xuống dòng.</p>
+      <p className="recipe-editor-hint">Tối thiểu 1 bước. Mỗi ô mô tả là một bước, giữ nguyên dấu chấm và xuống dòng.</p>
       {form.steps.map((item, index) => <div className="recipe-editor-row" key={index}>
         <strong>Bước {index + 1}</strong>
         <label>Tiêu đề bước<input aria-label={`Tiêu đề bước ${index + 1}`} maxLength={200} value={item.title} onChange={event => update('steps', index, 'title', event.target.value)} /></label>
@@ -52,7 +52,7 @@ export default function RecipeContentFields({ form, setForm }) {
         <div className="recipe-editor-row-actions">
           <button type="button" disabled={index === 0} aria-label={`Đưa bước ${index + 1} lên`} onClick={() => move('steps', index, -1)}>↑</button>
           <button type="button" disabled={index === form.steps.length - 1} aria-label={`Đưa bước ${index + 1} xuống`} onClick={() => move('steps', index, 1)}>↓</button>
-          <button type="button" disabled={form.steps.length <= 5} aria-label={`Xóa bước ${index + 1}`} onClick={() => remove('steps', index)}>Xóa</button>
+          <button type="button" disabled={form.steps.length <= 1} aria-label={`Xóa bước ${index + 1}`} onClick={() => remove('steps', index)}>Xóa</button>
         </div>
       </div>)}
       <button type="button" className="secondary-btn compact-btn" onClick={() => setForm(current => ({ ...current, steps: [...current.steps, emptyStep()] }))}>+ Thêm bước làm</button>

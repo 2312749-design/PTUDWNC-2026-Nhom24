@@ -4,6 +4,7 @@ public static class CacheKeys
 {
     public const string Categories = "categories:all";
     public const string Recipes = "recipes:published";
+    public const string SearchVersion = "recipes:search-version";
 
     public static string Category(Guid id) => $"category:{id}";
     public static string Recipe(Guid id) => $"recipe:{id}";

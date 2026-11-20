@@ -19,8 +19,8 @@ export function recipeToForm(recipe = {}, categoryId = '') {
   return {
     title: recipe.title ?? '', description: recipe.description ?? '', imageUrl: recipe.imageUrl ?? '',
     categoryId: recipe.categoryId ?? categoryId,
-    ingredients: ingredients.length ? ingredients : Array.from({ length: 10 }, emptyIngredient),
-    steps: steps.length ? steps : Array.from({ length: 5 }, emptyStep),
+    ingredients: ingredients.length ? ingredients : [emptyIngredient()],
+    steps: steps.length ? steps : [emptyStep()],
     prepTimeMinutes: recipe.prepTimeMinutes ?? 1, cookTimeMinutes: recipe.cookTimeMinutes ?? 0,
     servings: recipe.servings ?? 2, difficulty: recipe.difficulty ?? 'Medium',
     isVegetarian: recipe.isVegetarian ?? false,
@@ -41,8 +41,8 @@ export function recipeFormToPayload(form) {
   if (title.length < 3 || title.length > 160) throw new Error('Tiêu đề công thức cần từ 3 đến 160 ký tự.')
   if (!form.categoryId) throw new Error('Vui lòng chọn danh mục cho công thức.')
   if (form.description.length > 2000) throw new Error('Mô tả công thức tối đa 2000 ký tự.')
-  if (form.ingredients.length < 10) throw new Error('Mỗi công thức cần ít nhất 10 nguyên liệu.')
-  if (form.steps.length < 5) throw new Error('Mỗi công thức cần ít nhất 5 bước làm.')
+  if (form.ingredients.length < 1) throw new Error('Mỗi công thức cần ít nhất 1 nguyên liệu.')
+  if (form.steps.length < 1) throw new Error('Mỗi công thức cần ít nhất 1 bước làm.')
 
   const recipeIngredients = form.ingredients.map((item, index) => {
     const name = item.name.trim()

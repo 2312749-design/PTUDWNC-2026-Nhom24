@@ -50,7 +50,7 @@ public sealed class GetCategoriesQueryHandler : IRequestHandler<GetCategoriesQue
             })
             .ToList();
 
-        await _cache.SetAsync(CacheKeys.Categories, result, TimeSpan.FromMinutes(10), cancellationToken);
+        await _cache.SetAsync(CacheKeys.Categories, result, TimeSpan.FromMinutes(30), cancellationToken);
         return result;
     }
 }

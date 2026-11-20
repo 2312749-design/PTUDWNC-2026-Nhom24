@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from './navigation.jsx'
 import { useLocation, useNavigate, useParams } from './navigation-hooks.js'
 import NextLink from 'next/link'
+import Image from 'next/image'
 import { useParams as useNextParams, useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useLocale } from './locale-context.js'
@@ -375,7 +376,7 @@ export function FeedPage() {
   return <CommunityLayout>
     <main className="community-main feed-layout">
       <section className="feed-hero" aria-label="Bài viết tiêu điểm">
-        <img src={EDITORIAL_STARTERS[0].coverImageUrl} alt="Mâm món ăn nhiều màu sắc trên bàn" />
+        <Image src={EDITORIAL_STARTERS[0].coverImageUrl} alt="Mâm món ăn nhiều màu sắc trên bàn" width={1400} height={800} sizes="(max-width: 768px) 100vw, 70vw" preload />
         <div className="feed-hero-copy">
           <p className="community-kicker">BẾP NHÀ · CHUYỆN MÓN NGON</p>
           <h2>{EDITORIAL_STARTERS[0].title}</h2>
@@ -404,7 +405,7 @@ export function FeedPage() {
         </form> : <div id="article-composer" className="article-signin"><p>Đăng nhập để chia sẻ bài viết dài của bạn với cộng đồng.</p><Link to="/login">Đăng nhập để viết <span aria-hidden="true">→</span></Link></div>)}
         <div className="editorial-list">
           {articles.map((article, index) => <Link className="editorial-card" key={article.id || article.slug} to={`/articles/${article.slug}`}>
-            {article.coverImageUrl && <img src={article.coverImageUrl} alt="" loading="lazy" />}
+            {article.coverImageUrl && <Image src={article.coverImageUrl} alt="" width={720} height={420} sizes="(max-width: 768px) 100vw, 33vw" />}
             <span className="editorial-card-copy"><small>{index === 0 ? 'TIÊU ĐIỂM' : 'CHUYỆN BẾP NHÀ'} · {new Date(article.createdAt).toLocaleDateString('vi-VN')}</small><strong>{article.title}</strong><span>{article.summary}</span></span>
             <span className="editorial-card-arrow" aria-hidden="true">↗</span>
           </Link>)}
@@ -440,7 +441,7 @@ function ArticleContent({ slug, Navigation = CommunityNav, useNextLinks = false 
     <main className="community-main article-page">
       <ArticleLink className="article-back-link" {...feedLinkProps}>← Bảng tin</ArticleLink>
       <article className="article-reading">
-        {visibleArticle.coverImageUrl && <img className="article-cover" src={visibleArticle.coverImageUrl} alt={visibleArticle.title} />}
+        {visibleArticle.coverImageUrl && <Image className="article-cover" src={visibleArticle.coverImageUrl} alt={visibleArticle.title} width={1400} height={800} sizes="(max-width: 768px) 100vw, 75vw" preload />}
         <header className="article-reading-header">
           <p className="community-kicker">BẾP NHÀ · CHUYỆN MÓN NGON</p>
           <h1>{visibleArticle.title}</h1>
@@ -671,8 +672,10 @@ function AccountAvatarEditor({ form, setForm }) {
 export function AccountPage() {
   const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
+  const [security, setSecurity] = useState(null)
   const [form, setForm] = useState({})
   const [password, setPassword] = useState({ currentPassword: '', newPassword: '' })
+  const [deleteAccount, setDeleteAccount] = useState({ currentPassword: '', confirmation: '' })
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     let active = true
@@ -688,6 +691,7 @@ export function AccountPage() {
       }
       toast.error(error.message)
     })
+    apiRequest('/account/security').then(data => { if (active) setSecurity(data) }).catch(() => {})
     return () => { active = false }
   }, [navigate])
   const updateField = event => setForm(current => ({ ...current, [event.target.name]: event.target.value }))
@@ -701,5 +705,15 @@ export function AccountPage() {
     try { const result = await apiRequest('/account/password', { method: 'PUT', body: JSON.stringify(password) }); toast.success(result.message); setPassword({ currentPassword: '', newPassword: '' }) }
     catch (error) { toast.error(error.message) }
   }
-  return <CommunityLayout><main className="community-main account-page"><header className="account-heading"><p className="community-kicker">TÀI KHOẢN CỦA BẠN</p><h1>Cài đặt hồ sơ</h1><p>Quản lý cách mọi người nhìn thấy bạn trong cộng đồng.</p></header>{profile && <div className="account-grid"><section className="account-section"><div className="account-section-head"><div><span className="section-index">01</span><h2>Thông tin cá nhân</h2></div></div><AccountAvatarEditor form={form} setForm={setForm} /><form onSubmit={saveProfile} className="account-form"><label>Họ và tên<input name="fullName" value={form.fullName || ''} onChange={updateField} required maxLength={120} /></label><label>Username<input name="username" value={form.username || ''} onChange={updateField} required maxLength={40} /></label><label>Email<input name="email" type="email" value={form.email || ''} onChange={updateField} required /></label><label>Số điện thoại<input name="phoneNumber" type="tel" value={form.phoneNumber || ''} onChange={updateField} /></label><label>Ngày sinh<input name="birthDate" type="date" value={form.birthDate || ''} onChange={updateField} /></label><label className="full-field">Hoặc dán đường dẫn avatar<input name="avatarUrl" type="url" value={form.avatarUrl || ''} onChange={updateField} placeholder="https://..." /></label><label className="full-field">Giới thiệu<textarea name="bio" value={form.bio || ''} onChange={updateField} rows="3" maxLength={500} placeholder="Một chút về bạn và căn bếp của bạn..." /></label><div className="account-form-actions"><button type="submit" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ'} <span>↗</span></button></div></form></section><section className="account-section password-section"><div className="account-section-head"><div><span className="section-index">02</span><h2>Bảo mật</h2></div><span className="security-mark">✳</span></div><p className="security-copy">Dùng mật khẩu dài và riêng biệt để giữ tài khoản an toàn.</p><form onSubmit={changePassword} className="account-form"><label>Mật khẩu hiện tại<input type="password" value={password.currentPassword} onChange={event => setPassword(current => ({ ...current, currentPassword: event.target.value }))} required /></label><label>Mật khẩu mới<input type="password" minLength="8" value={password.newPassword} onChange={event => setPassword(current => ({ ...current, newPassword: event.target.value }))} required /><small>Ít nhất 8 ký tự.</small></label><div className="account-form-actions"><button type="submit">Đổi mật khẩu <span>↗</span></button></div></form></section></div>}</main></CommunityLayout>
+  const removeAccount = async event => {
+    event.preventDefault()
+    if (!window.confirm('Xóa tài khoản vĩnh viễn? Bạn sẽ bị đăng xuất và không thể khôi phục tài khoản này.')) return
+    setSaving(true)
+    try {
+      const result = await apiRequest('/account', { method: 'DELETE', body: JSON.stringify(deleteAccount) })
+      clearSession(); toast.success(result.message); navigate('/login')
+    } catch (error) { toast.error(error.message) }
+    finally { setSaving(false) }
+  }
+  return <CommunityLayout><main className="community-main account-page"><header className="account-heading"><p className="community-kicker">TÀI KHOẢN CỦA BẠN</p><h1>Cài đặt hồ sơ</h1><p>Quản lý cách mọi người nhìn thấy bạn trong cộng đồng.</p></header>{profile && <div className="account-grid"><section className="account-section"><div className="account-section-head"><div><span className="section-index">01</span><h2>Thông tin cá nhân</h2></div></div><AccountAvatarEditor form={form} setForm={setForm} /><form onSubmit={saveProfile} className="account-form"><label>Họ và tên<input name="fullName" value={form.fullName || ''} onChange={updateField} required maxLength={120} /></label><label>Username<input name="username" value={form.username || ''} onChange={updateField} required maxLength={40} /></label><label>Email<input name="email" type="email" value={form.email || ''} onChange={updateField} required /></label><label>Số điện thoại<input name="phoneNumber" type="tel" value={form.phoneNumber || ''} onChange={updateField} /></label><label>Ngày sinh<input name="birthDate" type="date" value={form.birthDate || ''} onChange={updateField} /></label><label className="full-field">Hoặc dán đường dẫn avatar<input name="avatarUrl" type="url" value={form.avatarUrl || ''} onChange={updateField} placeholder="https://..." /></label><label className="full-field">Giới thiệu<textarea name="bio" value={form.bio || ''} onChange={updateField} rows="3" maxLength={500} placeholder="Một chút về bạn và căn bếp của bạn..." /></label><div className="account-form-actions"><button type="submit" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ'} <span>↗</span></button></div></form></section><section className="account-section password-section"><div className="account-section-head"><div><span className="section-index">02</span><h2>Bảo mật</h2></div><span className="security-mark">✳</span></div><div className="two-factor-entry"><div><span className={security?.twoFactorEnabled ? 'two-factor-state enabled' : 'two-factor-state'}>{security?.twoFactorEnabled ? '2FA đang bật' : '2FA chưa bật'}</span><h3>Xác thực hai lớp</h3><p>Dùng ứng dụng Google Authenticator, Microsoft Authenticator hoặc Authy để bảo vệ tài khoản.</p></div><NextLink href="/security">{security?.twoFactorEnabled ? 'Quản lý 2FA' : 'Cài đặt 2FA'} <span>→</span></NextLink></div><p className="security-copy">Dùng mật khẩu dài và riêng biệt để giữ tài khoản an toàn.</p><form onSubmit={changePassword} className="account-form"><label>Mật khẩu hiện tại<input type="password" value={password.currentPassword} onChange={event => setPassword(current => ({ ...current, currentPassword: event.target.value }))} required /></label><label>Mật khẩu mới<input type="password" minLength="8" value={password.newPassword} onChange={event => setPassword(current => ({ ...current, newPassword: event.target.value }))} required /><small>Ít nhất 8 ký tự.</small></label><div className="account-form-actions"><button type="submit">Đổi mật khẩu <span>↗</span></button></div></form></section><section className="account-section account-danger-zone"><div className="account-section-head"><div><span className="section-index">03</span><h2>Xóa tài khoản</h2></div></div><p className="security-copy">Thao tác này thu hồi mọi phiên đăng nhập, xóa dữ liệu cá nhân và không thể hoàn tác. Công thức công khai được giữ dưới tên “Tài khoản đã xóa”.</p><form onSubmit={removeAccount} className="account-form"><label>Mật khẩu hiện tại<input type="password" value={deleteAccount.currentPassword} onChange={event => setDeleteAccount(current => ({ ...current, currentPassword: event.target.value }))} required /></label><label>Nhập XOA TAI KHOAN<input value={deleteAccount.confirmation} onChange={event => setDeleteAccount(current => ({ ...current, confirmation: event.target.value }))} required /></label><div className="account-form-actions"><button className="security-danger" disabled={saving || deleteAccount.confirmation !== 'XOA TAI KHOAN'}>Xóa tài khoản vĩnh viễn</button></div></form></section></div>}</main></CommunityLayout>
 }

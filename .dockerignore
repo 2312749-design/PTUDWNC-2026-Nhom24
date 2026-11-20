@@ -7,6 +7,8 @@
 !**/.env.example
 **/node_modules/
 **/.next/
+**/.next-*/
+**/dist/
 **/.DS_Store
 **/*.user
 **/*.suo
@@ -15,6 +17,12 @@ Dockerfile
 docker-compose*.yml
 .run-logs/
 .dbcheck/
+.artifacts/
+.testbuild/
+.pdf_extract/
+artifacts/
+tmp/
+.git/
 **/test-results/
 **/TestResults/
 *.rar

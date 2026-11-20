@@ -20,6 +20,9 @@ public class Repository<T> : IRepository<T> where T : class
     public async Task<IEnumerable<T>> GetAllAsync(CancellationToken cancellationToken = default)
         => await _dbSet.AsNoTracking().ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<T>> ListAsync(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
+        => await _dbSet.Where(predicate).ToListAsync(cancellationToken);
+
     public Task<bool> ExistsAsync(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default)
         => _dbSet.AnyAsync(predicate, cancellationToken);
 

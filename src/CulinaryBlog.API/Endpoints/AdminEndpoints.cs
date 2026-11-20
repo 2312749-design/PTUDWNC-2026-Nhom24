@@ -19,7 +19,7 @@ public static class AdminEndpoints
         var admin = app.MapGroup("/api/v1/admin").WithTags("Admin").RequireAuthorization(p => p.RequireRole("Admin"));
         admin.MapGet("/overview", async (ApplicationDbContext db) => new ApiResponseResult(200, new
         {
-            users = await db.Users.CountAsync(),
+            users = await db.Users.CountAsync(user => user.SuspensionReason != DeletedAccountMarker),
             recipes = await db.Recipes.CountAsync(r => !r.IsDeleted),
             categories = await db.Categories.CountAsync(c => !c.IsDeleted),
             posts = await db.CommunityPosts.CountAsync(),
@@ -29,7 +29,7 @@ public static class AdminEndpoints
         admin.MapGet("/users", async (ApplicationDbContext db, string? q = null, string? role = null, bool? suspended = null, bool? twoFactorEnabled = null, DateTime? createdFrom = null, DateTime? createdTo = null, DateTime? activeSince = null, int page = 1, int pageSize = 20) =>
         {
             page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 100);
-            var query = db.Users.AsNoTracking().AsQueryable();
+            var query = db.Users.AsNoTracking().Where(user => user.SuspensionReason != DeletedAccountMarker);
             if (!string.IsNullOrWhiteSpace(q))
             {
                 var keyword = q.Trim().ToLower();
@@ -73,7 +73,7 @@ public static class AdminEndpoints
             var total = await query.CountAsync();
             var items = await query.OrderByDescending(recipe => recipe.UpdatedAt).ThenBy(recipe => recipe.Id)
                 .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(recipe => new { recipe.Id, recipe.Title, recipe.Slug, recipe.Status, recipe.ReviewStatus, recipe.ReviewNote, recipe.ReviewRequestedAt, recipe.ReviewedAt, recipe.CategoryId, categoryName = recipe.Category.Name, recipe.AuthorId, authorName = recipe.Author.FullName, recipe.UpdatedAt })
+                .Select(recipe => new { recipe.Id, recipe.Title, recipe.Slug, recipe.Status, recipe.ReviewStatus, recipe.ReviewNote, recipe.ReviewRequestedAt, recipe.ReviewedAt, recipe.CategoryId, categoryName = recipe.Category.Name, recipe.AuthorId, authorName = recipe.Author.FullName, recipe.CreatedAt, recipe.UpdatedAt })
                 .ToListAsync();
             return new ApiResponseResult(200, new { items, page, pageSize, total });
         });
@@ -132,6 +132,7 @@ public static class AdminEndpoints
         });
         admin.MapPut("/users/{id}/suspension", (string id, AdminSuspensionRequest request, HttpContext context, ApplicationDbContext db) => SetSuspension(id, request, context, db));
         admin.MapPost("/users/{id}/sessions/revoke", (string id, HttpContext context, ApplicationDbContext db) => RevokeUserSessions(id, context, db));
+        admin.MapDelete("/users/{id}", (string id, HttpContext context, ApplicationDbContext db) => DeleteUserAccount(id, context, db));
         admin.MapGet("/users/{id}", (string id, ApplicationDbContext db) => GetUserDetail(id, db));
         admin.MapPut("/users/{id}/profile", (string id, AdminUserProfileRequest request, HttpContext context, ApplicationDbContext db) => UpdateUserProfile(id, request, context, db));
         admin.MapPut("/users/{id}/password", (string id, AdminPasswordResetRequest request, HttpContext context, ApplicationDbContext db) => ResetUserPassword(id, request, context, db));
@@ -233,6 +234,61 @@ public static class AdminEndpoints
         await db.SaveChangesAsync();
         await Audit(db, ActorId(context), "user.sessions.revoked", "user", id, $"Thu hồi {tokens.Count} phiên làm mới token.");
         return new ApiResponseResult(200, new { revokedSessions = tokens.Count });
+    }
+
+    private const string DeletedAccountMarker = "ACCOUNT_DELETED";
+
+    private static async Task<ApiResponseResult> DeleteUserAccount(string id, HttpContext context, ApplicationDbContext db)
+    {
+        var target = await db.Users.FirstOrDefaultAsync(user => user.Id == id);
+        if (target is null || target.SuspensionReason == DeletedAccountMarker)
+            return new ApiResponseResult(404, new { message = "Không tìm thấy thành viên." });
+
+        var actorId = ActorId(context);
+        if (target.Id == actorId)
+            return new ApiResponseResult(400, new { message = "Bạn không thể tự xóa tài khoản quản trị đang đăng nhập." });
+
+        var formerIdentity = target.UserName ?? target.Email ?? target.Id;
+        var deletedName = $"deleted-{target.Id}";
+        var tokens = await db.RefreshTokens.Where(token => token.UserId == target.Id && !token.IsRevoked).ToListAsync();
+        tokens.ForEach(token => token.Revoke());
+
+        target.FullName = "Tài khoản đã xóa";
+        target.UserName = deletedName;
+        target.NormalizedUserName = deletedName.ToUpperInvariant();
+        target.Email = $"{deletedName}@deleted.invalid";
+        target.NormalizedEmail = target.Email.ToUpperInvariant();
+        target.EmailConfirmed = false;
+        target.PhoneNumber = null;
+        target.PhoneNumberConfirmed = false;
+        target.AvatarUrl = null;
+        target.Bio = null;
+        target.BirthDate = null;
+        target.TwoFactorEnabled = false;
+        target.TwoFactorSecretProtected = null;
+        target.LastLoginIp = null;
+        target.LastLoginUserAgent = null;
+        target.IsSuspended = true;
+        target.SuspendedUntil = null;
+        target.SuspensionReason = DeletedAccountMarker;
+        target.PasswordHash = new PasswordHasher<ApplicationUser>().HashPassword(target, Guid.NewGuid().ToString("N") + "aA1!");
+        target.SecurityStamp = Guid.NewGuid().ToString("N");
+        target.ConcurrencyStamp = Guid.NewGuid().ToString("N");
+
+        await db.Set<IdentityUserRole<string>>().Where(role => role.UserId == target.Id).ExecuteDeleteAsync();
+        await db.Set<IdentityUserLogin<string>>().Where(login => login.UserId == target.Id).ExecuteDeleteAsync();
+        await db.Set<IdentityUserToken<string>>().Where(token => token.UserId == target.Id).ExecuteDeleteAsync();
+        await db.SaveChangesAsync();
+        await Audit(db, actorId, "user.account.deleted", "user", target.Id,
+            $"Xóa và ẩn danh tài khoản {formerIdentity}; thu hồi {tokens.Count} phiên. Nội dung đã đăng được giữ lại để bảo toàn lịch sử.");
+
+        return new ApiResponseResult(200, new
+        {
+            deleted = true,
+            anonymized = true,
+            retainedContent = true,
+            revokedSessions = tokens.Count
+        });
     }
 
     private static async Task<ApiResponseResult> GetUserDetail(string id, ApplicationDbContext db)

@@ -85,7 +85,7 @@ export default function StudioPage() {
         <label>Hashtag<input value={draft.tags} onChange={event => setDraft({ ...draft, tags: event.target.value })} placeholder="#monchay #comgiadinh" /></label>
         <div className="studio-actions"><button type="button" onClick={clearDraft}>Xóa nháp</button><Link href="/recipes">Viết công thức đầy đủ →</Link></div>
         {undo && <div className="undo-toast">Đã xóa nháp. <button type="button" onClick={restoreDraft}>Hoàn tác</button></div>}
-        {!signedIn && <small className="studio-muted"><Link href="/login">Đăng nhập</Link> để lưu nháp an toàn trên máy chủ.</small>}
+        {!signedIn && <small className="studio-muted"><Link href="/auth/login">Đăng nhập</Link> để lưu nháp an toàn trên máy chủ.</small>}
       </article>
 
       <article className="studio-card"><div className="studio-heading"><div><p>C11</p><h2>Danh mục dạng cây</h2></div><Link href="/categories">Tất cả →</Link></div>{tree.length ? <ul className="category-tree">{tree.map(item => <CategoryBranch key={item.id} item={item} />)}</ul> : <p className="studio-muted">Chưa có danh mục hiển thị.</p>}</article>

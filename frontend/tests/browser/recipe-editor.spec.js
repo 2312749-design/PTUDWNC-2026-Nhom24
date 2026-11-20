@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 const user = {
   id: 'recipe-editor-regression-user', username: 'recipeeditor', fullName: 'Recipe Editor Regression',
-  displayName: 'Recipe Editor Regression', email: 'recipeeditor@example.invalid', role: 'User', bio: '',
+  displayName: 'Recipe Editor Regression', email: 'recipeeditor@example.invalid', role: 'Author', bio: '',
 }
 const recipeId = '11111111-1111-4111-8111-111111111111'
 const categoryId = '22222222-2222-4222-8222-222222222222'
@@ -81,7 +81,7 @@ async function mockCatalog(page, { empty = false, upload, profile = user } = {})
 }
 
 async function openEditor(page) {
-  await page.goto('/recipes')
+  await page.goto('/dashboard/recipes')
   await page.getByRole('button', { name: 'Chỉnh sửa Canh rau củ kiểm thử', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Chỉnh sửa công thức', exact: true })
   await expect(dialog).toBeVisible()
@@ -113,7 +113,6 @@ test.beforeEach(async ({ page, context }) => {
   }])
   await page.addInitScript(profile => {
     localStorage.setItem('currentUser', JSON.stringify(profile))
-    localStorage.setItem('culinary:cosmic-preferences', JSON.stringify({ soundEnabled: false, effectsEnabled: false, spiderEnabled: false }))
   }, user)
 })
 
@@ -125,7 +124,7 @@ test('cookie-backed reload keeps create and edit controls without refreshing tok
     if (message.type() === 'error' && /hydration|hydrated|server rendered HTML/i.test(message.text())) hydrationErrors.push(message.text())
   })
   const state = await mockCatalog(page)
-  await page.goto('/recipes')
+  await page.goto('/dashboard/recipes')
   await expect(page.getByRole('button', { name: '+ Thêm mới', exact: true })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('button', { name: '+ Thêm mới', exact: true })).toBeVisible()
@@ -142,7 +141,7 @@ test('an unavailable profile image falls back to initials instead of a broken av
   const avatarUrl = 'http://localhost:5152/uploads/avatars/editor-missing-avatar.png'
   await mockCatalog(page, { profile: { ...user, avatarUrl } })
   await page.route(avatarUrl, route => route.fulfill({ status: 404, body: 'Not found' }))
-  await page.goto('/recipes')
+  await page.goto('/dashboard/recipes')
   const avatar = page.locator('.community-nav-account .avatar-fallback')
   await expect(avatar).toHaveAttribute('role', 'img')
   await expect(avatar).toHaveAttribute('aria-label', user.fullName)
@@ -204,12 +203,12 @@ test('saving a recipe waits for its recipe-specific photo upload and blocks dupl
   await expect(dialog).not.toBeVisible()
   expect(state.updates).toHaveLength(1)
   expect(state.uploads[0]).toContain('filename="recipe-regression.png"')
-  await expect(page.locator('.recipe-card-photo img')).toHaveAttribute('src', imageUrl)
+  expect(decodeURIComponent(await page.locator('.recipe-card-photo img').getAttribute('src'))).toContain(imageUrl)
 })
 
 test('failed image upload keeps the saved draft for retry instead of creating a duplicate recipe', async ({ page }) => {
   const state = await mockCatalog(page, { empty: true, upload: async attempt => attempt === 1 ? 503 : undefined })
-  await page.goto('/recipes')
+  await page.goto('/dashboard/recipes')
   await page.getByRole('button', { name: '+ Thêm mới', exact: true }).click()
   const dialog = page.getByRole('dialog')
   await fillNewRecipe(dialog)
@@ -224,37 +223,33 @@ test('failed image upload keeps the saved draft for retry instead of creating a 
   expect(state.creates).toHaveLength(1)
   expect(state.uploads).toHaveLength(2)
   expect(state.mediaUploads).toBe(0)
-  await expect(page.locator('.recipe-card-photo img')).toHaveAttribute('src', imageUrl)
+  expect(decodeURIComponent(await page.locator('.recipe-card-photo img').getAttribute('src'))).toContain(imageUrl)
 })
 
 test('create wizard retries a failed photo on the same draft without rotating a valid cookie session', async ({ page }) => {
   const state = await mockCatalog(page, { empty: true, upload: async attempt => attempt === 1 ? 503 : undefined })
   await page.goto('/recipes/new')
   await page.getByPlaceholder('Ví dụ: Bún chả Hà Nội', { exact: true }).fill('Canh rau củ tạo bằng wizard')
-  await page.getByPlaceholder('Mô tả ngắn gọn về món ăn...', { exact: true }).fill('Kiểm tra tạo món và thử tải lại ảnh trên đúng bản nháp.')
-  await page.locator('#wizard-recipe-image').setInputFiles({ name: 'recipe-regression.png', mimeType: 'image/png', buffer: png })
+  await page.getByLabel('Mô tả', { exact: true }).fill('Kiểm tra tạo món và thử tải lại ảnh trên đúng bản nháp.')
+  await page.locator('#wizard-image').setInputFiles({ name: 'recipe-regression.png', mimeType: 'image/png', buffer: png })
   await page.getByRole('button', { name: 'Tiếp tục', exact: true }).click()
   for (let index = 0; index < 10; index++) {
-    if (await page.getByPlaceholder('Tên nguyên liệu', { exact: true }).count() <= index) {
-      await page.getByRole('button', { name: '+ Thêm nguyên liệu', exact: true }).click()
-    }
-    await page.getByPlaceholder('Tên nguyên liệu', { exact: true }).nth(index).fill(`Nguyên liệu wizard ${index + 1}`)
-    await page.getByPlaceholder('Số lượng', { exact: true }).nth(index).fill('1.5')
-    await page.getByPlaceholder('Đơn vị', { exact: true }).nth(index).fill('g')
-    await page.getByPlaceholder('Ghi chú (không bắt buộc)', { exact: true }).nth(index).fill('Giữ nguyên chi tiết')
+    if (index > 0) await page.getByRole('button', { name: '+ Thêm nguyên liệu', exact: true }).click()
+    await page.getByLabel('Tên', { exact: true }).nth(index).fill(`Nguyên liệu wizard ${index + 1}`)
+    await page.getByLabel('Số lượng', { exact: true }).nth(index).fill('1.5')
+    await page.getByLabel('Đơn vị', { exact: true }).nth(index).fill('g')
+    await page.getByLabel('Ghi chú', { exact: true }).nth(index).fill('Giữ nguyên chi tiết')
   }
   await page.getByRole('button', { name: 'Tiếp tục', exact: true }).click()
   for (let index = 0; index < 5; index++) {
-    if (await page.getByPlaceholder('Mô tả từng bước...', { exact: true }).count() <= index) {
-      await page.getByRole('button', { name: '+ Thêm bước làm', exact: true }).click()
-    }
-    await page.getByPlaceholder('Mô tả từng bước...', { exact: true }).nth(index).fill(`Nấu 1.5 phút. Hoàn thành bước ${index + 1}.`)
-    await page.getByPlaceholder('Thời gian hẹn giờ (phút)', { exact: true }).nth(index).fill('0')
+    if (index > 0) await page.getByRole('button', { name: '+ Thêm bước làm', exact: true }).click()
+    await page.getByLabel('Mô tả', { exact: true }).nth(index).fill(`Nấu 1.5 phút. Hoàn thành bước ${index + 1}.`)
+    await page.getByLabel('Hẹn giờ', { exact: true }).nth(index).fill('0')
   }
   await page.getByRole('button', { name: 'Hoàn tất', exact: true }).click()
   await expect.poll(() => state.uploads.length).toBe(1)
   await expect(page.getByRole('button', { name: 'Hoàn tất', exact: true })).toBeEnabled()
-  await expect(page.getByRole('status').filter({ hasText: 'Bản nháp đã được lưu.' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Bản nháp đã được lưu' })).toBeVisible()
   await expect(page).toHaveURL(/\/recipes\/new$/)
   expect(state.creates).toHaveLength(1)
   expect(state.creates[0].recipeSteps).toHaveLength(5)

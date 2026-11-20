@@ -197,6 +197,9 @@ public static class RecipeCatalogSeeder
 
     public static async Task SeedDataAsync(ApplicationDbContext context, ApplicationUser seedAuthor)
     {
+        if (await context.Recipes.AnyAsync(recipe => !recipe.IsDeleted && recipe.Slug.StartsWith("real-")))
+            return;
+
         var categories = await context.Categories.ToListAsync();
         foreach (var (name, description) in CategoryCatalog)
         {
@@ -210,6 +213,14 @@ public static class RecipeCatalogSeeder
         var categoryIds = categories.ToDictionary(category => category.Name, category => category.Id, StringComparer.OrdinalIgnoreCase);
         var recipes = await context.Recipes.OrderBy(recipe => recipe.Id).ToListAsync();
 
+        // The expanded demo seeder already owns a complete 700-recipe catalog.
+        // Avoid rewriting that mature dataset through this older compatibility
+        // seeder on every startup (which can also regenerate duplicate slugs).
+        if (recipes.Count >= 300)
+        {
+            return;
+        }
+
         foreach (var recipe in recipes)
         {
             // ExpandedDemoDataSeeder owns these records. Do not normalize their
@@ -220,13 +231,16 @@ public static class RecipeCatalogSeeder
             {
                 continue;
             }
+            var persistedSlug = recipe.Slug;
             if (LegacyCategories.TryGetValue(recipe.Title, out var correctCategory))
             {
                 recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, categoryIds[correctCategory], string.Empty, recipe.CookingTimeMinutes, Recipe.NormalizeDifficulty(recipe.Difficulty), recipe.IsVegetarian);
+                recipe.SetSlug(persistedSlug);
             }
             else if (!string.IsNullOrEmpty(recipe.ImageUrl))
             {
                 recipe.Update(recipe.Title, recipe.Description, recipe.Ingredients, recipe.Instructions, recipe.CategoryId, string.Empty, recipe.CookingTimeMinutes, Recipe.NormalizeDifficulty(recipe.Difficulty), recipe.IsVegetarian);
+                recipe.SetSlug(persistedSlug);
             }
         }
 
@@ -260,7 +274,12 @@ public static class RecipeCatalogSeeder
                 if (!replacementQueue.MoveNext()) break;
                 var replacement = replacementQueue.Current;
                 var details = CategoryCookingGuides[replacement.Category];
+                var stableSlug = duplicate.Slug;
                 duplicate.Update(replacement.Title, $"{replacement.Title} dễ làm tại nhà, dùng nguyên liệu quen thuộc và cách nấu rõ ràng.", details.Ingredients.ToList(), details.Instructions.ToList(), categoryIds[replacement.Category], string.Empty, 35, "Medium", replacement.Category == "Món chay");
+                // Updating a title derives a new slug. Keep the already unique
+                // persisted slug so repeated seed runs cannot collide with an
+                // existing catalog/demo record that has the replacement title.
+                duplicate.SetSlug(stableSlug);
                 usedCatalogTitles.Add(replacement.Title);
             }
         }
@@ -273,7 +292,7 @@ public static class RecipeCatalogSeeder
             if (!currentTitles.Add(seed.Title)) continue;
 
             var guide = CategoryCookingGuides[seed.Category];
-            context.Recipes.Add(Recipe.Create(
+            var catalogRecipe = Recipe.Create(
                 seed.Title,
                 $"{seed.Title} thơm ngon, dễ thực hiện tại nhà với các bước nấu đơn giản.",
                 guide.Ingredients.ToList(),
@@ -282,11 +301,16 @@ public static class RecipeCatalogSeeder
                 seedAuthor.Id,
                 cookingTimeMinutes: 20 + (newCount % 5) * 5,
                 difficulty: "Medium",
-                isVegetarian: seed.Category == "Món chay"));
+                isVegetarian: seed.Category == "Món chay");
+                catalogRecipe.SetSlug($"catalog-{Recipe.CreateSlug(seed.Title)}-{catalogRecipe.Id:N}");
+            context.Recipes.Add(catalogRecipe);
             newCount++;
         }
 
-        await EnsureLabTwoRecipeMinimumsAsync(context);
+        // Persist newly added catalog recipes before the normalization query;
+        // otherwise only existing rows are padded to the Lab 2 minimums.
+        await context.SaveChangesAsync();
+        await EnsureLabTwoRecipeMinimumsAsync(context, seedAuthor.Id);
         await context.SaveChangesAsync();
 
         // This seeder also adds the extended catalog after DataSeeder has run.
@@ -300,10 +324,10 @@ public static class RecipeCatalogSeeder
     /// preparation steps. This also upgrades legacy/demo recipes created before
     /// those minimums were introduced.
     /// </summary>
-    private static async Task EnsureLabTwoRecipeMinimumsAsync(ApplicationDbContext context)
+    private static async Task EnsureLabTwoRecipeMinimumsAsync(ApplicationDbContext context, string seedAuthorId)
     {
         var recipes = await context.Recipes
-            .Where(recipe => !recipe.IsDeleted)
+            .Where(recipe => !recipe.IsDeleted && recipe.AuthorId == seedAuthorId)
             .ToListAsync();
 
         foreach (var recipe in recipes)

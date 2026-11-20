@@ -1,4 +1,4 @@
-import PageClient from '../PageClient'
-import { RecipesPage } from '../../src/RecipePages'
+import RecipeCatalog from '../RecipeCatalog'
 
-export default function Page() { return <PageClient><RecipesPage /></PageClient> }
+export const dynamic = 'force-dynamic'
+export default function Page({ searchParams }) { return <RecipeCatalog searchParams={searchParams} /> }

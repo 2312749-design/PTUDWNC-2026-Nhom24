@@ -22,6 +22,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;
+using FluentValidation;
+using ValidationException = CulinaryBlog.Domain.Exceptions.ValidationException;
 
 namespace CulinaryBlog.API.Tests;
 
@@ -47,14 +49,19 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("Test", _ => { });
         builder.Services.AddAuthorization();
         builder.Services.AddApplicationHandlers();
-        builder.Services.AddMediatR(configuration => configuration.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.RecipeDto).Assembly));
+        builder.Services.AddMediatR(configuration => {
+            configuration.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.RecipeDto).Assembly);
+            configuration.AddOpenBehavior(typeof(CulinaryBlog.Application.Behaviors.ValidationBehavior<,>));
+        });
+        builder.Services.AddValidatorsFromAssemblyContaining<CulinaryBlog.Application.Validation.CreateRecipeCommandValidator>();
         builder.Services.AddDbContext<SqliteApplicationDbContext>(options => options.UseSqlite(_connection));
         builder.Services.AddScoped<ApplicationDbContext>(provider => provider.GetRequiredService<SqliteApplicationDbContext>());
-        builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
         builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+        builder.Services.AddScoped<IRecipeSearchService, CulinaryBlog.Infrastructure.Services.RecipeSearchService>();
         builder.Services.AddSingleton<ICacheService, TestCacheService>();
 
         _app = builder.Build();
+        _app.UseMiddleware<CulinaryBlog.API.Middleware.ExceptionHandlingMiddleware>();
         _app.UseRouting();
         _app.UseCors("FrontendPolicy");
         _app.UseRateLimiter();
@@ -75,7 +82,7 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
                 Email = "recipeauthor@example.com",
                 NormalizedEmail = "RECIPEAUTHOR@EXAMPLE.COM",
                 FullName = "Recipe Author",
-                Role = "User"
+                Role = "Author"
             });
             await context.SaveChangesAsync();
         }
@@ -88,6 +95,16 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
         _client.Dispose();
         await _app.DisposeAsync();
         await _connection.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task CreateRecipe_MissingRequiredNumbers_ReturnsValidationProblemInsteadOf500()
+    {
+        using var response = await SendAsAsync(HttpMethod.Post, "/api/v1/recipes", new { title = "Incomplete recipe" }, "recipe-author", "Author");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(json.RootElement.GetProperty("errors").TryGetProperty("PrepTimeMinutes", out _));
     }
 
     [Fact]
@@ -112,15 +129,31 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
             isVegetarian = true,
             recipeIngredients = Enumerable.Range(1, 10).Select(index => new { name = $"Ingredient {index}", quantity = "1", unit = "pcs", orderIndex = index }),
             recipeSteps = Enumerable.Range(1, 5).Select(index => new { description = $"Step {index}: cook until tender." })
-        }, "recipe-author", "User");
-        Assert.Equal(HttpStatusCode.Created, createRecipe.StatusCode);
+        }, "recipe-author", "Author");
+        Assert.True(
+            createRecipe.StatusCode == HttpStatusCode.Created,
+            $"Expected recipe creation to succeed but received {(int)createRecipe.StatusCode}: {await createRecipe.Content.ReadAsStringAsync()}");
         var recipeId = await DataIdAsync(createRecipe);
         using (var createdJson = JsonDocument.Parse(await createRecipe.Content.ReadAsStringAsync()))
         {
             Assert.NotEqual(default, createdJson.RootElement.GetProperty("data").GetProperty("createdAt").GetDateTime());
         }
 
-        var publish = await SendAsAsync(HttpMethod.Post, $"/api/v1/recipes/{recipeId}/publish", null, "recipe-author", "User");
+        using var before = await SendAsAsync(HttpMethod.Get, $"/api/v1/recipes/{recipeId}", null, "recipe-author", "Author");
+        var version = before.Headers.ETag;
+        Assert.NotNull(version);
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var edit = new HttpRequestMessage(HttpMethod.Patch, $"/api/v1/recipes/{recipeId}");
+            edit.Headers.Add("X-Test-User", "recipe-author");
+            edit.Headers.Add("X-Test-Role", "Author");
+            edit.Headers.IfMatch.Add(version);
+            edit.Content = JsonContent.Create(new { nutrition = new { calories = 100 + attempt } });
+            using var edited = await _client.SendAsync(edit);
+            Assert.Equal(attempt == 0 ? HttpStatusCode.OK : HttpStatusCode.PreconditionFailed, edited.StatusCode);
+        }
+
+        var publish = await SendAsAsync(HttpMethod.Patch, $"/api/v1/recipes/{recipeId}/publish", null, "recipe-author", "Author");
         Assert.Equal(HttpStatusCode.OK, publish.StatusCode);
 
         // The category page must use the persisted CategoryId relationship,
@@ -143,7 +176,7 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
             Assert.NotEqual(default, recipe.GetProperty("createdAt").GetDateTime());
         }
 
-        var deleteRecipe = await SendAsAsync(HttpMethod.Delete, $"/api/v1/recipes/{recipeId}", null, "recipe-author", "User");
+        var deleteRecipe = await SendAsAsync(HttpMethod.Delete, $"/api/v1/recipes/{recipeId}", null, "recipe-author", "Author");
         Assert.Equal(HttpStatusCode.OK, deleteRecipe.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/v1/recipes/{recipeId}")).StatusCode);
 
@@ -219,7 +252,7 @@ public sealed class RecipeWorkflowEndpointTests : IAsyncLifetime
         await context.SaveChangesAsync();
 
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
-        var exception = await Assert.ThrowsAsync<ValidationException>(() => mediator.Send(new CreateRecipeCommand
+        var exception = await Assert.ThrowsAsync<FluentValidation.ValidationException>(() => mediator.Send(new CreateRecipeCommand
         {
             Title = "Recipe with null collections",
             Description = "The handler should return a validation error instead of a server error.",

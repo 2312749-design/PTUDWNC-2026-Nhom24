@@ -4,7 +4,11 @@ using CulinaryBlog.API.Middleware;
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.API.Health;
 using CulinaryBlog.API.Services;
+using CulinaryBlog.API.Authorization;
 using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Application.Behaviors;
+using CulinaryBlog.Application.Validation;
+using FluentValidation;
 using CulinaryBlog.Application.Models;
 using CulinaryBlog.Infrastructure.Persistence;
 using CulinaryBlog.Infrastructure.Jobs;
@@ -13,6 +17,7 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using MediatR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -57,9 +62,12 @@ builder.Host.UseSerilog((context, services) =>
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Đăng ký IApplicationDbContext ánh xạ vào ApplicationDbContext (Phục vụ Clean Architecture)
-builder.Services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped<IRecipeSearchService, RecipeSearchService>();
+builder.Services.AddScoped<IRecipeContentService, RecipeContentService>();
+builder.Services.AddScoped<IRecipeImageWorkflow, RecipeImageWorkflow>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuthenticationWorkflow, AuthenticationWorkflowAdapter>();
 
 var minioOptions = builder.Configuration.GetSection("Minio").Get<MinioOptions>()
     ?? new MinioOptions();
@@ -83,10 +91,10 @@ var redisConnection = string.IsNullOrWhiteSpace(redisConnectionString)
     : ConnectionMultiplexer.Connect(redisConnectionString);
 
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ => redisConnection!);
-builder.Services.AddSingleton<ICacheService>(_ =>
+builder.Services.AddSingleton<ICacheService>(provider =>
     redisConnection is null
         ? new NoOpCacheService()
-        : new RedisCacheService(redisConnection));
+        : new RedisCacheService(redisConnection, provider.GetRequiredService<ILogger<RedisCacheService>>()));
 
 var healthChecks = builder.Services.AddHealthChecks();
 healthChecks.AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
@@ -201,12 +209,19 @@ builder.Services.AddAuthentication(options =>
 
 // 5. Cấu hình CORS cho Frontend React chạy ở localhost:3000
 // Đăng ký MediatR tự động quét các Handler trong tầng Application
-builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.CategoryDto).Assembly));
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(CulinaryBlog.Application.DTOs.CategoryDto).Assembly);
+    cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+    cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
+});
+builder.Services.AddValidatorsFromAssemblyContaining<CreateRecipeCommandValidator>(ServiceLifetime.Transient);
 
 builder.Services.AddApplicationHandlers();
 builder.Services.AddScoped<IGoogleIdentityVerifier, GoogleIdentityVerifier>();
 builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
 builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IAuthorizationHandler, RecipeAuthorizationHandler>();
 var trustForwardedHeaders = builder.Configuration.GetValue<bool>("ReverseProxy:TrustForwardedHeaders");
 if (trustForwardedHeaders)
 {
@@ -290,22 +305,21 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI(options =>
+var swaggerEnabled = app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("Swagger:Enabled");
+if (swaggerEnabled)
 {
-    options.SwaggerEndpoint("/swagger/v1/swagger.json", "V1");
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "V1");
+    });
+}
 
 static string GetWebFilePath(IWebHostEnvironment env, string fileName)
 {
     var webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
     return Path.Combine(webRoot, fileName);
-}
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    // Swagger UI is enabled globally so API version metadata remains visible across environments.
 }
 
 app.UseMiddleware<CorrelationIdMiddleware>();
@@ -341,12 +355,14 @@ app.UseStaticFiles();
 
 // 7. Kích hoạt CORS Middleware
 app.UseCors("FrontendPolicy");
-
-// 7.1. Kích hoạt Rate Limiting Middleware để ràng buộc request thực sự
-app.UseRateLimiter();
+app.UseMiddleware<CsrfProtectionMiddleware>();
 
 // 8. Thêm Authentication & Authorization Middleware
 app.UseAuthentication();
+
+// 7.1. Giới hạn theo từng tài khoản sau khi đã xác thực, tránh hai người dùng
+// chung một địa chỉ máy vô tình chặn lẫn nhau.
+app.UseRateLimiter();
 app.UseAuthorization();
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
 {
@@ -398,6 +414,8 @@ var apiV1 = app.MapGroup(string.Empty)
     .WithApiVersionSet(apiVersionSet)
     .MapToApiVersion(1, 0);
 apiV1.MapApplicationEndpoints();
+if (app.Environment.IsDevelopment())
+    apiV1.MapTest();
 
 // Local and Docker demos initialize themselves by default. Production can
 // disable either operation after running its deployment migration/seed step.
@@ -422,7 +440,11 @@ if (databaseInitialization.ApplyMigrationsOnStartup || databaseInitialization.Se
     }
 }
 
-RecurringJob.AddOrUpdate<SitemapGenerationJob>("sitemap-generation", job => job.GenerateAsync(), Cron.Daily);
+RecurringJob.AddOrUpdate<SitemapGenerationJob>(
+    "sitemap-generation",
+    job => job.GenerateAsync(),
+    "0 2 * * *",
+    new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 RecurringJob.AddOrUpdate<StorageMaintenanceJob>("storage-maintenance", job => job.InspectAsync(), Cron.Weekly);
 
 app.Run();

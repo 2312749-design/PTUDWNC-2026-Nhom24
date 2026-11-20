@@ -114,11 +114,6 @@ public class RecipeFeaturesHandlers : EndpointHandler
         if (request.PhotoUrl?.Length > 2048) return BadRequest(new { message = "Đường dẫn ảnh thành phẩm quá dài." });
         if (!await _context.Recipes.AnyAsync(recipe => recipe.Id == recipeId)) return NotFound();
         var review = await _context.RecipeReviews.FirstOrDefaultAsync(item => item.RecipeId == recipeId && item.UserId == UserId);
-#if false
-        if (request.PhotoUrl?.Length > 2048) return BadRequest(new { message = "Đường dẫn ảnh thành phẩm quá dài." });
-#endif
-#if false
-#endif
         if (review == null)
         {
             review = new RecipeReview { RecipeId = recipeId, UserId = UserId };
@@ -129,18 +124,9 @@ public class RecipeFeaturesHandlers : EndpointHandler
         review.IsCooked = request.IsCooked;
         review.PhotoUrl = string.IsNullOrWhiteSpace(request.PhotoUrl) ? null : request.PhotoUrl.Trim();
         review.UpdatedAt = DateTime.UtcNow;
-#if false
-        review.PhotoUrl = string.IsNullOrWhiteSpace(request.PhotoUrl) ? null : request.PhotoUrl.Trim();
-#endif
         await _context.SaveChangesAsync();
         return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.UpdatedAt });
     }
-#if false
-        return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.UpdatedAt });
-    }
-    }
-        return Ok(new { review.Id, review.Rating, review.Content, review.IsCooked, review.PhotoUrl, review.UpdatedAt });
-#endif
     public async Task<ApiResponseResult> MealPlan([FromQuery] DateOnly? weekStart = null)
     {
         var monday = NormalizeWeekStart(weekStart);

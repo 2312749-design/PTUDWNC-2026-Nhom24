@@ -1,9 +1,16 @@
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
+using CulinaryBlog.Application.CQRS.Recipes.Queries;
+using CulinaryBlog.Application.Models;
+using CulinaryBlog.Application.Validation;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Services;
+using FluentValidation;
+using MediatR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 using Xunit;
 
 namespace CulinaryBlog.API.Tests;
@@ -98,22 +105,33 @@ public sealed class SearchContractTests : IAsyncLifetime
     public async Task Search_RejectsInvalidParametersWith422(string invalidField)
     {
         var handler = CreateHandler();
-        var response = invalidField switch
+        var exception = await Assert.ThrowsAsync<FluentValidation.ValidationException>(async () => _ = invalidField switch
         {
             "q" => await handler.SearchRecipes(q: "b"),
             "sortBy" => await handler.SearchRecipes(sortBy: "rating"),
             "sortOrder" => await handler.SearchRecipes(sortOrder: "sideways"),
             "page" => await handler.SearchRecipes(page: 0),
             _ => await handler.SearchRecipes(pageSize: 51)
-        };
-
-        ResponseAssert.Status(422, response);
-        var errors = response.Value?.GetType().GetProperty("errors")?.GetValue(response.Value) as Dictionary<string, string[]>;
-        Assert.NotNull(errors);
-        Assert.True(errors!.ContainsKey(invalidField));
+        });
+        Assert.Contains(exception.Errors, error => error.PropertyName.Equals(invalidField, StringComparison.OrdinalIgnoreCase));
     }
 
-    private SearchHandlers CreateHandler() => new(_context);
+    private SearchHandlers CreateHandler()
+    {
+        var service = new RecipeSearchService(_context);
+        var validator = new SearchRecipesQueryValidator();
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(item => item.Send(It.IsAny<SearchRecipesQuery>(), It.IsAny<CancellationToken>()))
+            .Returns(async (SearchRecipesQuery query, CancellationToken token) =>
+            {
+                await validator.ValidateAndThrowAsync(query, token);
+                return await service.SearchAsync(new RecipeSearchCriteria(
+                    query.Query, query.CategoryId, query.MaxMinutes, query.Difficulty, query.Vegetarian,
+                    query.Ingredient, query.MinServings, query.SortBy ?? "title", query.SortOrder ?? "asc",
+                    query.Page, query.PageSize), token);
+            });
+        return new SearchHandlers(mediator.Object);
+    }
 
     private static Recipe CreatePublished(string title, Category category, string difficulty, bool vegetarian, int cookMinutes, int servings, List<string> ingredients)
     {

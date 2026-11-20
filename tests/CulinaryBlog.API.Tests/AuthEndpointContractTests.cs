@@ -6,6 +6,9 @@ using System.Text.Encodings.Web;
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.API.Services;
 using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Application.Behaviors;
+using CulinaryBlog.Application.Validation;
+using CulinaryBlog.API.Middleware;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
 using Hangfire;
@@ -22,6 +25,8 @@ using Microsoft.Extensions.Options;
 using Moq;
 using System.Security.Cryptography;
 using Xunit;
+using FluentValidation;
+using MediatR;
 
 namespace CulinaryBlog.API.Tests;
 
@@ -30,6 +35,7 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
     private WebApplication _app = null!;
     private HttpClient _client = null!;
+    private readonly Mock<IEmailSender> _email = new();
 
     public async Task InitializeAsync()
     {
@@ -46,6 +52,13 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         builder.Services.AddAuthentication("Test").AddScheme<AuthenticationSchemeOptions, TestAuthentication>("Test", _ => { });
         builder.Services.AddAuthorization();
         builder.Services.AddApplicationHandlers();
+        builder.Services.AddMediatR(configuration =>
+        {
+            configuration.RegisterServicesFromAssembly(typeof(RegisterCommandValidator).Assembly);
+            configuration.AddOpenBehavior(typeof(ValidationBehavior<,>));
+        });
+        builder.Services.AddValidatorsFromAssemblyContaining<RegisterCommandValidator>();
+        builder.Services.AddHttpContextAccessor();
         builder.Services.AddDataProtection();
         builder.Services.AddScoped<AccountSecurityService>();
         builder.Services.AddDbContext<SqliteApplicationDbContext>(options => options.UseSqlite(_connection));
@@ -53,8 +66,12 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         builder.Services.AddSingleton<ITokenService, TestTokenService>();
         builder.Services.AddSingleton(Mock.Of<IBackgroundJobClient>());
         builder.Services.AddSingleton(Mock.Of<IFileStorageService>());
+        builder.Services.AddSingleton(_email.Object);
+        builder.Services.AddSingleton<IGoogleIdentityVerifier>(Mock.Of<IGoogleIdentityVerifier>());
+        builder.Services.AddScoped<IAuthenticationWorkflow, AuthenticationWorkflowAdapter>();
 
         _app = builder.Build();
+        _app.UseMiddleware<ExceptionHandlingMiddleware>();
         _app.UseRouting();
         _app.UseCors("FrontendPolicy");
         _app.UseRateLimiter();
@@ -87,6 +104,34 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         Assert.False(data.TryGetProperty("refreshToken", out _));
         Assert.Contains(response.Headers.GetValues("Set-Cookie"), value => value.StartsWith($"{AuthHandlers.RefreshTokenCookieName}=", StringComparison.Ordinal) && value.Contains("httponly", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("Người nấu thử", data.GetProperty("user").GetProperty("displayName").GetString());
+        Assert.Equal("Author", data.GetProperty("user").GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task ResetPasswordRequiresLinkFromEmailAndRejectsReuse()
+    {
+        const string email = "reset-test@example.invalid";
+        await RegisterAsync(email, "reset-test");
+        string? message = null;
+        _email.Setup(sender => sender.SendAsync(email, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, string, string, CancellationToken>((_, _, html, _) => message = html)
+            .Returns(Task.CompletedTask);
+
+        using var forgot = await _client.PostAsJsonAsync("/api/v1/auth/forgot-password", new { email });
+        Assert.Equal(HttpStatusCode.OK, forgot.StatusCode);
+        var html = Assert.IsType<string>(message);
+        var link = System.Text.RegularExpressions.Regex.Match(html, "href=\"([^\"]+)\"").Groups[1].Value;
+        var token = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(link).Query)["token"].ToString();
+        Assert.NotEmpty(token);
+        Assert.DoesNotContain(token, await forgot.Content.ReadAsStringAsync());
+
+        var reset = new { token, newPassword = "NewPassword2!", confirmPassword = "NewPassword2!" };
+        using var first = await _client.PostAsJsonAsync("/api/v1/auth/reset-password", reset);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        using var second = await _client.PostAsJsonAsync("/api/v1/auth/reset-password", reset);
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        using var login = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = reset.newPassword });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
     }
 
     [Fact]
@@ -98,7 +143,7 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
             password = "Password1!", confirmPassword = "Different1!"
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         using var document = await ReadJsonAsync(response);
         Assert.True(document.RootElement.TryGetProperty("errors", out var errors));
@@ -151,7 +196,7 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TwoFactorSetup_RequiresAuthenticatorCodeForLaterLogin_AndReturnsTenRecoveryCodes()
+    public async Task TwoFactorSetup_RequiresAuthenticatorCodeForLaterLogin()
     {
         const string email = "two-factor@example.com";
         const string password = "Password1!";
@@ -176,10 +221,6 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         using var enableRequest = JsonRequest(HttpMethod.Post, "/api/v1/account/2fa/enable", new { code = CreateCurrentTotp(manualKey!) }, userId);
         var enableResponse = await _client.SendAsync(enableRequest);
         Assert.Equal(HttpStatusCode.OK, enableResponse.StatusCode);
-        using var enableJson = await ReadJsonAsync(enableResponse);
-        var enableData = enableJson.RootElement.GetProperty("data");
-        Assert.Equal(10, enableData.GetProperty("recoveryCodes").GetArrayLength());
-        var recoveryCode = enableData.GetProperty("recoveryCodes")[0].GetString();
 
         var missingCode = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password });
         Assert.Equal(HttpStatusCode.Unauthorized, missingCode.StatusCode);
@@ -189,18 +230,13 @@ public sealed class AuthEndpointContractTests : IAsyncLifetime
         var verifiedLogin = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, twoFactorCode = CreateCurrentTotp(manualKey!) });
         Assert.Equal(HttpStatusCode.OK, verifiedLogin.StatusCode);
 
-        var recoveryLogin = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, recoveryCode });
-        Assert.Equal(HttpStatusCode.OK, recoveryLogin.StatusCode);
-        var reusedRecoveryCode = await _client.PostAsJsonAsync("/api/v1/auth/login", new { email, password, recoveryCode });
-        Assert.Equal(HttpStatusCode.Unauthorized, reusedRecoveryCode.StatusCode);
-
         using var overviewRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/account/security");
         overviewRequest.Headers.Add("X-Test-User", userId);
         var overviewResponse = await _client.SendAsync(overviewRequest);
         Assert.Equal(HttpStatusCode.OK, overviewResponse.StatusCode);
         using var overviewJson = await ReadJsonAsync(overviewResponse);
         var overviewData = overviewJson.RootElement.GetProperty("data");
-        Assert.True(overviewData.GetProperty("sessions").GetArrayLength() >= 2);
+        Assert.True(overviewData.GetProperty("sessions").GetArrayLength() >= 1);
         Assert.Contains(overviewData.GetProperty("activities").EnumerateArray(), item => item.GetProperty("activityType").GetString() == "two_factor.enabled");
 
         var sessionId = overviewData.GetProperty("sessions")[0].GetProperty("id").GetGuid();

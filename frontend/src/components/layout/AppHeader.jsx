@@ -8,11 +8,10 @@ import { apiRequest, clearSession, getAccessToken, getSessionUser } from '../../
 import { getApiBaseUrl } from '../../api/config.js'
 import { useAuthStore } from '../../store/auth-store'
 import Avatar from '../common/Avatar'
-import SiteMusicPlayer from './SiteMusicPlayer'
-import CosmicControls from '../cosmic/CosmicControls'
-import CosmicCommandPalette from '../cosmic/CosmicCommandPalette'
 
-const NAVIGATION_GROUPS = [
+const CORE_LINKS = [['/recipes', 'Công thức'], ['/categories', 'Danh mục'], ['/search', 'Tìm kiếm']]
+
+const EXTENSION_NAVIGATION = [
   {
     title: 'Nấu ăn',
     links: [
@@ -55,8 +54,7 @@ export default function AppHeader() {
   const [me, setMe] = useState(null)
   const [unreadCount, setUnreadCount] = useState(0)
   const [openGroup, setOpenGroup] = useState(null)
-  const [commandOpen, setCommandOpen] = useState(false)
-  const [commandQuery, setCommandQuery] = useState('')
+  const extensionsEnabled = process.env.NEXT_PUBLIC_ENABLE_EXTENSIONS === 'true'
   const navigationRef = useRef(null)
   const sessionUser = useAuthStore((state) => state.user)
   const setSessionUser = useAuthStore((state) => state.setUser)
@@ -117,42 +115,14 @@ export default function AppHeader() {
       document.removeEventListener('keydown', closeOnEscape)
     }
   }, [])
-  useEffect(() => {
-    const openCommand = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        setCommandOpen(true)
-        window.dispatchEvent(new CustomEvent('culinary:sfx', { detail: { kind: 'power' } }))
-      }
-      if (event.key === 'Escape') setCommandOpen(false)
-    }
-    document.addEventListener('keydown', openCommand)
-    return () => document.removeEventListener('keydown', openCommand)
-  }, [])
-
-  useEffect(() => {
-    const header = navigationRef.current?.closest('header')
-    if (!header || typeof ResizeObserver === 'undefined') return
-    const measure = () => document.documentElement.style.setProperty('--cosmic-header-height', `${Math.round(header.getBoundingClientRect().height)}px`)
-    const observer = new ResizeObserver(measure)
-    observer.observe(header)
-    measure()
-    return () => observer.disconnect()
-  }, [])
-
-
   useEffect(() => { setOpenGroup(null) }, [pathname])
 
   const currentUser = me || sessionUser
-  const username = currentUser?.username || currentUser?.userName
-  const profileHref = useMemo(
-    () => username ? `/members/${encodeURIComponent(username)}` : '/account',
-    [username],
-  )
+  const profileHref = '/profile'
   const isActive = (path) => pathname === path || (path !== '/community' && pathname.startsWith(`${path}/`))
   const hangfireUrl = getApiBaseUrl().replace(/\/api\/?$/, '') + '/hangfire'
-  const canManageContent = ['Author', 'Admin'].includes(currentUser?.role)
-  const commandOptions = useMemo(() => NAVIGATION_GROUPS.flatMap(group => group.links).concat([['/pro', 'Trung tâm Pro'], ['/home', 'Trang chủ'], ['/community', 'Bảng tin']]), [])
+  const canManageContent = Boolean(currentUser)
+  const navigationGroups = useMemo(() => extensionsEnabled ? EXTENSION_NAVIGATION : [], [extensionsEnabled])
 
 
   const logout = async () => {
@@ -169,20 +139,19 @@ export default function AppHeader() {
     clearSession()
     setMe(null)
     setUnreadCount(0)
-    router.replace('/community')
+    router.replace('/')
   }
 
   return (
     <header className="community-nav">
-      <NextLink href="/" className="community-wordmark" aria-label="Bếp Nhà - Trang chủ">
+      <NextLink href="/" className="community-wordmark">
         <span className="wordmark-mark">B</span>
-        <span>Bếp Nhà<small>{t('CỘNG ĐỒNG ẨM THỰC')}</small></span>
+        <span>Bếp Nhà<small>{t('BLOG CÔNG THỨC ẨM THỰC')}</small></span>
       </NextLink>
       <nav ref={navigationRef} aria-label={t('Điều hướng chính')}>
-        <NextLink href="/community" className={`community-nav-home${isActive('/community') ? ' active' : ''}`} aria-current={isActive('/community') ? 'page' : undefined}>{t('Bảng tin')}</NextLink>
-        <NextLink href="/home" className={`community-nav-home${isActive('/home') ? ' active' : ''}`} aria-current={isActive('/home') ? 'page' : undefined}>{t('Trang chủ')}</NextLink>
-        <button type="button" className="cosmic-command-trigger" onClick={() => setCommandOpen(true)} data-cosmic-sfx="power" aria-haspopup="dialog"><span aria-hidden="true">⌕</span><span>Tìm món, nguyên liệu…</span><kbd>Ctrl K</kbd></button>
-        {NAVIGATION_GROUPS.map((group) => {
+        <NextLink href="/" className={`community-nav-home${pathname === '/' ? ' active' : ''}`} aria-current={pathname === '/' ? 'page' : undefined}>{t('Trang chủ')}</NextLink>
+        {CORE_LINKS.map(([path, label]) => <NextLink key={path} href={path} className={isActive(path) ? 'active' : ''} aria-current={isActive(path) ? 'page' : undefined}>{t(label)}</NextLink>)}
+        {navigationGroups.map((group) => {
           const links = group.title === 'Tài khoản' && currentUser
             ? [...group.links, ['/getting-started', 'Bắt đầu nhanh']]
             : group.links
@@ -196,21 +165,17 @@ export default function AppHeader() {
           </details>
         })}
       </nav>
-      <CosmicControls />
       <div className="community-nav-account">
-        <SiteMusicPlayer />
         {currentUser ? <>
-          {currentUser.role === 'Admin' && <><NextLink href="/admin">Quản trị</NextLink><a href={hangfireUrl}>Hangfire</a></>}
-          {canManageContent && <NextLink href="/recipes">Quản lý nội dung</NextLink>}
-          <NextLink href={profileHref} className="nav-profile"><Avatar user={currentUser} size="small" /><span>{currentUser.fullName || currentUser.displayName || username}</span>{unreadCount > 0 && <small aria-label={`${unreadCount} thông báo chưa đọc`}>({unreadCount})</small>}</NextLink>
+          {currentUser.role === 'Admin' && <><NextLink href="/admin">Quản trị</NextLink><NextLink href="/dashboard/categories">QL danh mục</NextLink>{extensionsEnabled && <a href={hangfireUrl}>Hangfire</a>}</>}
+          {canManageContent && <NextLink href="/dashboard">Góc tác giả</NextLink>}
+          <NextLink href={profileHref} className="nav-profile"><Avatar user={currentUser} size="small" /><span>{currentUser.fullName || currentUser.displayName || currentUser.username || currentUser.email}</span>{unreadCount > 0 && <small aria-label={`${unreadCount} thông báo chưa đọc`}>({unreadCount})</small>}</NextLink>
           <button type="button" onClick={logout}>{t('Đăng xuất')}</button>
         </> : <>
-          <NextLink href="/login" className="nav-login">{t('Đăng nhập')}</NextLink>
-          <NextLink href="/register" className="nav-join">{t('Tạo tài khoản')}</NextLink>
+          <NextLink href="/auth/login" className="nav-login">{t('Đăng nhập')}</NextLink>
+          <NextLink href="/auth/register" className="nav-join">{t('Tạo tài khoản')}</NextLink>
         </>}
       </div>
-      <CosmicCommandPalette open={commandOpen} onOpenChange={setCommandOpen} query={commandQuery} onQueryChange={setCommandQuery} navigation={commandOptions} />
-
     </header>
   )
 }

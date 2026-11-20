@@ -1,9 +1,13 @@
 using CulinaryBlog.API.Endpoints;
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Application.CQRS.Recipes.Queries;
+using CulinaryBlog.Application.Models;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
+using CulinaryBlog.Infrastructure.Services;
 using Hangfire;
+using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
@@ -120,7 +124,14 @@ public class AuthHandlersTests : IAsyncLifetime
         _context.Recipes.AddRange(publishedRecipe, draftRecipe, deletedRecipe);
         await _context.SaveChangesAsync();
 
-        var controller = new SearchHandlers(_context);
+        var searchService = new RecipeSearchService(_context);
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(item => item.Send(It.IsAny<SearchRecipesQuery>(), It.IsAny<CancellationToken>()))
+            .Returns((SearchRecipesQuery query, CancellationToken token) => searchService.SearchAsync(new RecipeSearchCriteria(
+                query.Query, query.CategoryId, query.MaxMinutes, query.Difficulty, query.Vegetarian,
+                query.Ingredient, query.MinServings, query.SortBy ?? "title", query.SortOrder ?? "asc",
+                query.Page, query.PageSize), token));
+        var controller = new SearchHandlers(mediator.Object);
         var result = await controller.SearchRecipes(q: "bún", page: 1, pageSize: 10);
 
         var ok = ResponseAssert.Status(200, result);

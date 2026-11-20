@@ -34,7 +34,7 @@ public class ExceptionHandlingMiddleware
 
             context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/problem+json";
-            await context.Response.WriteAsync(JsonSerializer.Serialize(problem, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+            await context.Response.WriteAsync(JsonSerializer.Serialize(problem, problem.GetType(), new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         }
     }
 
@@ -42,6 +42,7 @@ public class ExceptionHandlingMiddleware
     {
         return exception switch
         {
+            FluentValidation.ValidationException fluentValidation => CreateValidationProblem(fluentValidation),
             BadHttpRequestException badRequest => new ProblemDetails
             {
                 Status = badRequest.StatusCode,
@@ -69,6 +70,26 @@ public class ExceptionHandlingMiddleware
                 Detail = exception.Message,
                 Type = "https://httpstatuses.com/401"
             },
+            ForbiddenException => new ProblemDetails
+            {
+                Status = StatusCodes.Status403Forbidden,
+                Title = "Forbidden",
+                Detail = exception.Message,
+                Type = "https://httpstatuses.com/403"
+            },
+            Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException => new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Concurrent update",
+                Detail = "Dữ liệu đã thay đổi. Hãy tải lại trước khi lưu."
+            },
+            ConcurrencyConflictException => new ProblemDetails
+            {
+                Status = StatusCodes.Status412PreconditionFailed,
+                Title = "Concurrent update",
+                Detail = exception.Message,
+                Type = "https://httpstatuses.com/412"
+            },
             ConflictException => new ProblemDetails
             {
                 Status = StatusCodes.Status409Conflict,
@@ -83,6 +104,24 @@ public class ExceptionHandlingMiddleware
                 Detail = "An unexpected error occurred. Please try again later.",
                 Type = "https://httpstatuses.com/500"
             }
+        };
+    }
+
+    private static HttpValidationProblemDetails CreateValidationProblem(
+        FluentValidation.ValidationException exception)
+    {
+        var errors = exception.Errors
+            .GroupBy(error => string.IsNullOrWhiteSpace(error.PropertyName) ? "request" : error.PropertyName)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(error => error.ErrorMessage).Distinct().ToArray());
+
+        return new HttpValidationProblemDetails(errors)
+        {
+            Status = StatusCodes.Status422UnprocessableEntity,
+            Title = "Validation failed",
+            Detail = "Dữ liệu gửi lên không đáp ứng quy tắc nghiệp vụ.",
+            Type = "https://httpstatuses.com/422"
         };
     }
 }

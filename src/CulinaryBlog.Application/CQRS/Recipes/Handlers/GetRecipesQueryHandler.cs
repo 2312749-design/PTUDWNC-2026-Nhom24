@@ -2,6 +2,7 @@
 using CulinaryBlog.Application.DTOs;
 using CulinaryBlog.Application.Interfaces;
 using MediatR;
+using CulinaryBlog.Application.Mapping;
 
 namespace CulinaryBlog.Application.CQRS.Recipes.Handlers;
 
@@ -29,37 +30,7 @@ public class GetRecipesQueryHandler : IRequestHandler<GetRecipesQuery, IEnumerab
             .Where(r => !r.IsDeleted && r.Status == CulinaryBlog.Domain.Entities.RecipeStatus.Published && categoryById.TryGetValue(r.CategoryId, out var category) && !category.IsDeleted && category.IsVisible)
             .OrderByDescending(r => r.CreatedAt)
             .ThenBy(r => r.Id)
-            .Select(r => new RecipeDto
-            {
-                Id = r.Id,
-                Title = r.Title,
-                Slug = r.Slug,
-                Description = r.Description,
-                ImageUrl = r.ImageUrl,
-                Ingredients = r.Ingredients,
-                Instructions = r.Instructions,
-                CategoryId = r.CategoryId,
-                CategoryName = categoryById[r.CategoryId].Name,
-                AuthorId = r.AuthorId,
-                Status = r.Status,
-                CreatedAt = r.CreatedAt,
-                UpdatedAt = r.UpdatedAt,
-                PrepTimeMinutes = r.PrepTimeMinutes,
-                CookTimeMinutes = r.CookTimeMinutes,
-                Servings = r.Servings,
-                CookingTimeMinutes = r.CookingTimeMinutes,
-                Difficulty = r.Difficulty,
-                IsVegetarian = r.IsVegetarian,
-                Nutrition = r.Nutrition == null ? null : new RecipeNutritionDto
-                {
-                    Calories = r.Nutrition.Calories,
-                    Protein = r.Nutrition.Protein,
-                    Carbohydrates = r.Nutrition.Carbohydrates,
-                    Fat = r.Nutrition.Fat,
-                    Fiber = r.Nutrition.Fiber,
-                    Sodium = r.Nutrition.Sodium
-                }
-            })
+            .Select(r => r.ToDto(categoryById[r.CategoryId].Name))
             .ToList();
         await _cache.SetAsync(CacheKeys.Recipes, recipes, TimeSpan.FromMinutes(5), cancellationToken);
         return recipes;

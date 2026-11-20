@@ -4,6 +4,7 @@ using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Domain.Exceptions;
 using MediatR;
+using CulinaryBlog.Application.Mapping;
 
 namespace CulinaryBlog.Application.CQRS.Recipes.Handlers;
 
@@ -119,16 +120,8 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
         await _cache.RemoveAsync(CacheKeys.Recipes, cancellationToken);
 
         // 4. Trả về Response DTO
-        return new RecipeDto
-        {
-            Id = recipe.Id,
-            Title = recipe.Title,
-            Slug = recipe.Slug,
-            Description = recipe.Description,
-            ImageUrl = recipe.ImageUrl,
-            Ingredients = recipe.Ingredients,
-            Instructions = recipe.Instructions,
-            RecipeIngredients = recipeIngredients.Select(ingredient => new RecipeIngredientDto
+        var result = recipe.ToDto();
+        result.RecipeIngredients = recipeIngredients.Select(ingredient => new RecipeIngredientDto
             {
                 Id = ingredient.Id,
                 RecipeId = recipe.Id,
@@ -137,8 +130,8 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
                 Unit = ingredient.Unit,
                 Notes = ingredient.Notes,
                 OrderIndex = ingredient.OrderIndex
-            }).ToList(),
-            RecipeSteps = recipeSteps.Select(step => new RecipeStepDto
+            }).ToList();
+        result.RecipeSteps = recipeSteps.Select(step => new RecipeStepDto
             {
                 Id = step.Id,
                 RecipeId = recipe.Id,
@@ -147,27 +140,7 @@ public class CreateRecipeCommandHandler : IRequestHandler<CreateRecipeCommand, R
                 StepNumber = step.StepNumber,
                 TimerMinutes = step.TimerMinutes,
                 ImageUrl = step.ImageUrl
-            }).ToList(),
-            CategoryId = recipe.CategoryId,
-            AuthorId = recipe.AuthorId,
-            Status = recipe.Status,
-            CreatedAt = recipe.CreatedAt,
-            UpdatedAt = recipe.UpdatedAt,
-            PrepTimeMinutes = recipe.PrepTimeMinutes,
-            CookTimeMinutes = recipe.CookTimeMinutes,
-            Servings = recipe.Servings,
-            CookingTimeMinutes = recipe.CookingTimeMinutes,
-            Difficulty = recipe.Difficulty,
-            IsVegetarian = recipe.IsVegetarian,
-            Nutrition = recipe.Nutrition == null ? null : new RecipeNutritionDto
-            {
-                Calories = recipe.Nutrition.Calories,
-                Protein = recipe.Nutrition.Protein,
-                Carbohydrates = recipe.Nutrition.Carbohydrates,
-                Fat = recipe.Nutrition.Fat,
-                Fiber = recipe.Nutrition.Fiber,
-                Sodium = recipe.Nutrition.Sodium
-            }
-        };
+            }).ToList();
+        return result;
     }
 }

@@ -1,4 +1,4 @@
-# Báo cáo đối chiếu chức năng — 25/10/2026
+# Báo cáo đối chiếu chức năng — cập nhật 12/11/2026
 
 ## 1. Phạm vi đã hoàn thành
 
@@ -11,6 +11,9 @@
 | FR-FILE | Đạt trong code | Kiểm tra JPEG/PNG/WebP/AVIF tối đa 5 MB, thumbnail 300×300, medium 800×600 và storage cleanup cho năm namespace dữ liệu. |
 | FR-OPS | Đạt trong code | Health, Serilog, OpenTelemetry, Hangfire, SMTP sender, MinIO abstraction, Docker Compose, Nginx và observability stack. |
 | FE-LAB6 | Đạt | Next.js App Router, API client, error handling, Zustand auth store, UI library Radix/CVA/Lucide, layout và common components. |
+| FE-STATE | Đạt | Recipe detail render bằng Server Component; TanStack Query quản lý server state; React Hook Form + Zod quản lý wizard; ảnh chính dùng `next/image`. |
+| SEC-HARDEN | Đạt trong code/test | Resource-based authorization, ETag/If-Match optimistic concurrency, CSRF double-submit + Origin check, Swagger/test route giới hạn theo môi trường. |
+| ARCH | Đạt | Application không còn phụ thuộc EF Core; Mapster mapping Entity → DTO; architecture test bảo vệ Dependency Rule. |
 
 ## 2. API trình bày
 
@@ -28,11 +31,13 @@
 
 | Phạm vi | Kết quả |
 | --- | --- |
-| Backend | **57/57 đạt**: auth/cookie, revoke/replay, recipe lifecycle/ownership, category, search, upload, storage cleanup, CORS, rate limit, validation và HTTP integration. |
-| Frontend | **7/7 đạt**: API response, Problem Details, logout, URL upload, recipe payload và JSON-LD. |
-| Lint | Không có lỗi chặn; còn 6 warning React cần dọn tiếp. |
-| Build frontend | Compile/type-check đạt. Prerender bị khóa thư mục `.next` bởi tiến trình dev đang chạy (`EPERM`). |
-| Docker config | Cú pháp Compose hợp lệ với secret demo. Full runtime đang chờ Docker Desktop chạy ổn định. |
+| Backend | **78/78 đạt**: gồm architecture, resource authorization, ETag concurrency và CSRF. |
+| Frontend | **19/19 đạt**: thêm kiểm thử Zod cho title, 10 ingredients và 5 steps. |
+| Lint | **0 warning**, lệnh dùng `--deny-warnings`. |
+| Dependency audit | `npm audit`: **0 lỗ hổng** sau khi nâng Next.js 16.4.6. |
+| Build frontend | **Đạt trong Docker/Linux**: compile, TypeScript và 41/41 route generation hoàn tất. Windows host vẫn có `EPERM` riêng ở `.next`, không còn chặn artifact production. |
+| Browser E2E | **35/35 đạt** qua Nginx và image production. |
+| Docker runtime | PostgreSQL, Redis, MinIO, API, frontend, Nginx, collector, Jaeger, Prometheus, Grafana đều chạy; live/ready trả 200 Healthy. |
 
 ## 4. Kịch bản demo khi Docker hoạt động lại
 
@@ -44,4 +49,4 @@
 
 ## 5. Điều kiện ngoài mã nguồn
 
-Docker Desktop hiện lỗi `SIGBUS / bus error`, nên không thể trung thực ghi "đã chạy full Docker stack" ở thời điểm này. Google OAuth thật, SMTP gửi ra hộp thư, HTTPS/domain, production secrets và lần chạy GitHub Actions đều cần thông tin/quyền sở hữu của chủ dự án. Hướng dẫn và checklist nằm trong [DEPLOYMENT.md](DEPLOYMENT.md).
+Full Docker stack đã được xác minh bằng database verification riêng: tạo/upload/publish/search/review, owner/Admin, ETag 412, CSRF 403 và observability đều có kết quả runtime. Google OAuth thật, SMTP gửi ra hộp thư, HTTPS/domain, production secrets và PR/review vẫn cần tài khoản/quyền của chủ dự án. Hướng dẫn nằm trong [DEPLOYMENT.md](DEPLOYMENT.md); bộ ôn vấn đáp nằm trong [ORAL-DEFENSE-GUIDE.md](docs/submission/ORAL-DEFENSE-GUIDE.md).

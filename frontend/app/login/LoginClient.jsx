@@ -11,7 +11,7 @@ import { saveSession } from '../../src/api/session.js'
 
 function LoginForm() {
   const router = useRouter()
-  const [form, setForm] = useState({ username: '', password: '', twoFactorCode: '', recoveryCode: '' })
+  const [form, setForm] = useState({ username: '', password: '', twoFactorCode: '' })
   const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (event) => {
@@ -25,7 +25,6 @@ function LoginForm() {
     const request = {
       password: form.password,
       ...(form.twoFactorCode.trim() ? { twoFactorCode: form.twoFactorCode.trim() } : {}),
-      ...(form.recoveryCode.trim() ? { recoveryCode: form.recoveryCode.trim() } : {}),
       ...(form.username.includes('@')
         ? { email: form.username.trim() }
         : { username: form.username.trim() }),
@@ -41,7 +40,7 @@ function LoginForm() {
 
     saveSession(result.data)
     toast.success(result.message || 'Đăng nhập thành công!')
-    router.push('/community')
+    router.push('/dashboard')
   }
 
   const handleGoogleLogin = async (credentialResponse) => {
@@ -57,13 +56,12 @@ function LoginForm() {
         body: JSON.stringify({
           idToken,
           ...(form.twoFactorCode.trim() ? { twoFactorCode: form.twoFactorCode.trim() } : {}),
-          ...(form.recoveryCode.trim() ? { recoveryCode: form.recoveryCode.trim() } : {}),
         }),
       })
 
       if (!saveSession(data)) throw new Error('Máy chủ không trả về phiên đăng nhập hợp lệ.')
       toast.success(data.message || 'Đăng nhập Google thành công!')
-      router.push('/community')
+      router.push('/dashboard')
     } catch (error) {
       toast.error(error.message || 'Đăng nhập bằng Google thất bại.')
     }
@@ -88,10 +86,6 @@ function LoginForm() {
           <div className="form-group">
             <label htmlFor="login-2fa">Mã xác thực 2 lớp <small>(nếu đã bật)</small></label>
             <input id="login-2fa" inputMode="numeric" autoComplete="one-time-code" placeholder="Mã 6 số từ Authenticator" value={form.twoFactorCode} onChange={(event) => setForm({ ...form, twoFactorCode: event.target.value })} />
-          </div>
-          <div className="form-group">
-            <label htmlFor="login-recovery">Hoặc mã khôi phục</label>
-            <input id="login-recovery" autoComplete="off" placeholder="Ví dụ: ABCDE-12345" value={form.recoveryCode} onChange={(event) => setForm({ ...form, recoveryCode: event.target.value })} />
           </div>
           <div className="form-group">
             <label htmlFor="login-password">Mật khẩu</label>

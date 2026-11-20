@@ -7,9 +7,7 @@ import '../src/components/common/common.css'
 import '../src/ProExperience.css'
 import AppProviders from '../src/components/layout/AppProviders'
 import AppShell from '../src/components/layout/AppShell'
-import '../src/cosmic-fonts.css'
-import '../src/cosmic-theme.css'
-import '../src/cosmic-pro.css'
+import './srs.css'
 
 export const metadata = {
   title: {
@@ -27,7 +25,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="vi" data-cosmic-theme="true" suppressHydrationWarning>
+    <html lang="vi" suppressHydrationWarning>
       <body><JsonLd data={{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'CulinaryBlog', url: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000' }} /><AppProviders><AppShell>{children}</AppShell></AppProviders></body>
     </html>
   )

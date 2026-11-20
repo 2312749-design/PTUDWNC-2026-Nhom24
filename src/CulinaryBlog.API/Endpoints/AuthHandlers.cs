@@ -1,4 +1,4 @@
-﻿using CulinaryBlog.Application.Interfaces;
+using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Jobs;
 using CulinaryBlog.Infrastructure.Persistence;
@@ -15,6 +15,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using MediatR;
+using CulinaryBlog.Application.CQRS.Auth.Commands;
 
 namespace CulinaryBlog.API.Endpoints
 {
@@ -22,6 +25,8 @@ namespace CulinaryBlog.API.Endpoints
     {
         public const string AccessTokenCookieName = "culinary_access_token";
         public const string RefreshTokenCookieName = "culinary_refresh_token";
+        public const string CsrfTokenCookieName = "culinary_csrf_token";
+        public const string CsrfTokenHeaderName = "X-CSRF-Token";
 
         private readonly ApplicationDbContext _context;
         private readonly ITokenService _tokenService;
@@ -35,10 +40,11 @@ namespace CulinaryBlog.API.Endpoints
         private readonly AccountSecurityService? _security;
         private readonly IEmailSender? _emailSender;
         private readonly IDataProtector? _passwordResetProtector;
-        private readonly bool _isDevelopment;
+        private readonly ILogger<AuthHandlers>? _logger;
         private readonly string _publicSiteUrl;
+        private readonly IMediator? _mediator;
 
-        public AuthHandlers(ApplicationDbContext context, ITokenService tokenService, IBackgroundJobClient backgroundJobs, IConfiguration? configuration = null, IGoogleIdentityVerifier? googleVerifier = null, AccountSecurityService? security = null, IEmailSender? emailSender = null, IDataProtectionProvider? dataProtectionProvider = null, IHostEnvironment? hostEnvironment = null)
+        public AuthHandlers(ApplicationDbContext context, ITokenService tokenService, IBackgroundJobClient backgroundJobs, IConfiguration? configuration = null, IGoogleIdentityVerifier? googleVerifier = null, AccountSecurityService? security = null, IEmailSender? emailSender = null, IDataProtectionProvider? dataProtectionProvider = null, ILogger<AuthHandlers>? logger = null, IMediator? mediator = null)
         {
             _context = context;
             _tokenService = tokenService;
@@ -53,8 +59,9 @@ namespace CulinaryBlog.API.Endpoints
             _security = security;
             _emailSender = emailSender;
             _passwordResetProtector = dataProtectionProvider?.CreateProtector("CulinaryBlog.Auth.PasswordReset.v1");
-            _isDevelopment = hostEnvironment?.IsDevelopment() ?? false;
+            _logger = logger;
             _publicSiteUrl = (configuration?["PublicSiteUrl"] ?? "http://localhost:3000").TrimEnd('/');
+            _mediator = mediator;
         }
 
         private bool VerifyPassword(ApplicationUser user, string password)
@@ -162,6 +169,17 @@ namespace CulinaryBlog.API.Endpoints
                 IsEssential = options.IsEssential,
                 Expires = new DateTimeOffset(refreshToken.ExpiresAt, TimeSpan.Zero)
             });
+            var csrfToken = HttpContext.Request.Cookies[CsrfTokenCookieName]
+                ?? Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+            HttpContext.Response.Cookies.Append(CsrfTokenCookieName, csrfToken, new CookieOptions
+            {
+                HttpOnly = false,
+                Secure = options.Secure,
+                SameSite = options.SameSite,
+                Path = options.Path,
+                IsEssential = true,
+                Expires = new DateTimeOffset(refreshToken.ExpiresAt, TimeSpan.Zero)
+            });
         }
 
         private void ClearSessionCookies()
@@ -176,6 +194,14 @@ namespace CulinaryBlog.API.Endpoints
             };
             HttpContext.Response.Cookies.Delete(AccessTokenCookieName, options);
             HttpContext.Response.Cookies.Delete(RefreshTokenCookieName, options);
+            HttpContext.Response.Cookies.Delete(CsrfTokenCookieName, new CookieOptions
+            {
+                HttpOnly = false,
+                Secure = options.Secure,
+                SameSite = options.SameSite,
+                Path = options.Path,
+                IsEssential = options.IsEssential
+            });
         }
 
         private sealed record SessionUser(
@@ -227,7 +253,6 @@ namespace CulinaryBlog.API.Endpoints
             [StringLength(128)]
             public string? Password { get; set; }
             [StringLength(32)] public string? TwoFactorCode { get; set; }
-            [StringLength(32)] public string? RecoveryCode { get; set; }
         }
 
         public class MeUpdateDto
@@ -246,7 +271,6 @@ namespace CulinaryBlog.API.Endpoints
             [Required, StringLength(16384)]
             public string IdToken { get; set; } = string.Empty;
             [StringLength(32)] public string? TwoFactorCode { get; set; }
-            [StringLength(32)] public string? RecoveryCode { get; set; }
         }
 
         public class RefreshTokenDto
@@ -269,7 +293,7 @@ namespace CulinaryBlog.API.Endpoints
 
         public async Task<ApiResponseResult> ForgotPassword([FromBody] ForgotPasswordDto model)
         {
-            const string genericMessage = "Nếu email tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi. Vui lòng kiểm tra hộp thư.";
+            const string genericMessage = "Nếu tài khoản tồn tại và dịch vụ email khả dụng, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu.";
             if (model is null || string.IsNullOrWhiteSpace(model.Email)) return BadRequest(new { message = "Vui lòng nhập email hợp lệ." });
             if (_passwordResetProtector is null) return StatusCode(503, new { message = "Chức năng đặt lại mật khẩu chưa sẵn sàng." });
 
@@ -287,12 +311,12 @@ namespace CulinaryBlog.API.Endpoints
             {
                 await (_emailSender?.SendAsync(email, "Đặt lại mật khẩu Bếp Nhà", $"<p>Bạn vừa yêu cầu đặt lại mật khẩu.</p><p><a href=\"{System.Net.WebUtility.HtmlEncode(resetUrl)}\">Đặt lại mật khẩu</a></p><p>Liên kết hết hạn sau 15 phút. Nếu không phải bạn yêu cầu, hãy bỏ qua email này.</p>") ?? Task.CompletedTask);
             }
-            catch
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                return StatusCode(503, new { message = "Không thể gửi email đặt lại mật khẩu. Vui lòng thử lại sau." });
+                _logger?.LogWarning(exception, "Password reset email could not be delivered.");
             }
 
-            return Ok(new { message = genericMessage, developmentResetToken = _isDevelopment ? token : null });
+            return Ok(new { message = genericMessage });
         }
 
         public async Task<ApiResponseResult> ResetPassword([FromBody] ResetPasswordDto model)
@@ -314,6 +338,7 @@ namespace CulinaryBlog.API.Endpoints
 
             user.PasswordHash = _passwordHasher.HashPassword(user, password);
             user.SecurityStamp = Guid.NewGuid().ToString("N");
+            user.ConcurrencyStamp = Guid.NewGuid().ToString("N");
             var refreshTokens = await _context.RefreshTokens.Where(token => token.UserId == user.Id && !token.IsRevoked).ToListAsync();
             refreshTokens.ForEach(token => token.Revoke());
             await _context.SaveChangesAsync();
@@ -322,9 +347,11 @@ namespace CulinaryBlog.API.Endpoints
 
         public async Task<ApiResponseResult> Register([FromBody] RegisterDto model)
         {
+            if (_mediator is not null)
+                return (ApiResponseResult)await _mediator.Send(new RegisterCommand(model.DisplayName, model.FullName, model.AvatarUrl, model.Bio, model.Username, model.Email, model.Password, model.ConfirmPassword, model.CaptchaQuestion, model.CaptchaAnswer));
             if (model == null)
             {
-                return BadRequest(new { message = "Dữ liệu đăng ký không hợp lệ." });
+                return BadRequest(new { message = "Dữ liệu đăng ký không hợp lệ.", errors = new { request = new[] { "Dữ liệu đăng ký không hợp lệ." } } });
             }
 
             var displayName = (model.DisplayName ?? model.FullName ?? string.Empty).Trim();
@@ -337,7 +364,7 @@ namespace CulinaryBlog.API.Endpoints
 
             if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
             {
-                return BadRequest(new { message = "Vui lòng điền đầy đủ thông tin." });
+                return BadRequest(new { message = "Vui lòng điền đầy đủ thông tin.", errors = new { request = new[] { "Tên hiển thị, email và mật khẩu là bắt buộc." } } });
             }
 
             if (username.Length > 50 || username.Any(char.IsWhiteSpace))
@@ -345,12 +372,12 @@ namespace CulinaryBlog.API.Endpoints
 
             if (!string.Equals(password, confirmPassword, StringComparison.Ordinal))
             {
-                return BadRequest(new { message = "Mật khẩu xác nhận không khớp." });
+                return BadRequest(new { message = "Mật khẩu xác nhận không khớp.", errors = new { confirmPassword = new[] { "Mật khẩu xác nhận không khớp." } } });
             }
 
             if (!IsStrongPassword(password))
             {
-                return BadRequest(new { message = "Mật khẩu phải tối thiểu 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt." });
+                return BadRequest(new { message = "Mật khẩu phải tối thiểu 8 ký tự, có chữ hoa, chữ thường, số và ký tự đặc biệt.", errors = new { password = new[] { "Mật khẩu chưa đủ mạnh." } } });
             }
 
             if (!string.IsNullOrWhiteSpace(model.CaptchaQuestion) && !string.IsNullOrWhiteSpace(model.CaptchaAnswer))
@@ -381,6 +408,7 @@ namespace CulinaryBlog.API.Endpoints
 
             var user = new ApplicationUser
             {
+                Role = "Author",
                 FullName = displayName,
                 AvatarUrl = string.IsNullOrWhiteSpace(model.AvatarUrl) ? null : model.AvatarUrl.Trim(),
                 Bio = string.IsNullOrWhiteSpace(model.Bio) ? null : model.Bio.Trim(),
@@ -405,15 +433,17 @@ namespace CulinaryBlog.API.Endpoints
         }
         public async Task<ApiResponseResult> Login([FromBody] LoginDto model)
         {
+            if (_mediator is not null)
+                return (ApiResponseResult)await _mediator.Send(new LoginCommand(model.Email, model.Username, model.Password, model.TwoFactorCode));
             if (model == null)
             {
-                return BadRequest(new { message = "Dữ liệu đăng nhập không hợp lệ." });
+                return BadRequest(new { message = "Dữ liệu đăng nhập không hợp lệ.", errors = new { request = new[] { "Dữ liệu đăng nhập không hợp lệ." } } });
             }
 
             var accountValue = (!string.IsNullOrWhiteSpace(model.Email) ? model.Email : model.Username)?.Trim();
             if (string.IsNullOrWhiteSpace(accountValue))
             {
-                return BadRequest(new { message = "Vui lòng nhập tên đăng nhập hoặc email." });
+                return BadRequest(new { message = "Vui lòng nhập tên đăng nhập hoặc email.", errors = new { account = new[] { "Vui lòng nhập tên đăng nhập hoặc email." } } });
             }
 
             var normalizedAccount = accountValue.ToUpperInvariant();
@@ -430,8 +460,8 @@ namespace CulinaryBlog.API.Endpoints
             {
                 return StatusCode(StatusCodes.Status423Locked, new { message = "Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên.", suspendedUntil = user.SuspendedUntil, reason = user.SuspensionReason });
             }
-            if (!await VerifyTwoFactorAsync(user, model.TwoFactorCode, model.RecoveryCode))
-                return Unauthorized(new { code = "AUTH_2FA_REQUIRED", message = "Nhập mã từ ứng dụng xác thực hoặc mã khôi phục để đăng nhập." });
+            if (!VerifyTwoFactor(user, model.TwoFactorCode))
+                return Unauthorized(new { code = "AUTH_2FA_REQUIRED", message = "Nhập mã 6 số từ ứng dụng Authenticator để đăng nhập." });
 
             user.NormalizedEmail ??= user.Email?.ToUpperInvariant();
             user.NormalizedUserName ??= user.UserName?.ToUpperInvariant();
@@ -529,6 +559,8 @@ namespace CulinaryBlog.API.Endpoints
         }
         public async Task<ApiResponseResult> Refresh([FromBody] RefreshTokenDto? model)
         {
+            if (_mediator is not null)
+                return (ApiResponseResult)await _mediator.Send(new RefreshSessionCommand(model?.RefreshToken ?? HttpContext.Request.Cookies[RefreshTokenCookieName]));
             // Accept a legacy JSON token once so sessions created before this
             // upgrade can move to the HttpOnly-cookie flow without forcing a
             // surprise logout. All new browser calls use the cookie instead.
@@ -640,17 +672,11 @@ namespace CulinaryBlog.API.Endpoints
             ClearSessionCookies();
             return NoContent();
         }
-        private async Task<bool> VerifyTwoFactorAsync(ApplicationUser user, string? code, string? recoveryCode)
+        private bool VerifyTwoFactor(ApplicationUser user, string? code)
         {
             if (!user.TwoFactorEnabled) return true;
             if (_security is null || string.IsNullOrWhiteSpace(user.TwoFactorSecretProtected)) return false;
-            if (_security.VerifyCode(user.TwoFactorSecretProtected, code)) return true;
-            if (string.IsNullOrWhiteSpace(recoveryCode)) return false;
-            var hash = AccountSecurityService.Hash(recoveryCode);
-            var saved = await _context.TwoFactorRecoveryCodes.FirstOrDefaultAsync(item => item.UserId == user.Id && item.CodeHash == hash && item.UsedAt == null);
-            if (saved is null) return false;
-            saved.UsedAt = DateTime.UtcNow;
-            return true;
+            return _security.VerifyCode(user.TwoFactorSecretProtected, code);
         }
 
         private async Task RecordLoginAsync(ApplicationUser user)
@@ -726,6 +752,7 @@ namespace CulinaryBlog.API.Endpoints
                         username = $"{username[..Math.Min(username.Length, 40)]}-{Guid.NewGuid().ToString("N")[..8]}";
                     user = new ApplicationUser
                     {
+                        Role = "Author",
                         FullName = string.IsNullOrWhiteSpace(identity.Name) ? username : identity.Name.Trim()[..Math.Min(identity.Name.Trim().Length, 100)],
                         UserName = username,
                         NormalizedUserName = username.ToUpperInvariant(),
@@ -744,8 +771,8 @@ namespace CulinaryBlog.API.Endpoints
             }
             if (IsSuspended(user))
                 return StatusCode(StatusCodes.Status423Locked, new { message = "Tài khoản đang bị khóa. Vui lòng liên hệ quản trị viên." });
-            if (!await VerifyTwoFactorAsync(user, model.TwoFactorCode, model.RecoveryCode))
-                return Unauthorized(new { code = "AUTH_2FA_REQUIRED", message = "Nhập mã từ ứng dụng xác thực hoặc mã khôi phục để đăng nhập." });
+            if (!VerifyTwoFactor(user, model.TwoFactorCode))
+                return Unauthorized(new { code = "AUTH_2FA_REQUIRED", message = "Nhập mã 6 số từ ứng dụng Authenticator để đăng nhập." });
             await RecordLoginAsync(user);
             var tokenBundle = await CreateTokenBundleAsync(user);
             return Ok(new { data = PublishTokenBundle(tokenBundle) });

@@ -1,5 +1,8 @@
 using System.Security.Claims;
 using CulinaryBlog.API.Endpoints;
+using CulinaryBlog.API.Services;
+using CulinaryBlog.Application.CQRS.Recipes.Commands;
+using CulinaryBlog.Application.CQRS.Recipes.Handlers;
 using CulinaryBlog.Application.Interfaces;
 using CulinaryBlog.Domain.Entities;
 using CulinaryBlog.Infrastructure.Persistence;
@@ -8,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using Hangfire;
 using Xunit;
 
 namespace CulinaryBlog.API.Tests;
@@ -64,7 +68,13 @@ public sealed class RecipeImageHandlersTests : IAsyncLifetime
     public async Task DeletePrimaryImage_SelectsTheOldestRemainingImageWithoutDeletingRecipe()
     {
         var storage = new RecordingStorage();
-        var handler = new RecipesHandlers(new Mock<IMediator>().Object, _context, new NoOpCache(), storage)
+        var cache = new NoOpCache();
+        var workflow = new RecipeImageWorkflow(_context, storage, new Mock<IBackgroundJobClient>().Object, cache);
+        var commandHandler = new RecipeImageCommandHandlers(new UnitOfWork(_context), workflow);
+        var mediator = new Mock<IMediator>();
+        mediator.Setup(item => item.Send(It.IsAny<DeleteRecipeImageCommand>(), It.IsAny<CancellationToken>()))
+            .Returns((DeleteRecipeImageCommand command, CancellationToken token) => commandHandler.Handle(command, token));
+        var handler = new RecipesHandlers(mediator.Object, _context, cache, storage)
         {
             HttpContext = new DefaultHttpContext
             {

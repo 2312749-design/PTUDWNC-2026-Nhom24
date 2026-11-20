@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Link } from './navigation.jsx'
 import { useLocation, useNavigate, useParams } from './navigation-hooks.js'
@@ -15,6 +16,7 @@ import { uploadRecipeImage, validateRecipeImageFile } from './api/recipe-images.
 import { useAuthStore } from './store/auth-store'
 
 const RECIPE_CATALOG_UPDATED_EVENT = 'culinary:recipe-catalog-updated'
+const bypassLocalImageOptimizer = url => /^https?:\/\/(localhost|127\.0\.0\.1):9000\//i.test(url || '') || /^https:\/\/(commons|upload)\.wikimedia\.org\//i.test(url || '')
 
 function notifyRecipeCatalogUpdated() {
   if (typeof window === 'undefined') return
@@ -446,7 +448,7 @@ export function CategoriesPage() {
             const selected = selectedCategoryId === category.id
             return <article className={`category-tile${selected ? ' is-selected' : ''}`} key={category.id}>
               <button type="button" className="category-tile-select" onClick={() => selectCategory(category.id)} aria-pressed={selected} aria-controls="category-recipes-panel">
-                <div className="category-tile-image">{category.imageUrl ? <img src={category.imageUrl} alt={category.name} loading="lazy" /> : <span>Ảnh danh mục chưa thêm</span>}</div>
+                <div className="category-tile-image">{category.imageUrl ? <Image src={category.imageUrl} alt={category.name} width={640} height={360} sizes="(max-width: 720px) 100vw, 33vw" unoptimized={bypassLocalImageOptimizer(category.imageUrl)} /> : <span>Ảnh danh mục chưa thêm</span>}</div>
                 <div className="category-tile-content"><span className="category-tile-index">{String(index + 1).padStart(2, '0')}</span><span className="category-tile-tag"># {t(category.name)}</span><h3>{t(category.name)}</h3><p>{t(category.description || 'Khám phá công thức trong danh mục này.')}</p><small>{recipeCount ? `${recipeCount} công thức` : 'Xem công thức'} <span aria-hidden="true">↓</span></small></div>
               </button>
               {canManageCategories && <button type="button" className="category-edit-icon" onClick={() => handleEdit(category)} aria-label={`Chỉnh sửa ${category.name}`} title="Chỉnh sửa danh mục">✎</button>}
@@ -478,6 +480,20 @@ export function CategoriesPage() {
   )
 }
 
+const recipeVisibilityLabel = recipe => recipe.status === 1
+  ? 'Đã công khai'
+  : recipe.status === 2 ? 'Đang lưu trữ' : 'Đang ẩn'
+
+const recipeReviewLabel = recipe => recipe.reviewStatus === 'PendingReview'
+  ? 'Đang chờ duyệt'
+  : recipe.reviewStatus === 'Approved'
+    ? 'Đã được duyệt'
+    : recipe.reviewStatus === 'ChangesRequested' ? 'Cần chỉnh sửa' : 'Chưa gửi duyệt'
+
+const formatRecipeDate = value => value
+  ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+  : '—'
+
 export function RecipesPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -498,6 +514,7 @@ export function RecipesPage() {
   const [saveNotice, setSaveNotice] = useState('')
   const saveInProgress = useRef(false)
   const savedRecipeId = useRef(null)
+  const recipeVersion = useRef(null)
   const uploadedImage = useRef(null)
   const [form, setForm] = useState(() => recipeToForm())
   const [maxMinutesFilter, setMaxMinutesFilter] = useState('')
@@ -531,6 +548,7 @@ export function RecipesPage() {
     setForm(recipeToForm({}, categories[0]?.id || ''))
     setEditingId(null)
     savedRecipeId.current = null
+    recipeVersion.current = null
     uploadedImage.current = null
     selectImageFile(null)
     setSaveNotice('')
@@ -556,17 +574,10 @@ export function RecipesPage() {
     const user = await apiRequest('/auth/me')
     setCurrentUser(user)
     const ownRecipes = await apiRequest('/recipes/mine')
-    if (user.role === 'Admin') {
-      setRecipes(ownRecipes)
-      return
-    }
-
-    // Members see the published community cookbook and any private drafts they
-    // own. This prevents a newly registered account from seeing an empty page.
-    const publicRecipes = await apiRequest('/recipes')
-    const combined = new Map(publicRecipes.map((recipe) => [recipe.id, recipe]))
-    ownRecipes.forEach((recipe) => combined.set(recipe.id, recipe))
-    setRecipes([...combined.values()])
+    // This route is the personal workspace. Public recipes belong on
+    // /recipes; mixing hundreds of community recipes here hid the member's
+    // own drafts at the very bottom of the page.
+    setRecipes(ownRecipes)
   }, [])
 
   useEffect(() => {
@@ -608,10 +619,12 @@ export function RecipesPage() {
       const id = editingId || savedRecipeId.current
       const saved = await apiRequest(`/recipes${id ? `/${id}` : ''}`, {
         method: id ? 'PUT' : 'POST', body: JSON.stringify(payload),
+        headers: id && recipeVersion.current ? { 'If-Match': JSON.stringify(recipeVersion.current) } : undefined,
       })
       const recipeId = id || saved?.id
       if (!recipeId) throw new Error('Máy chủ chưa trả về mã công thức. Vui lòng tải lại danh sách trước khi thử lại.')
       savedRecipeId.current = recipeId
+      recipeVersion.current = saved?.updatedAt ?? recipeVersion.current
       notifyRecipeCatalogUpdated()
       if (imageFile) {
         setUploadingImage(true)
@@ -645,13 +658,22 @@ export function RecipesPage() {
   const handleEdit = (recipe) => {
     if (saveInProgress.current) return
     savedRecipeId.current = null
+    recipeVersion.current = null
     uploadedImage.current = null
     selectImageFile(null)
     setSaveNotice('')
     setEditingId(recipe.id)
+    recipeVersion.current = recipe.updatedAt ?? null
     setForm(recipeToForm(recipe))
     setIsFormOpen(true)
   }
+
+  useEffect(() => {
+    const editId = new URLSearchParams(location.search).get('edit')
+    if (!editId || loading || editingId === editId) return
+    const recipe = recipes.find((item) => item.id === editId)
+    if (recipe) handleEdit(recipe)
+  }, [location.search, loading, recipes, editingId])
 
   const handleImageUpload = (event) => {
     const file = event.target.files?.[0]
@@ -668,11 +690,6 @@ export function RecipesPage() {
     selectImageFile(null)
     uploadedImage.current = null
     setForm(current => ({ ...current, imageUrl: '' }))
-  }
-
-  const openCreateForm = () => {
-    resetForm()
-    setIsFormOpen(true)
   }
 
   const handleDelete = async (id) => {
@@ -733,13 +750,20 @@ export function RecipesPage() {
     return matchesSearch && matchesCategory && matchesStatus && matchesTime && matchesDifficulty && matchesDiet && matchesIngredient
   })
   const canManageRecipe = (recipe) => currentUser?.role === 'Admin' || currentUser?.id === recipe.authorId
+  const recipeStats = {
+    total: recipes.length,
+    hidden: recipes.filter(recipe => recipe.status === 0).length,
+    pending: recipes.filter(recipe => recipe.reviewStatus === 'PendingReview').length,
+    published: recipes.filter(recipe => recipe.status === 1).length,
+  }
 
   return (
     <><div className="content-shell recipes-page">
       <div className="page-header">
         <div>
-          <p className="eyebrow">{t('Culinary Blog')}</p>
-          <h1>{t(currentUser?.role === 'Admin' ? 'Quản lý Công thức' : 'Khám phá Công thức')}</h1>
+          <p className="eyebrow">KHÔNG GIAN CỦA BẠN</p>
+          <h1>{t(currentUser?.role === 'Admin' ? 'Công thức của quản trị viên' : 'Công thức của tôi')}</h1>
+          <p>Theo dõi món đã lưu, trạng thái kiểm duyệt và thời điểm cập nhật tại một nơi.</p>
         </div>
         {token ? (
           <button type="button" className="logout-btn" onClick={handleLogout}>{t('Đăng xuất')}</button>
@@ -750,9 +774,15 @@ export function RecipesPage() {
 
       <div className="recipe-layout">
         <div className="table-panel">
+          <div className="my-recipe-stats">
+            <article><span>Tất cả</span><strong>{recipeStats.total}</strong></article>
+            <article><span>Đang ẩn</span><strong>{recipeStats.hidden}</strong></article>
+            <article><span>Chờ duyệt</span><strong>{recipeStats.pending}</strong></article>
+            <article><span>Đã công khai</span><strong>{recipeStats.published}</strong></article>
+          </div>
           <div className="recipes-toolbar">
-            <div className="summary-chip">{filteredRecipes.length} {t('món ăn')}</div>
-            {token && <button type="button" className="secondary-btn compact-btn" onClick={openCreateForm}>+ {t('Thêm mới')}</button>}
+            <div><strong>{filteredRecipes.length} công thức</strong><small>Chỉ hiển thị nội dung thuộc tài khoản của bạn</small></div>
+            {token && <button type="button" className="primary-btn compact-btn" onClick={() => navigate('/dashboard/recipes/new')}>+ Tạo công thức mới</button>}
           </div>
 
           <div className="filter-row">
@@ -762,27 +792,27 @@ export function RecipesPage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <select aria-label="Lọc theo danh mục" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
               <option value="all">{t('Tất cả danh mục')}</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{t(category.name)}</option>
               ))}
             </select>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <select aria-label="Lọc theo trạng thái" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
               <option value="all">{t('Tất cả trạng thái')}</option>
               <option value="1">{t('Published')}</option>
               <option value="0">{t('Draft')}</option>
               <option value="2">{t('Archived')}</option>
             </select>
             <input type="number" min="1" placeholder={t('Tối đa (phút)')} value={maxMinutesFilter} onChange={event => setMaxMinutesFilter(event.target.value)} />
-            <select value={difficultyFilter} onChange={event => setDifficultyFilter(event.target.value)}>
+            <select aria-label="Lọc theo độ khó" value={difficultyFilter} onChange={event => setDifficultyFilter(event.target.value)}>
               <option value="all">{t('Mọi độ khó')}</option>
               <option value="Easy">{t('Easy')}</option>
               <option value="Medium">{t('Medium')}</option>
               <option value="Hard">{t('Hard')}</option>
               <option value="Expert">{t('Expert')}</option>
             </select>
-            <select value={vegetarianFilter} onChange={event => setVegetarianFilter(event.target.value)}>
+            <select aria-label="Lọc theo chế độ ăn" value={vegetarianFilter} onChange={event => setVegetarianFilter(event.target.value)}>
               <option value="all">{t('Mọi chế độ ăn')}</option>
               <option value="true">{t('Món chay')}</option>
               <option value="false">{t('Có thịt/cá')}</option>
@@ -798,7 +828,7 @@ export function RecipesPage() {
               return <article className="recipe-summary-card" key={recipe.id}>
                 <div className="recipe-card-index" aria-label={`Số thứ tự ${index + 1}`}>{String(index + 1).padStart(2, '0')}</div>
                 <Link to={`/recipes/${recipe.id}`} className="recipe-card-photo" aria-label={`Xem ${t(recipe.title)}`}>
-                  {recipe.imageUrl ? <img src={recipe.imageUrl} alt={t(recipe.title)} loading="lazy" /> : <span className="recipe-no-photo">Chưa có ảnh</span>}
+                  {recipe.imageUrl ? <Image src={recipe.imageUrl} alt={t(recipe.title)} width={720} height={480} sizes="(max-width: 720px) 100vw, 33vw" unoptimized={bypassLocalImageOptimizer(recipe.imageUrl)} /> : <span className="recipe-no-photo">Chưa có ảnh</span>}
                   {recipe.cookingTimeMinutes && <span>◷ {recipe.cookingTimeMinutes} phút</span>}
                 </Link>
                 <div className="recipe-card-content">
@@ -814,18 +844,27 @@ export function RecipesPage() {
                     <span>◷ {recipe.cookingTimeMinutes ? `${recipe.cookingTimeMinutes} phút` : 'Chưa cập nhật thời gian'}</span>
                     <span>{t(recipe.difficulty || 'Trung bình')}</span>
                     {recipe.isVegetarian && <span>Món chay</span>}
-                    {canManageRecipe(recipe) && <span className={`recipe-status-${recipe.status === 1 ? 'published' : recipe.status === 2 ? 'archived' : 'draft'}`}>{recipe.status === 1 ? 'Published' : recipe.status === 2 ? 'Archived' : 'Draft'}</span>}
+                    {canManageRecipe(recipe) && <span className={`recipe-status-${recipe.status === 1 ? 'published' : recipe.status === 2 ? 'archived' : 'draft'}`}>{recipeVisibilityLabel(recipe)}</span>}
+                    {canManageRecipe(recipe) && <span className={`recipe-review-status review-${String(recipe.reviewStatus || 'Draft').toLowerCase()}`}>{recipeReviewLabel(recipe)}</span>}
                   </div>
+                  <div className="recipe-timeline">
+                    <span><b>Đã thêm</b>{formatRecipeDate(recipe.createdAt)}</span>
+                    <span><b>Gửi duyệt</b>{formatRecipeDate(recipe.reviewRequestedAt)}</span>
+                    <span><b>Duyệt lúc</b>{formatRecipeDate(recipe.reviewedAt)}</span>
+                    <span><b>Cập nhật</b>{formatRecipeDate(recipe.updatedAt)}</span>
+                  </div>
+                  {recipe.reviewNote && <p className="recipe-review-note"><strong>Phản hồi của quản trị viên:</strong> {recipe.reviewNote}</p>}
                   <div className="recipe-card-details">
                     <div><h3>Nguyên liệu</h3><p>{ingredients.slice(0, 4).map(t).join(' · ')}{ingredients.length > 4 ? ` · +${ingredients.length - 4} nguyên liệu` : ''}</p></div>
                     <div><h3>Các bước làm</h3><p>{instructions.slice(0, 2).map(t).join(' · ')}{instructions.length > 2 ? ` · +${instructions.length - 2} bước` : ''}</p></div>
                   </div>
                   <div className="recipe-card-actions">
                     <Link to={`/recipes/${recipe.id}`}>Xem công thức <span aria-hidden="true">→</span></Link>
-                    {canManageRecipe(recipe) && recipe.status === 0 && <button type="button" onClick={() => handleTransition(recipe.id, 'publish')}>Publish</button>}
-                    {canManageRecipe(recipe) && recipe.status === 1 && <button type="button" onClick={() => handleTransition(recipe.id, 'unpublish')}>Unpublish</button>}
-                    {canManageRecipe(recipe) && recipe.status !== 2 && <button type="button" onClick={() => handleTransition(recipe.id, 'archive')}>Archive</button>}
-                    {canManageRecipe(recipe) && recipe.status === 2 && <button type="button" onClick={() => handleTransition(recipe.id, 'restore')}>Restore</button>}
+                    {canManageRecipe(recipe) && currentUser?.role !== 'Admin' && recipe.status === 0 && recipe.reviewStatus !== 'PendingReview' && <button type="button" className="recipe-submit-review" onClick={() => handleTransition(recipe.id, 'submit-review')}>Gửi quản trị viên duyệt</button>}
+                    {canManageRecipe(recipe) && currentUser?.role === 'Admin' && recipe.status === 0 && <button type="button" onClick={() => handleTransition(recipe.id, 'publish')}>Công khai</button>}
+                    {canManageRecipe(recipe) && recipe.status === 1 && <button type="button" onClick={() => handleTransition(recipe.id, 'unpublish')}>Ẩn công thức</button>}
+                    {canManageRecipe(recipe) && recipe.status !== 2 && <button type="button" onClick={() => handleTransition(recipe.id, 'archive')}>Lưu trữ</button>}
+                    {canManageRecipe(recipe) && recipe.status === 2 && <button type="button" onClick={() => handleTransition(recipe.id, 'restore')}>Khôi phục</button>}
                     {canManageRecipe(recipe) && <button type="button" onClick={() => handleDelete(recipe.id)} aria-label={`Xóa ${t(recipe.title)}`}>Xóa</button>}
                   </div>
                 </div>

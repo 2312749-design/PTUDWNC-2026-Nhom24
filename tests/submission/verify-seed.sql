@@ -12,7 +12,7 @@ DECLARE
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM "__EFMigrationsHistory"
-        WHERE "MigrationId" = '20261030100000_EnsureRecipeReviewPhotoUrl'
+        WHERE "MigrationId" = '20261109090000_AddRecipeImageMetadataFields'
     ) THEN
         RAISE EXCEPTION 'The latest submission migration has not been applied.';
     END IF;
@@ -28,15 +28,15 @@ BEGIN
     FROM "Recipes" AS recipe
     WHERE NOT recipe."IsDeleted"
       AND (
-        cardinality(recipe."Ingredients") < 10
-        OR cardinality(recipe."Instructions") < 5
+        COALESCE(cardinality(recipe."Ingredients"), 0) < 10
+        OR COALESCE(cardinality(recipe."Instructions"), 0) < 5
         OR (SELECT COUNT(*) FROM "RecipeIngredients" AS ingredient
             WHERE ingredient."RecipeId" = recipe."Id" AND BTRIM(ingredient."Name") <> '') < 10
         OR (SELECT COUNT(*) FROM "RecipeSteps" AS step
             WHERE step."RecipeId" = recipe."Id" AND BTRIM(step."Description") <> '') < 5
       );
     IF incomplete_count > 0 THEN
-        RAISE EXCEPTION '% recipes do not have at least 10 ingredients and 5 steps in both stored representations.',
+        RAISE EXCEPTION '% recipes do not meet Lab 2: at least 10 ingredients and 5 steps in both stored representations.',
             incomplete_count;
     END IF;
 

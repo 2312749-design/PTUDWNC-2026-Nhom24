@@ -4,6 +4,7 @@ public interface IRepository<T> where T : class
 {
     Task<T?> GetByIdAsync(object id, CancellationToken cancellationToken = default);
     Task<IEnumerable<T>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<T>> ListAsync(System.Linq.Expressions.Expression<Func<T, bool>> predicate, CancellationToken cancellationToken = default);
     /// <summary>
     /// Checks for a matching entity without exposing an EF <c>DbSet</c> to the
     /// application layer.

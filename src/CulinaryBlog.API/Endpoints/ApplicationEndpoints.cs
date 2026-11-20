@@ -5,7 +5,6 @@ public static class ApplicationEndpoints
     public static IServiceCollection AddApplicationHandlers(this IServiceCollection services)
     {
         services.AddScoped<AccountHandlers>();
-        services.AddScoped<AccountHandlers>();
         services.AddScoped<ArticlesHandlers>();
         services.AddScoped<AuthHandlers>();
         services.AddScoped<CategoriesHandlers>();
@@ -37,6 +36,5 @@ public static class ApplicationEndpoints
         app.MapRecipes();
         app.MapRecipeSteps();
         app.MapSearch();
-        app.MapTest();
     }
 }

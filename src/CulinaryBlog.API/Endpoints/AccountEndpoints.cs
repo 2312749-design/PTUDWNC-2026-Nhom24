@@ -24,8 +24,6 @@ public static class AccountEndpoints
             .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization();
         app.MapPost("/api/v1/account/2fa/disable", (AccountHandlers handler, HttpContext context, AccountHandlers.TwoFactorDisableRequest request) => { handler.HttpContext = context; return handler.DisableTwoFactor(request); })
             .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization();
-        app.MapPost("/api/v1/account/2fa/recovery-codes", (AccountHandlers handler, HttpContext context, AccountHandlers.TwoFactorDisableRequest request) => { handler.HttpContext = context; return handler.RegenerateRecoveryCodes(request); })
-            .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization();
         app.MapDelete("/api/v1/account/sessions/{id:guid}", (AccountHandlers handler, HttpContext context, Guid id) => { handler.HttpContext = context; return handler.RevokeSession(id); })
             .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization();
         app.MapPost("/api/v1/account/sessions/revoke-others", (AccountHandlers handler, HttpContext context) => { handler.HttpContext = context; return handler.RevokeOtherSessions(); })
@@ -33,6 +31,8 @@ public static class AccountEndpoints
         app.MapPost("/api/v1/account/email-change/request", (AccountHandlers handler, HttpContext context, AccountHandlers.EmailChangeStartRequest request) => { handler.HttpContext = context; return handler.RequestEmailChange(request); })
             .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization().RequireRateLimiting("auth");
         app.MapPost("/api/v1/account/email-change/confirm", (AccountHandlers handler, HttpContext context, AccountHandlers.EmailChangeConfirmRequest request) => { handler.HttpContext = context; return handler.ConfirmEmailChange(request); })
+            .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization().RequireRateLimiting("auth");
+        app.MapDelete("/api/v1/account", (AccountHandlers handler, HttpContext context, [FromBody] AccountHandlers.DeleteAccountRequest request) => { handler.HttpContext = context; return handler.DeleteAccount(request); })
             .WithTags("Account security").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization().RequireRateLimiting("auth");
     }
 }

@@ -24,6 +24,13 @@ public static class ImageUploadValidationService
         await source.CopyToAsync(buffer, cancellationToken);
         var bytes = buffer.ToArray();
 
+        return Validate(bytes, cancellationToken);
+    }
+
+    public static (ValidatedImage? Image, string? Error) Validate(byte[]? bytes, CancellationToken cancellationToken = default)
+    {
+        if (bytes is null || bytes.Length == 0) return (null, "Vui lòng chọn ảnh để tải lên.");
+        if (bytes.Length > MaxFileSize) return (null, "Ảnh tải lên tối đa 5 MB.");
         try
         {
             cancellationToken.ThrowIfCancellationRequested();

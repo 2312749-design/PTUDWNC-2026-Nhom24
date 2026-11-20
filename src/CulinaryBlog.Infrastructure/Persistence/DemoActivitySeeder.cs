@@ -114,6 +114,9 @@ public static class DemoActivitySeeder
 
     public static async Task SeedAsync(ApplicationDbContext context, ApplicationUser admin)
     {
+        if (await context.Recipes.AnyAsync(recipe => !recipe.IsDeleted && recipe.Slug.StartsWith("real-")))
+            return;
+
         var users = await context.Users.OrderBy(user => user.UserName).Take(20).ToListAsync();
         if (users.Count == 0) return;
 

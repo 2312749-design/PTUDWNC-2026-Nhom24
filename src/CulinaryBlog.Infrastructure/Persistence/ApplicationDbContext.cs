@@ -6,7 +6,7 @@ using NpgsqlTypes;
 
 namespace CulinaryBlog.Infrastructure.Persistence;
 
-public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplicationDbContext // 2. Thêm , IApplicationDbContext vào đây
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 {
     public ApplicationDbContext(DbContextOptions options) : base(options)
     {
@@ -58,9 +58,6 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 CreatedById = recipe.AuthorId,
                 CreatedAt = DateTime.UtcNow
             });
-#if false
-    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
-#endif
         }
     }
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
@@ -392,6 +389,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 
         // Cấu hình bảng Recipe và các mối quan hệ khóa ngoại
         builder.Entity<Recipe>(entity => {
+            entity.Property(recipe => recipe.UpdatedAt).IsConcurrencyToken();
             entity.ToTable("Recipes", table =>
             {
                 table.HasCheckConstraint("CK_Recipes_PrepTimeMinutes", "\"PrepTimeMinutes\" > 0");
@@ -440,7 +438,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.ToTable(name: "RecipeIngredients");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Recipe)
-                  .WithMany()
+                  .WithMany(recipe => recipe.StructuredIngredients)
                   .HasForeignKey(e => e.RecipeId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.Property(e => e.Name).HasMaxLength(200);
@@ -465,7 +463,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             entity.ToTable(name: "RecipeSteps");
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Recipe)
-                  .WithMany()
+                  .WithMany(recipe => recipe.StructuredSteps)
                   .HasForeignKey(e => e.RecipeId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.Property(e => e.Title).HasMaxLength(200);

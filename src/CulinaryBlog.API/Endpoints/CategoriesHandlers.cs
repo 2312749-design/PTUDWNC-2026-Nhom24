@@ -1,11 +1,8 @@
 using CulinaryBlog.Application.CQRS.Categories.Commands;
 using CulinaryBlog.Application.CQRS.Categories.Queries;
 using CulinaryBlog.Application.DTOs;
-using CulinaryBlog.Domain.Entities;
-using CulinaryBlog.Infrastructure.Persistence;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace CulinaryBlog.API.Endpoints;
 
@@ -16,12 +13,10 @@ namespace CulinaryBlog.API.Endpoints;
 public sealed class CategoriesHandlers : EndpointHandler
 {
     private readonly IMediator _mediator;
-    private readonly ApplicationDbContext _context;
 
-    public CategoriesHandlers(IMediator mediator, ApplicationDbContext context)
+    public CategoriesHandlers(IMediator mediator)
     {
         _mediator = mediator;
-        _context = context;
     }
 
     public async Task<ApiResponseResult> GetAllCategories()
@@ -33,63 +28,20 @@ public sealed class CategoriesHandlers : EndpointHandler
     /// Visitors see published recipes only; administrators can review every
     /// non-deleted lifecycle state from the same category screen.
     /// </summary>
+    public async Task<ApiResponseResult> GetCategoryBySlug(string slug)
+    {
+        var result = await _mediator.Send(new GetCategoryDetailQuery(null, slug, User.IsInRole("Admin")), HttpContext.RequestAborted);
+        return result is null ? NotFound(new { message = "Không tìm thấy danh mục." }) : Ok(result);
+    }
+
     public async Task<ApiResponseResult> GetCategoryDetail(Guid id)
     {
-        var category = await _context.Categories.AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Id == id && !item.IsDeleted && (item.IsVisible || User.IsInRole("Admin")));
-        if (category is null) return NotFound(new { message = "Không tìm thấy danh mục." });
-
-        var canReviewAllStates = User.IsInRole("Admin");
-        var recipes = _context.Recipes.AsNoTracking()
-            .Where(item => !item.IsDeleted && item.CategoryId == id);
-        if (!canReviewAllStates)
-            recipes = recipes.Where(item => item.Status == RecipeStatus.Published);
-
-        var items = await recipes.OrderByDescending(item => item.UpdatedAt)
-            .Select(item => new RecipeDto
-            {
-                Id = item.Id,
-                Title = item.Title,
-                Slug = item.Slug,
-                Description = item.Description,
-                ImageUrl = item.ImageUrl,
-                CategoryId = item.CategoryId,
-                CategoryName = category.Name,
-                AuthorId = item.AuthorId,
-                Status = item.Status,
-                CreatedAt = item.CreatedAt,
-                UpdatedAt = item.UpdatedAt,
-                PrepTimeMinutes = item.PrepTimeMinutes,
-                CookTimeMinutes = item.CookTimeMinutes,
-                Servings = item.Servings,
-                CookingTimeMinutes = item.CookingTimeMinutes,
-                Difficulty = item.Difficulty,
-                IsVegetarian = item.IsVegetarian
-            })
-            .ToListAsync();
-
-        return Ok(new
-        {
-            category = new CategoryDto
-            {
-                Id = category.Id,
-                Name = category.Name,
-                Slug = category.Slug,
-                Description = category.Description,
-                ImageUrl = category.ImageUrl,
-                RecipeCount = items.Count,
-                PublishedRecipeCount = items.Count(item => item.Status == RecipeStatus.Published)
-            },
-            recipeCount = items.Count,
-            recipes = items
-        });
+        var result = await _mediator.Send(new GetCategoryDetailQuery(id, null, User.IsInRole("Admin")), HttpContext.RequestAborted);
+        return result is null ? NotFound(new { message = "Không tìm thấy danh mục." }) : Ok(result);
     }
 
     public async Task<ApiResponseResult> CreateCategory([FromBody] CreateCategoryDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Name))
-            return BadRequest(new { message = "Tên danh mục không được để trống!" });
-
         var result = await _mediator.Send(new CreateCategoryCommand
         {
             Name = dto.Name,

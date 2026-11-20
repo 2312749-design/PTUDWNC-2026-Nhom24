@@ -57,14 +57,59 @@ public sealed class DataSeederRecipeContentTests : IAsyncLifetime
             .ToListAsync();
         var normalized = await _context.Recipes.SingleAsync(item => item.Id == recipe.Id);
 
-        Assert.Equal(Recipe.MinimumIngredientCount, ingredients.Count);
-        Assert.Equal(Recipe.MinimumStepCount, steps.Count);
+        Assert.True(ingredients.Count >= Recipe.MinimumIngredientCount);
+        Assert.True(steps.Count >= Recipe.MinimumStepCount);
         Assert.Contains(ingredients, item => item.Name == "300g cá thu");
         Assert.Contains(steps, item => item.Description == "Kho cá cùng cà chua.");
-        Assert.Equal(Recipe.MinimumIngredientCount, normalized.Ingredients.Count);
-        Assert.Equal(Recipe.MinimumStepCount, normalized.Instructions.Count);
-        Assert.Equal(Enumerable.Range(1, Recipe.MinimumIngredientCount), ingredients.Select(item => item.OrderIndex));
-        Assert.Equal(Enumerable.Range(1, Recipe.MinimumStepCount), steps.Select(item => item.StepNumber));
+        Assert.True(normalized.Ingredients.Count >= Recipe.MinimumIngredientCount);
+        Assert.True(normalized.Instructions.Count >= Recipe.MinimumStepCount);
+        Assert.Equal(Enumerable.Range(1, ingredients.Count), ingredients.Select(item => item.OrderIndex));
+        Assert.Equal(Enumerable.Range(1, steps.Count), steps.Select(item => item.StepNumber));
+    }
+
+    [Fact]
+    public async Task CompleteCatalog_MeetsLabTwoMinimums()
+    {
+        await DataSeeder.SeedDataAsync(_context);
+        var admin = await _context.Users.SingleAsync(user => user.UserName == "chefdemo");
+        await RecipeCatalogSeeder.SeedDataAsync(_context, admin);
+        await ExpandedDemoDataSeeder.SeedAsync(_context, admin);
+
+        var firstCounts = (await _context.Categories.CountAsync(), await _context.Recipes.CountAsync(),
+            await _context.RecipeIngredients.CountAsync(), await _context.RecipeSteps.CountAsync());
+        await DataSeeder.SeedDataAsync(_context);
+        await RecipeCatalogSeeder.SeedDataAsync(_context, admin);
+        await ExpandedDemoDataSeeder.SeedAsync(_context, admin);
+        Assert.Equal(firstCounts, (await _context.Categories.CountAsync(), await _context.Recipes.CountAsync(),
+            await _context.RecipeIngredients.CountAsync(), await _context.RecipeSteps.CountAsync()));
+
+        Assert.True(await _context.Categories.CountAsync() >= 20);
+        var recipes = await _context.Recipes.Where(recipe => !recipe.IsDeleted).ToListAsync();
+        Assert.True(recipes.Count >= 100);
+        foreach (var recipe in recipes)
+        {
+            Assert.True(recipe.Ingredients.Count >= 10, recipe.Title);
+            Assert.True(recipe.Instructions.Count >= 5, recipe.Title);
+            Assert.True(await _context.RecipeIngredients.CountAsync(item => item.RecipeId == recipe.Id && item.Name.Trim() != "") >= 10, recipe.Title);
+            Assert.True(await _context.RecipeSteps.CountAsync(item => item.RecipeId == recipe.Id && item.Description.Trim() != "") >= 5, recipe.Title);
+        }
+    }
+
+    [Fact]
+    public async Task CatalogRestart_DoesNotPadUserCreatedSimpleRecipes()
+    {
+        await DataSeeder.SeedDataAsync(_context);
+        var admin = await _context.Users.SingleAsync(user => user.UserName == "chefdemo");
+        var author = ApplicationUser.Create("Real author", "author@example.test", "realauthor");
+        author.Id = "real-author";
+        _context.Users.Add(author);
+        var category = await _context.Categories.FirstAsync();
+        var recipe = Recipe.Create("Simple user recipe", "User-owned content", ["Water"], ["Boil water"], category.Id, author.Id);
+        _context.Recipes.Add(recipe);
+        await _context.SaveChangesAsync();
+        await RecipeCatalogSeeder.SeedDataAsync(_context, admin);
+        Assert.Single(recipe.Ingredients);
+        Assert.Single(recipe.Instructions);
     }
 
     [Fact]

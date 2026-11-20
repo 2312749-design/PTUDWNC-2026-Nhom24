@@ -1,0 +1,39 @@
+services:
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      AuthCookies__Secure: "true"
+      AuthCookies__SameSite: Lax
+      ReverseProxy__TrustForwardedHeaders: "true"
+      DatabaseInitialization__ApplyMigrationsOnStartup: "false"
+      DatabaseInitialization__SeedDemoDataOnStartup: "false"
+    ports: []
+    restart: unless-stopped
+
+  frontend:
+    restart: unless-stopped
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?Set PUBLIC_HOST to the production domain.}
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot:ro
+    restart: unless-stopped
+
+  db:
+    ports: []
+    restart: unless-stopped
+
+  redis:
+    ports: []
+    restart: unless-stopped
+
+volumes:
+  letsencrypt:
+  certbot-webroot:
+

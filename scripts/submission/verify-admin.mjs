@@ -52,7 +52,7 @@ try {
     await page.locator('#login-username').fill(username)
     await page.locator('#login-password').fill(password)
     await page.locator('form').getByRole('button', { name: 'Đăng nhập', exact: true }).click()
-    await page.waitForURL('**/community')
+    await page.waitForURL('**/dashboard')
     const me = await api('/auth/me')
     assert.equal(me.id, fixtureId)
     assert.equal(me.role, 'Admin')

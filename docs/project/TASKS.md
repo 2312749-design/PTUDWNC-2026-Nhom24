@@ -1,5 +1,23 @@
 # Đối chiếu nhiệm vụ và minh chứng
 
+## Cập nhật kỹ thuật 12/11/2026
+
+Phần audit chi tiết bên dưới là hồ sơ lịch sử theo từng Issue. Các kết luận kỹ thuật đã thay đổi được chốt lại tại đây:
+
+- TH-01: đã cài Mapster, bỏ EF Core và `IApplicationDbContext` khỏi Application, thêm architecture test.
+- TH-03: luồng đăng ký hiện thống nhất vai trò mặc định Author theo quyền tạo recipe.
+- TH-06: đã có `RecipeOperationRequirement` và `RecipeAuthorizationHandler`, đăng ký DI và test owner/other/Admin.
+- TH-08: Swagger chỉ bật ở Development hoặc khi `Swagger:Enabled=true`; test route chỉ map ở Development.
+- Frontend: đã có TanStack Query provider, RHF/Zod/useFieldArray, recipe RSC và `next/image` cho ảnh recipe/category chính.
+- Security: đã có ETag/If-Match optimistic concurrency và CSRF double-submit + Origin check.
+- Kết quả mới: backend **78/78**, frontend **19/19**, Playwright **35/35**, lint **0 warning**, npm audit **0 vulnerability**.
+- Docker verification đã chạy đủ DB/Redis/MinIO/API/frontend/Nginx/observability; health live/ready đều 200, upload/publish/search/review/authorization/concurrency/CSRF đã thử runtime.
+- Chưa có bằng chứng dịch vụ ngoài: Google OAuth thật, SMTP thật, production domain/TLS và PR/review.
+
+Tài liệu trả lời vấn đáp: `docs/submission/ORAL-DEFENSE-GUIDE.md`. Phiếu từng thành viên: `docs/submission/MEMBER-DEFENSE-REPORTS.md`.
+
+---
+
 Ngày bổ sung hồ sơ: 28/10/2026. Phân công được giữ theo README; tài khoản người phụ trách đã được đối chiếu và Oven được chủ repository xác nhận. Đây là hồ sơ kiểm tra mã nguồn đã có, không thay đổi tác giả/ngày của commit.
 
 Tất cả Issue ban đầu được mở để thành viên xác nhận nghiệm thu. `Có implementation` không có nghĩa đã được review hoặc đã thử đầy đủ trên hạ tầng thật. Không đóng Issue chỉ để tăng số công việc hoàn thành.

@@ -9,11 +9,11 @@ public static class AuthEndpoints
     public static void MapAuth(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/register", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.RegisterDto model) => { handler.HttpContext = context; return handler.Register(model); })
-            .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().RequireRateLimiting("registration");
+            .WithTags("Auth").RequireRateLimiting("registration");
         app.MapPost("/api/v1/auth/signup", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.RegisterDto model) => { handler.HttpContext = context; return handler.Register(model); })
-            .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().RequireRateLimiting("registration");
+            .WithTags("Auth").RequireRateLimiting("registration");
         app.MapPost("/api/v1/auth/login", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.LoginDto model) => { handler.HttpContext = context; return handler.Login(model); })
-            .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().RequireRateLimiting("auth");
+            .WithTags("Auth").RequireRateLimiting("auth");
         app.MapPost("/api/v1/auth/forgot-password", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.ForgotPasswordDto model) => { handler.HttpContext = context; return handler.ForgotPassword(model); })
             .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().RequireRateLimiting("auth");
         app.MapPost("/api/v1/auth/reset-password", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.ResetPasswordDto model) => { handler.HttpContext = context; return handler.ResetPassword(model); })
@@ -23,7 +23,7 @@ public static class AuthEndpoints
         app.MapPatch("/api/v1/auth/me", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.MeUpdateDto model) => { handler.HttpContext = context; return handler.UpdateCurrentUser(model); })
             .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().RequireAuthorization();
         app.MapPost("/api/v1/auth/refresh", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.RefreshTokenDto? model) => { handler.HttpContext = context; return handler.Refresh(model); })
-            .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().RequireRateLimiting("auth");
+            .WithTags("Auth").RequireRateLimiting("auth");
         app.MapPost("/api/v1/auth/logout", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.RefreshTokenDto? model) => { handler.HttpContext = context; return handler.Logout(model); })
             .WithTags("Auth").AddEndpointFilter<RequestValidationFilter>().AllowAnonymous();
         app.MapPost("/api/v1/auth/google", (AuthHandlers handler, HttpContext context, [FromBody] AuthHandlers.GoogleLoginDto model) => { handler.HttpContext = context; return handler.GoogleLogin(model); })

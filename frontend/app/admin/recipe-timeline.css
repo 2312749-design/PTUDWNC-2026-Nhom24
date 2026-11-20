@@ -1,0 +1,33 @@
+.admin-review-timeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: -4px 0 22px;
+}
+
+.admin-review-timeline article {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid #e2ebe3;
+  border-radius: 11px;
+  background: #f8fbf7;
+}
+
+.admin-review-timeline strong {
+  overflow: hidden;
+  color: #285b3f;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-review-timeline span { color: #6b7a70; font-size: 10px; }
+
+@media (max-width: 900px) {
+  .admin-review-timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .admin-review-timeline { grid-template-columns: 1fr; }
+}

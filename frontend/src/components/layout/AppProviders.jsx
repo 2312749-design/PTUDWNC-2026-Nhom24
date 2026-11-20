@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastContainer } from 'react-toastify'
 import { LocaleProvider } from '../../LocaleContext'
 import { useAuthStore } from '../../store/auth-store'
-import { MusicPlayerProvider } from './music-player-context'
-import CosmicExperienceProvider from '../cosmic/CosmicExperienceProvider'
 import ToastDeadlineManager from '../common/ToastDeadlineManager'
 
 function AuthStoreHydrator() {
@@ -47,5 +46,10 @@ function AuthStoreHydrator() {
 }
 
 export default function AppProviders({ children }) {
-  return <LocaleProvider><MusicPlayerProvider><CosmicExperienceProvider><AuthStoreHydrator /><ToastDeadlineManager />{children}<ToastContainer position="top-right" theme="dark" autoClose={5000} limit={3} closeButton closeOnClick pauseOnHover={false} pauseOnFocusLoss={false} draggable={false} /></CosmicExperienceProvider></MusicPlayerProvider></LocaleProvider>
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },
+  }))
+
+  const content = <><AuthStoreHydrator /><ToastDeadlineManager />{children}<ToastContainer position="top-right" theme="dark" autoClose={5000} limit={3} closeButton closeOnClick pauseOnHover={false} pauseOnFocusLoss={false} draggable={false} /></>
+  return <QueryClientProvider client={queryClient}><LocaleProvider>{content}</LocaleProvider></QueryClientProvider>
 }

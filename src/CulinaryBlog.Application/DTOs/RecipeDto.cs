@@ -21,6 +21,10 @@ public class RecipeDto
     public string CategoryName { get; set; } = string.Empty;
     public string AuthorId { get; set; } = string.Empty;
     public RecipeStatus Status { get; set; }
+    public string ReviewStatus { get; set; } = "Draft";
+    public string? ReviewNote { get; set; }
+    public DateTime? ReviewRequestedAt { get; set; }
+    public DateTime? ReviewedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public int PrepTimeMinutes { get; set; }

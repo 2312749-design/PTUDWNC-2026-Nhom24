@@ -6,6 +6,7 @@ import { useNavigate } from './navigation-hooks.js'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocale } from './locale-context.js'
 import { CommunityNav, NextCommunityNav } from './CommunityPages.jsx'
 import { apiRequest, hasSession } from './api/session.js'
@@ -959,62 +960,72 @@ export function CookModePage() {
 }
 
 export function RecipeEngagement({ recipe }) {
-  const [saved, setSaved] = useState(false)
-  const [collections, setCollections] = useState([])
+  const [sessionAvailable, setSessionAvailable] = useState(false)
   const [collectionId, setCollectionId] = useState('')
-  const [reviewData, setReviewData] = useState({ averageRating: 0, count: 0, items: [] })
   const [rating, setRating] = useState(5)
   const [review, setReview] = useState('')
   const [isCooked, setIsCooked] = useState(false)
-  const [refresh, setRefresh] = useState(0)
-  const [busy, setBusy] = useState(false)
-
+  const queryClient = useQueryClient()
   useEffect(() => {
-    let active = true
-    request(`/features/recipes/${recipe.id}/reviews`).then(data => { if (active) setReviewData(data) }).catch(error => toast.error(error.message))
-    if (getToken()) {
-      Promise.all([request('/features/bookmarks'), request('/features/collections')]).then(([bookmarks, lists]) => {
-        if (!active) return
-        setSaved(bookmarks.some(item => item.recipe.id === recipe.id))
-        setCollections(lists)
-      }).catch(() => {})
+    const syncSession = () => setSessionAvailable(hasSession())
+    syncSession()
+    window.addEventListener('auth-session-refreshed', syncSession)
+    window.addEventListener('auth-session-cleared', syncSession)
+    return () => {
+      window.removeEventListener('auth-session-refreshed', syncSession)
+      window.removeEventListener('auth-session-cleared', syncSession)
     }
-    return () => { active = false }
-  }, [recipe.id, refresh])
+  }, [])
+  const reviewsQuery = useQuery({
+    queryKey: ['recipe-reviews', recipe.id],
+    queryFn: () => request(`/features/recipes/${recipe.id}/reviews`),
+  })
+  const libraryQuery = useQuery({
+    queryKey: ['recipe-library', recipe.id],
+    enabled: sessionAvailable,
+    queryFn: async () => {
+      const [bookmarks, collections] = await Promise.all([request('/features/bookmarks'), request('/features/collections')])
+      return { saved: bookmarks.some(item => item.recipe.id === recipe.id), collections }
+    },
+  })
+  const reviewData = reviewsQuery.data || { averageRating: 0, count: 0, items: [] }
+  const saved = libraryQuery.data?.saved || false
+  const collections = libraryQuery.data?.collections || []
+  const reviewMutation = useMutation({
+    mutationFn: payload => request(`/features/recipes/${recipe.id}/reviews`, { method: 'POST', body: JSON.stringify(payload) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recipe-reviews', recipe.id] }),
+  })
 
   const toggleSave = async () => {
     if (!getToken()) return toast.info('Đăng nhập để lưu công thức.')
     try {
       if (saved) await request(`/features/recipes/${recipe.id}/bookmark`, { method: 'DELETE' })
       else await request(`/features/recipes/${recipe.id}/bookmark`, { method: 'POST' })
-      setSaved(!saved)
+      await queryClient.invalidateQueries({ queryKey: ['recipe-library', recipe.id] })
       toast.success(saved ? 'Đã bỏ lưu công thức.' : 'Đã lưu công thức.')
     } catch (error) { toast.error(error.message) }
   }
 
   const addToCollection = async () => {
     if (!collectionId) return toast.info('Chọn bộ sưu tập trước.')
-    try { await request(`/features/collections/${collectionId}/recipes/${recipe.id}`, { method: 'POST' }); setSaved(true); toast.success('Đã thêm vào bộ sưu tập.') }
+    try { await request(`/features/collections/${collectionId}/recipes/${recipe.id}`, { method: 'POST' }); await queryClient.invalidateQueries({ queryKey: ['recipe-library', recipe.id] }); toast.success('Đã thêm vào bộ sưu tập.') }
     catch (error) { toast.error(error.message) }
   }
 
   const submitReview = async event => {
     event.preventDefault()
     if (!getToken()) return toast.info('Đăng nhập để đánh giá món đã nấu.')
-    setBusy(true)
     try {
-      await request(`/features/recipes/${recipe.id}/reviews`, { method: 'POST', body: JSON.stringify({ rating: Number(rating), content: review, isCooked }) })
+      await reviewMutation.mutateAsync({ rating: Number(rating), content: review, isCooked })
       setReview('')
-      setRefresh(value => value + 1)
       toast.success('Cảm ơn bạn đã chia sẻ trải nghiệm.')
     } catch (error) { toast.error(error.message) }
-    finally { setBusy(false) }
   }
 
   return <section className="feature-section recipe-engagement">
     <div className="engagement-top"><div><p className="community-kicker">CỘNG ĐỒNG ĐÃ NẤU</p><h2>{reviewData.averageRating ? `${Number(reviewData.averageRating).toFixed(1)} / 5` : 'Chưa có đánh giá'} <span>★</span></h2><small>{reviewData.count} đánh giá</small></div><button type="button" className={saved ? 'feature-button selected' : 'feature-button'} onClick={toggleSave}>{saved ? '♥ Đã lưu' : '♡ Lưu công thức'}</button></div>
-    {getToken() && collections.length > 0 && <div className="collection-quick-add"><select value={collectionId} onChange={event => setCollectionId(event.target.value)}><option value="">Thêm vào bộ sưu tập...</option>{collections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="feature-button" onClick={addToCollection}>Thêm</button></div>}
-    {getToken() && <form className="review-form" onSubmit={submitReview}><h3>Món này thế nào?</h3><div className="review-fields"><label>Đánh giá<select value={rating} onChange={event => setRating(event.target.value)}><option value={5}>5 sao</option><option value={4}>4 sao</option><option value={3}>3 sao</option><option value={2}>2 sao</option><option value={1}>1 sao</option></select></label><label className="cooked-check"><input type="checkbox" checked={isCooked} onChange={event => setIsCooked(event.target.checked)} /> Tôi đã nấu món này</label></div><textarea value={review} onChange={event => setReview(event.target.value)} placeholder="Chia sẻ mẹo hoặc điều bạn đã thay đổi..." maxLength={1200} /><button className="feature-button primary" disabled={busy}>{busy ? 'Đang gửi...' : 'Gửi đánh giá'}</button></form>}
+    {sessionAvailable && collections.length > 0 && <div className="collection-quick-add"><select value={collectionId} onChange={event => setCollectionId(event.target.value)}><option value="">Thêm vào bộ sưu tập...</option>{collections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button type="button" className="feature-button" onClick={addToCollection}>Thêm</button></div>}
+    {sessionAvailable && <form className="review-form" onSubmit={submitReview}><h3>Món này thế nào?</h3><div className="review-fields"><label>Đánh giá<select value={rating} onChange={event => setRating(event.target.value)}><option value={5}>5 sao</option><option value={4}>4 sao</option><option value={3}>3 sao</option><option value={2}>2 sao</option><option value={1}>1 sao</option></select></label><label className="cooked-check"><input type="checkbox" checked={isCooked} onChange={event => setIsCooked(event.target.checked)} /> Tôi đã nấu món này</label></div><textarea value={review} onChange={event => setReview(event.target.value)} placeholder="Chia sẻ mẹo hoặc điều bạn đã thay đổi..." maxLength={1200} /><button className="feature-button primary" disabled={reviewMutation.isPending}>{reviewMutation.isPending ? 'Đang gửi...' : 'Gửi đánh giá'}</button></form>}
     <div className="review-list">{reviewData.items.map(item => <article className="review-item" key={item.id}><div><strong>{item.fullName || item.username}</strong><span>{'★'.repeat(item.rating)}{'☆'.repeat(5-item.rating)}</span><small>{new Date(item.createdAt).toLocaleDateString('vi-VN')}{item.isCooked ? ' · Đã nấu' : ''}</small></div>{item.content && <p>{item.content}</p>}</article>)}</div>
   </section>
 }
@@ -1180,17 +1191,25 @@ export function NextCreatorDashboardPage() {
 
 export function NotificationsPage() {
   const navigate = useNavigate()
-  const [data, setData] = useState({ unreadCount: 0, items: [] })
-  const [loading, setLoading] = useState(true)
-  const [refresh, setRefresh] = useState(0)
+  const queryClient = useQueryClient()
   useEffect(() => {
-    if (!getToken()) { navigate('/login'); return }
-    request('/features/notifications').then(setData).catch(error => toast.error(error.message)).finally(() => setLoading(false))
-  }, [navigate, refresh])
-  const markRead = async id => { try { await request(`/features/notifications/${id}/read`, { method: 'PUT' }); setRefresh(value => value + 1) } catch (error) { toast.error(error.message) } }
-  const markAllRead = async () => { try { await request('/features/notifications/read-all', { method: 'PUT' }); setRefresh(value => value + 1) } catch (error) { toast.error(error.message) } }
+    if (!getToken()) navigate('/login')
+  }, [navigate])
+  const notificationsQuery = useQuery({
+    queryKey: ['notifications'],
+    enabled: getToken(),
+    queryFn: () => request('/features/notifications'),
+  })
+  const data = notificationsQuery.data || { unreadCount: 0, items: [] }
+  const readMutation = useMutation({
+    mutationFn: id => request(id ? `/features/notifications/${id}/read` : '/features/notifications/read-all', { method: 'PUT' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    onError: error => toast.error(error.message),
+  })
+  const markRead = id => readMutation.mutate(id)
+  const markAllRead = () => readMutation.mutate(null)
   return <FeatureShell eyebrow="CẬP NHẬT CỦA BẠN" title="Thông báo" intro="Lượt theo dõi, yêu thích và cuộc trò chuyện mới nhất.">
-    <div className="feature-section"><div className="feature-section-heading"><h2>{data.unreadCount ? `${data.unreadCount} chưa đọc` : 'Đã cập nhật'}</h2>{data.unreadCount > 0 && <button type="button" className="text-command" onClick={markAllRead}>Đánh dấu đã đọc tất cả</button>}</div>{loading ? <p className="feature-empty">Đang tải thông báo...</p> : data.items.length ? <div className="notification-list">{data.items.map(item => <article className={item.readAt ? 'notification-item' : 'notification-item unread'} key={item.id}><Link to={item.targetUrl || '/community'} onClick={() => !item.readAt && markRead(item.id)}><span className="notification-avatar">{item.actor.fullName?.slice(0,1) || item.actor.username?.slice(0,1) || 'B'}</span><span><strong>{item.actor.fullName || item.actor.username}</strong> {item.message}<small>{new Date(item.createdAt).toLocaleString('vi-VN')}</small></span></Link>{!item.readAt && <button type="button" onClick={() => markRead(item.id)}>Đánh dấu đã đọc</button>}</article>)}</div> : <p className="feature-empty">Chưa có thông báo mới.</p>}</div>
+    <div className="feature-section"><div className="feature-section-heading"><h2>{data.unreadCount ? `${data.unreadCount} chưa đọc` : 'Đã cập nhật'}</h2>{data.unreadCount > 0 && <button type="button" className="text-command" onClick={markAllRead} disabled={readMutation.isPending}>Đánh dấu đã đọc tất cả</button>}</div>{notificationsQuery.isPending ? <p className="feature-empty">Đang tải thông báo...</p> : data.items.length ? <div className="notification-list">{data.items.map(item => <article className={item.readAt ? 'notification-item' : 'notification-item unread'} key={item.id}><Link to={item.targetUrl || '/community'} onClick={() => !item.readAt && markRead(item.id)}><span className="notification-avatar">{item.actor.fullName?.slice(0,1) || item.actor.username?.slice(0,1) || 'B'}</span><span><strong>{item.actor.fullName || item.actor.username}</strong> {item.message}<small>{new Date(item.createdAt).toLocaleString('vi-VN')}</small></span></Link>{!item.readAt && <button type="button" onClick={() => markRead(item.id)} disabled={readMutation.isPending}>Đánh dấu đã đọc</button>}</article>)}</div> : <p className="feature-empty">Chưa có thông báo mới.</p>}</div>
   </FeatureShell>
 }
 
