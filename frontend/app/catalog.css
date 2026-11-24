@@ -2,6 +2,8 @@
 .catalog-filters label{display:grid;gap:8px;flex:1 1 160px;font-weight:600}
 .catalog-filters input,.catalog-filters select,.catalog-filters button{min-height:44px;padding:10px;border:1px solid #708773;border-radius:6px;background:#fff;color:#203b2c;font:inherit}
 .catalog-filters button{background:#245c3e;color:#fff;cursor:pointer}
+.catalog-browse-bar{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:24px 0;padding:18px 20px;border:1px solid #dce8dc;border-radius:12px;background:#f3f7f1}
+.catalog-browse-bar div{display:grid;gap:5px}.catalog-browse-bar span{color:#607266}.catalog-browse-bar a{flex:none;padding:11px 16px;border-radius:8px;background:#245c3e;color:#fff;font-weight:700;text-decoration:none}
 .catalog-recipe-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
 .catalog-recipe-grid .home-recipe-image{height:145px}
 .catalog-recipe-grid .home-recipe-content{padding:14px}
@@ -19,5 +21,5 @@
 .home-recipe-content h2 a{color:#203b2c;text-decoration:none}
 @media(max-width:1200px){.catalog-recipe-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:980px){.catalog-recipe-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:720px){.catalog-recipe-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.catalog-pagination{grid-template-columns:1fr 1fr}.catalog-pagination .pagination-pages{grid-column:1/-1;grid-row:1}.catalog-pagination .pagination-direction:last-child{justify-self:end}}
+@media(max-width:720px){.catalog-recipe-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.catalog-browse-bar{align-items:stretch;flex-direction:column}.catalog-browse-bar a{text-align:center}.catalog-pagination{grid-template-columns:1fr 1fr}.catalog-pagination .pagination-pages{grid-column:1/-1;grid-row:1}.catalog-pagination .pagination-direction:last-child{justify-self:end}}
 @media(max-width:480px){.catalog-recipe-grid{grid-template-columns:1fr}.catalog-pagination{padding:12px;gap:12px}.catalog-pagination a,.catalog-pagination .pagination-pages a{min-width:36px;height:38px}.catalog-pagination .pagination-pages{gap:6px}}

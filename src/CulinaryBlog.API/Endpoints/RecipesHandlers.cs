@@ -253,6 +253,8 @@ namespace CulinaryBlog.API.Endpoints
             await file.CopyToAsync(buffer);
             var metadata = await _mediator.Send(new UploadRecipeImageCommand(
                 id, CurrentUserId(), User.IsInRole("Admin"), buffer.ToArray(), altText, primary));
+            AddActivity(CurrentUserId(), "recipe.image.uploaded", $"Tải ảnh mới cho công thức {id}.");
+            await _context.SaveChangesAsync();
             return Created($"/api/v1/recipes/{id}/images/{metadata.Id}", new
             {
                 id = metadata.Id,
@@ -274,12 +276,16 @@ namespace CulinaryBlog.API.Endpoints
         {
             var selected = await _mediator.Send(new UpdateRecipeImageCommand(
                 id, imageId, CurrentUserId(), User.IsInRole("Admin"), request.AltText, request.IsPrimary, request.OrderIndex));
+            AddActivity(CurrentUserId(), "recipe.image.updated", $"Cập nhật ảnh của công thức {id}.");
+            await _context.SaveChangesAsync();
             return Ok(new { id = selected.Id, selected.IsPrimary, imageUrl = selected.Url, selected.AltText, selected.OrderIndex });
         }
 
         public async Task<ApiResponseResult> DeleteRecipeImage(Guid id, Guid imageId)
         {
             await _mediator.Send(new DeleteRecipeImageCommand(id, imageId, CurrentUserId(), User.IsInRole("Admin")));
+            AddActivity(CurrentUserId(), "recipe.image.deleted", $"Xóa ảnh của công thức {id}.");
+            await _context.SaveChangesAsync();
             return NoContent();
         }
 

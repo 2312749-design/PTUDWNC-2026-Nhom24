@@ -27,6 +27,7 @@ export default function SrsDashboard() {
     return result
   }, {})
   const pendingCount = state.recipes.filter(recipe => recipe.reviewStatus === 'PendingReview').length
+  const hiddenCount = state.recipes.filter(recipe => recipe.status === 0 && recipe.reviewStatus !== 'PendingReview').length
   const recentRecipes = [...state.recipes]
     .sort((left, right) => new Date(right.updatedAt || right.createdAt) - new Date(left.updatedAt || left.createdAt))
     .slice(0, 6)
@@ -38,7 +39,7 @@ export default function SrsDashboard() {
     <header className="dashboard-welcome"><div><p className="eyebrow">GÓC TÁC GIẢ</p><h1>Xin chào, {state.user?.fullName || state.user?.displayName}</h1><p>Quản lý món ăn, theo dõi kiểm duyệt và tiếp tục xây dựng căn bếp của riêng bạn.</p><div className="dashboard-welcome-actions"><Link href="/dashboard/recipes/new">＋ Tạo công thức mới</Link><Link href="/dashboard/recipes">Quản lý công thức</Link></div></div><div className="dashboard-welcome-mark" aria-hidden="true"><span>B</span><small>BẾP NHÀ</small></div></header>
     <section className="creator-metrics" aria-label="Thống kê công thức">
       <article className="metric-card metric-total"><span>Tổng công thức</span><strong>{state.recipes.length}</strong><small>Tất cả món bạn đã tạo</small></article>
-      <article className="metric-card metric-draft"><span>Đang ẩn</span><strong>{counts[0] || 0}</strong><small>Chỉ bạn và quản trị viên thấy</small></article>
+      <article className="metric-card metric-draft"><span>Đang ẩn</span><strong>{hiddenCount}</strong><small>Chỉ bạn và quản trị viên thấy</small></article>
       <article className="metric-card metric-pending"><span>Chờ duyệt</span><strong>{pendingCount}</strong><small>Đang đợi quản trị viên xử lý</small></article>
       <article className="metric-card metric-published"><span>Đã công khai</span><strong>{counts[1] || 0}</strong><small>Đang xuất hiện trên website</small></article>
     </section>

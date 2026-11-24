@@ -27,7 +27,8 @@ public sealed class SearchRecipesQueryHandler(IRecipeSearchService searchService
             request.PageSize);
         var version = await cache.GetAsync<string>(CacheKeys.SearchVersion, cancellationToken) ?? "initial";
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(criteria))));
-        var key = $"recipes:search:{version}:{hash}";
+        // v5 uses the displayed total preparation + cooking time for filtering.
+        var key = $"recipes:search:v5:{version}:{hash}";
         var cached = await cache.GetAsync<RecipeSearchResult>(key, cancellationToken);
         if (cached is not null) return cached;
         var result = await searchService.SearchAsync(criteria, cancellationToken);

@@ -76,6 +76,8 @@ public class AccountHandlers : EndpointHandler
         await using var stream = new MemoryStream(image.Content, writable: false);
         user.AvatarUrl = await _fileStorageService.UploadAsync(stream, fileName, image.ContentType);
         await _context.SaveChangesAsync();
+        await LogAsync(user.Id, "avatar.updated", "Cập nhật ảnh đại diện.");
+        await _context.SaveChangesAsync();
         if (TryGetObjectKey(previousAvatar, out var previousKey))
             await _fileStorageService.DeleteAsync(previousKey);
         return Ok(new { avatarUrl = user.AvatarUrl, message = "Ảnh đại diện đã được cập nhật." });

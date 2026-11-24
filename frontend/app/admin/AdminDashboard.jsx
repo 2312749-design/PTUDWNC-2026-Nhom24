@@ -22,7 +22,6 @@ const TABS = [
   ['reports', 'Báo cáo'],
   ['analytics', 'Thống kê'],
   ['media', 'Kho ảnh'],
-  ['system', 'Hệ thống'],
   ['audit', 'Nhật ký'],
 ]
 
@@ -59,8 +58,9 @@ export default function AdminDashboard() {
   const [categories, setCategories] = useState({ items: [] })
   const [analytics, setAnalytics] = useState(null)
   const [media, setMedia] = useState(null)
-  const [systemStatus, setSystemStatus] = useState(null)
   const [auditLogs, setAuditLogs] = useState({ items: [], totalPages: 1 })
+  const [auditPage, setAuditPage] = useState(1)
+  const [auditFilters, setAuditFilters] = useState({ q: '', source: '', action: '', targetType: '', role: '', from: '', to: '' })
   const [recipeQuery, setRecipeQuery] = useState('')
   const [recipeStatusFilter, setRecipeStatusFilter] = useState('all')
   const [recipeSort, setRecipeSort] = useState('newest')
@@ -94,9 +94,10 @@ export default function AdminDashboard() {
         request('/admin/reviews'),
         request('/admin/categories'),
         request('/admin/analytics?days=30'),
-        request('/admin/audit-logs'),
+        request('/admin/media/summary'),
+        request(`/admin/audit-logs?page=${auditPage}&pageSize=30&${new URLSearchParams(Object.entries(auditFilters).filter(([, value]) => value)).toString()}`),
       ])
-      const [summaryResult, recipeResult, postResult, articleResult, memberResult, reportResult, reviewResult, categoryResult, analyticsResult, auditResult] = requests.map((result) => result.status === 'fulfilled' ? result.value : null)
+      const [summaryResult, recipeResult, postResult, articleResult, memberResult, reportResult, reviewResult, categoryResult, analyticsResult, mediaResult, auditResult] = requests.map((result) => result.status === 'fulfilled' ? result.value : null)
       // The overview is the entry point and must load successfully. Optional
       // panels fall back to an empty state when a supporting endpoint is down.
       if (!summaryResult) {
@@ -113,42 +114,16 @@ export default function AdminDashboard() {
       setReviews(reviewResult || { items: [], totalPages: 1 })
       setCategories(categoryResult || { items: [] })
       setAnalytics(analyticsResult)
+      setMedia(mediaResult)
       setAuditLogs(auditResult || { items: [], totalPages: 1 })
     } catch (loadError) {
       setError(loadError.message)
     } finally {
       setBusy(false)
     }
-  }, [articlePage, postPage, recipePage, recipeQuery, reportPage, resolved, userPage, userFilters])
+  }, [articlePage, auditFilters, auditPage, postPage, recipePage, recipeQuery, reportPage, resolved, userPage, userFilters])
 
   useEffect(() => { load() }, [load])
-
-  useEffect(() => {
-    if (activeTab !== 'media' && activeTab !== 'system') return
-    let active = true
-    const loadOperationalPanel = async () => {
-      setBusy(true)
-      setError('')
-      const controller = new AbortController()
-      const timeout = window.setTimeout(() => controller.abort(), 8000)
-      try {
-        if (activeTab === 'media') {
-          const result = await request('/admin/media/summary', { signal: controller.signal })
-          if (active) setMedia(result)
-        } else {
-          const result = await request('/admin/system-status', { signal: controller.signal })
-          if (active) setSystemStatus(result)
-        }
-      } catch (panelError) {
-        if (active) setError(panelError.message)
-      } finally {
-        window.clearTimeout(timeout)
-        if (active) setBusy(false)
-      }
-    }
-    loadOperationalPanel()
-    return () => { active = false }
-  }, [activeTab])
 
   const executeAction = async (path, options) => {
     setBusy(true)
@@ -277,20 +252,17 @@ export default function AdminDashboard() {
 
   const renderMedia = () => <section className="admin-panel">
     <div className="admin-section-heading"><div><p className="admin-label">LƯU TRỮ ẢNH</p><h2>Kho ảnh và dung lượng</h2><p>Kiểm tra tệp theo khu vực; chỉ tệp không còn liên kết với dữ liệu mới bị dọn.</p></div><ActionButton disabled={busy} destructive onClick={() => act('/admin/media/cleanup', { method: 'POST' }, 'Dọn các tệp ảnh không còn được sử dụng?')}>Dọn ảnh rác</ActionButton></div>
-    {media && <><div className="admin-stats">{media.groups?.map(group => <article key={group.prefix}><strong>{group.fileCount}</strong><span>{group.prefix} · {(group.bytes / 1024 / 1024).toFixed(2)} MB</span></article>)}</div><p className="admin-note">Tổng dung lượng: {(media.totalBytes / 1024 / 1024).toFixed(2)} MB · {media.recipeImageRecords} ảnh công thức có metadata.</p></>}
-  </section>
-
-  const renderSystem = () => <section className="admin-panel">
-    <div className="admin-section-heading"><div><p className="admin-label">VẬN HÀNH</p><h2>Tình trạng hệ thống</h2><p>Thông tin chỉ dành cho quản trị viên, giúp kiểm tra nhanh trước khi demo.</p></div><a className="admin-primary-link" href="http://localhost:5152/hangfire" target="_blank" rel="noreferrer">Mở Hangfire</a></div>
-    {systemStatus && <div className="admin-stats">{Object.entries({ api: 'API', database: 'Cơ sở dữ liệu', cache: 'Redis cache', storage: 'Lưu trữ ảnh' }).map(([key, label]) => <article key={key}><strong className={systemStatus[key]?.status === 'Healthy' ? 'admin-healthy' : ''}>{systemStatus[key]?.status || '—'}</strong><span>{label}</span></article>)}</div>}<p className="admin-note">Tác vụ nền: sitemap mỗi ngày · dọn kho ảnh mỗi tuần.</p>
+    {media ? <><div className="admin-stats">{media.groups?.map(group => <article key={group.prefix}><strong>{group.fileCount}</strong><span>{group.prefix} · {(group.bytes / 1024 / 1024).toFixed(2)} MB</span></article>)}</div><p className="admin-note">Tổng dung lượng: {(media.totalBytes / 1024 / 1024).toFixed(2)} MB · {media.recipeImageRecords} ảnh công thức có metadata.</p></> : <p className="admin-empty">Chưa đọc được thông tin kho ảnh. Hãy kiểm tra dịch vụ MinIO rồi làm mới dữ liệu.</p>}
   </section>
 
   const renderAudit = () => <section className="admin-panel">
-    <div className="admin-section-heading"><div><p className="admin-label">TRUY VẾT QUẢN TRỊ</p><h2>Nhật ký thao tác</h2><p>Mọi thao tác khóa tài khoản, xử lý báo cáo, duyệt nội dung, đổi danh mục và dọn ảnh đều được lưu tại đây.</p></div></div>
-    {auditLogs.items.length === 0 ? <p className="admin-empty">Chưa có thao tác quản trị nào được ghi nhận.</p> : <div className="admin-table"><table><thead><tr><th>Thời gian</th><th>Quản trị viên</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead><tbody>{auditLogs.items.map(log => <tr key={log.id}><td>{new Date(log.createdAt).toLocaleString('vi-VN')}</td><td>{log.actorName || log.actorUsername}</td><td><code>{log.action}</code></td><td>{log.targetType}<br /><small>{log.targetId}</small></td><td>{log.summary}</td></tr>)}</tbody></table></div>}
+    <div className="admin-section-heading"><div><p className="admin-label">TRUY VẾT TOÀN BỘ HOẠT ĐỘNG</p><h2>Nhật ký thành viên và quản trị</h2><p>Ghi nhận người thực hiện, vai trò, hành động, đối tượng và thời điểm đầy đủ đến giây.</p></div></div>
+    <div className="admin-toolbar audit-toolbar"><label>Tìm người hoặc nội dung<input value={auditFilters.q} onChange={event => { setAuditPage(1); setAuditFilters(current => ({ ...current, q: event.target.value })) }} placeholder="Tên, username, mô tả…" /></label><label>Nguồn<select value={auditFilters.source} onChange={event => { setAuditPage(1); setAuditFilters(current => ({ ...current, source: event.target.value })) }}><option value="">Tất cả</option><option value="member">Thành viên</option><option value="admin">Quản trị</option></select></label><label>Nhóm hoạt động<select value={auditFilters.action} onChange={event => { setAuditPage(1); setAuditFilters(current => ({ ...current, action: event.target.value })) }}><option value="">Tất cả</option><option value="recipe">Công thức</option><option value="post">Bài viết</option><option value="comment">Bình luận</option><option value="follow">Theo dõi</option><option value="profile">Hồ sơ</option><option value="avatar">Ảnh đại diện</option><option value="user">Quản lý tài khoản</option><option value="report">Báo cáo</option><option value="category">Danh mục</option><option value="login">Đăng nhập</option></select></label><label>Vai trò<select value={auditFilters.role} onChange={event => { setAuditPage(1); setAuditFilters(current => ({ ...current, role: event.target.value })) }}><option value="">Tất cả</option><option value="Admin">Admin</option><option value="Author">Tác giả</option><option value="User">Thành viên</option></select></label><label>Từ ngày<input type="date" value={auditFilters.from} onChange={event => { setAuditPage(1); setAuditFilters(current => ({ ...current, from: event.target.value })) }} /></label><label>Đến ngày<input type="date" value={auditFilters.to} onChange={event => { setAuditPage(1); setAuditFilters(current => ({ ...current, to: event.target.value })) }} /></label><button type="button" className="admin-action" onClick={() => { setAuditPage(1); setAuditFilters({ q: '', source: '', action: '', targetType: '', role: '', from: '', to: '' }) }}>Xóa bộ lọc</button></div>
+    {auditLogs.items.length === 0 ? <p className="admin-empty">Không có hoạt động phù hợp với bộ lọc.</p> : <div className="admin-table"><table><thead><tr><th>Ngày giờ</th><th>Người thực hiện</th><th>Vai trò</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead><tbody>{auditLogs.items.map(log => <tr key={`${log.source}-${log.id}`}><td>{new Date(log.createdAt).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</td><td><b>{log.actorName || log.actorUsername}</b><br /><small>@{log.actorUsername}</small></td><td><span className="admin-role">{log.actorRole} · {log.source === 'admin' ? 'Quản trị' : 'Thành viên'}</span></td><td><code>{log.action}</code></td><td>{log.targetType}<br /><small>{log.targetId}</small></td><td>{log.summary}</td></tr>)}</tbody></table></div>}
+    <Pagination page={auditPage} totalPages={auditLogs.totalPages || 1} onPageChange={setAuditPage} disabled={busy} />
   </section>
 
-  const panels = { recipes: renderRecipes(), reviews: renderReviews(), categories: renderCategories(), posts: renderPosts(), articles: renderArticles(), users: renderUsers(), reports: renderReports(), analytics: renderAnalytics(), media: renderMedia(), system: renderSystem(), audit: renderAudit() }
+  const panels = { recipes: renderRecipes(), reviews: renderReviews(), categories: renderCategories(), posts: renderPosts(), articles: renderArticles(), users: renderUsers(), reports: renderReports(), analytics: renderAnalytics(), media: renderMedia(), audit: renderAudit() }
 
   const activeLabel = TABS.find(([key]) => key === activeTab)?.[1] || 'Tổng quan'
   return <div className="community-app admin-shell"><aside className="admin-sidebar"><Link href="/" className="admin-brand">Bếp Nhà <small>QUẢN TRỊ</small></Link><nav aria-label="Điều hướng quản trị">{TABS.map(([key, label]) => <button key={key} type="button" onClick={() => setActiveTab(key)} className={activeTab === key ? 'active' : ''}>{label}</button>)}</nav><button type="button" className="admin-sidebar-refresh" disabled={busy} onClick={load}>↻ Làm mới dữ liệu</button></aside><main className="admin-main">

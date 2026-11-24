@@ -136,7 +136,7 @@ public static class AdminEndpoints
         admin.MapGet("/users/{id}", (string id, ApplicationDbContext db) => GetUserDetail(id, db));
         admin.MapPut("/users/{id}/profile", (string id, AdminUserProfileRequest request, HttpContext context, ApplicationDbContext db) => UpdateUserProfile(id, request, context, db));
         admin.MapPut("/users/{id}/password", (string id, AdminPasswordResetRequest request, HttpContext context, ApplicationDbContext db) => ResetUserPassword(id, request, context, db));
-        admin.MapGet("/audit-logs", (ApplicationDbContext db, int page = 1, int pageSize = 30) => GetAuditLogs(db, page, pageSize));
+        admin.MapGet("/audit-logs", (ApplicationDbContext db, int page = 1, int pageSize = 30, string? q = null, string? source = null, string? action = null, string? targetType = null, string? role = null, DateTime? from = null, DateTime? to = null) => GetAuditLogs(db, page, pageSize, q, source, action, targetType, role, from, to));
         admin.MapGet("/review-templates", () => new ApiResponseResult(200, new[]
         {
             new { key = "missing-image", label = "Thiếu ảnh minh họa", note = "Vui lòng bổ sung ít nhất một ảnh món ăn rõ nét trước khi gửi duyệt lại." },
@@ -497,12 +497,33 @@ public static class AdminEndpoints
         return new ApiResponseResult(200, new { moved });
     }
 
-    private static async Task<ApiResponseResult> GetAuditLogs(ApplicationDbContext db, int page, int pageSize)
+    private sealed record UnifiedAuditItem(Guid Id, string Source, string ActorId, string ActorName, string ActorUsername, string ActorRole, string Action, string TargetType, string TargetId, string Summary, DateTime CreatedAt);
+
+    private static async Task<ApiResponseResult> GetAuditLogs(ApplicationDbContext db, int page, int pageSize, string? q, string? source, string? action, string? targetType, string? role, DateTime? from, DateTime? to)
     {
         page = Math.Max(1, page); pageSize = Math.Clamp(pageSize, 1, 100);
-        var query = db.AdminAuditLogs.AsNoTracking();
-        return new ApiResponseResult(200, new { items = await query.OrderByDescending(log => log.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).Select(log => new { log.Id, log.Action, log.TargetType, log.TargetId, log.Summary, log.CreatedAt, actorName = log.Actor.FullName, actorUsername = log.Actor.UserName }).ToListAsync(), page, pageSize, total = await query.CountAsync() });
+        var adminRows = await db.AdminAuditLogs.AsNoTracking().Include(log => log.Actor).ToListAsync();
+        var memberRows = await db.UserActivityLogs.AsNoTracking().Include(log => log.User).ToListAsync();
+        var adminItems = adminRows.Select(log => new UnifiedAuditItem(log.Id, "admin", log.ActorId, log.Actor.FullName, log.Actor.UserName ?? "", log.Actor.Role, log.Action, log.TargetType, log.TargetId, log.Summary, log.CreatedAt));
+        var memberItems = memberRows.Select(log => new UnifiedAuditItem(log.Id, "member", log.UserId, log.User.FullName, log.User.UserName ?? "", log.User.Role, log.ActivityType, ActivityTarget(log.ActivityType), "", log.Description, log.CreatedAt));
+        IEnumerable<UnifiedAuditItem> query = adminItems.Concat(memberItems);
+        if (!string.IsNullOrWhiteSpace(q)) { var token = q.Trim(); query = query.Where(item => item.ActorName.Contains(token, StringComparison.OrdinalIgnoreCase) || item.ActorUsername.Contains(token, StringComparison.OrdinalIgnoreCase) || item.Summary.Contains(token, StringComparison.OrdinalIgnoreCase)); }
+        if (!string.IsNullOrWhiteSpace(source)) query = query.Where(item => item.Source.Equals(source, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(action)) query = query.Where(item => item.Action.StartsWith(action, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(targetType)) query = query.Where(item => item.TargetType.Equals(targetType, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(role)) query = query.Where(item => item.ActorRole.Equals(role, StringComparison.OrdinalIgnoreCase));
+        if (from.HasValue) query = query.Where(item => item.CreatedAt >= from.Value.ToUniversalTime());
+        if (to.HasValue) query = query.Where(item => item.CreatedAt < to.Value.Date.AddDays(1).ToUniversalTime());
+        var ordered = query.OrderByDescending(item => item.CreatedAt).ThenByDescending(item => item.Id).ToList();
+        return new ApiResponseResult(200, new { items = ordered.Skip((page - 1) * pageSize).Take(pageSize), page, pageSize, total = ordered.Count, totalPages = Math.Max(1, (int)Math.Ceiling(ordered.Count / (double)pageSize)) });
     }
+
+    private static string ActivityTarget(string action) => action.Split('.', 2)[0] switch
+    {
+        "recipe" => "recipe", "post" => "post", "comment" => "comment", "follow" => "user",
+        "profile" or "avatar" or "password" or "session" or "sessions" or "two_factor" or "email_change" or "login" => "account",
+        _ => "other"
+    };
 
     private static async Task<ApiResponseResult> GetReviewQueue(ApplicationDbContext db, int page, int pageSize)
     {

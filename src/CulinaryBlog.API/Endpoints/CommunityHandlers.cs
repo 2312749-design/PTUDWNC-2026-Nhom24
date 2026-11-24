@@ -167,6 +167,7 @@ public class CommunityHandlers : EndpointHandler
         if (!IsValidPostMedia(request.MediaUrl, request.MediaType)) return BadRequest(new { message = "Tệp đính kèm không hợp lệ." });
         var post = new CommunityPost { AuthorId = User.FindFirstValue(ClaimTypes.NameIdentifier)!, Content = content, MediaUrl = request.MediaUrl, MediaType = request.MediaType, IsDraft = request.IsDraft ?? false, CommentsEnabled = request.CommentsEnabled ?? true };
         _context.CommunityPosts.Add(post);
+        AddActivity(post.AuthorId, post.IsDraft ? "post.draft.created" : "post.created", post.IsDraft ? "Tạo bản nháp bài viết cộng đồng." : "Đăng bài viết cộng đồng.");
         await _context.SaveChangesAsync();
         return Created("/api/v1/community/feed", new { id = post.Id, content = post.Content, mediaUrl = post.MediaUrl, mediaType = post.MediaType, createdAt = post.CreatedAt });
     }
@@ -187,6 +188,8 @@ public class CommunityHandlers : EndpointHandler
         var mediumUrl = _fileStorageService.GetPublicUrl(mediumFileName);
         _backgroundJobs.Enqueue<ThumbnailGenerationJob>(job =>
             job.GenerateAsync(image.Content, thumbnailFileName, mediumFileName));
+        AddActivity(UserId, "post.image.uploaded", "Tải ảnh cho bài viết cộng đồng.");
+        await _context.SaveChangesAsync();
         return Ok(new { mediaUrl, thumbnailUrl, mediumUrl, mediaType = "image" });
     }
     public async Task<ApiResponseResult> UpdatePost(Guid id, PostRequest request)
@@ -208,6 +211,7 @@ public class CommunityHandlers : EndpointHandler
         }
         if (request.IsDraft.HasValue) post.IsDraft = request.IsDraft.Value;
         if (request.CommentsEnabled.HasValue) post.CommentsEnabled = request.CommentsEnabled.Value;
+        AddActivity(userId, "post.updated", $"Chỉnh sửa bài viết {id}.");
         await _context.SaveChangesAsync();
         if (!string.Equals(previousMediaUrl, post.MediaUrl, StringComparison.Ordinal) && TryGetCommunityStorageKey(previousMediaUrl, out var previousKey))
         {
@@ -234,6 +238,7 @@ public class CommunityHandlers : EndpointHandler
             AddNotification(authorId, userId, "like", "đã thích bài viết của bạn.", $"/members/{User.Identity?.Name}");
         }
         else _context.PostLikes.Remove(like);
+        AddActivity(userId, like == null ? "post.liked" : "post.unliked", $"{(like == null ? "Thích" : "Bỏ thích")} bài viết {id}.");
         await _context.SaveChangesAsync();
         return Ok(new { liked = like == null });
     }
@@ -256,6 +261,7 @@ public class CommunityHandlers : EndpointHandler
         else AddNotification(post.AuthorId, userId, "comment", "đã bình luận bài viết của bạn.", $"/community");
         var comment = new PostComment { PostId = id, AuthorId = userId, Content = content, ParentCommentId = parentCommentId };
         _context.PostComments.Add(comment);
+        AddActivity(userId, parentCommentId.HasValue ? "comment.replied" : "comment.created", $"{(parentCommentId.HasValue ? "Trả lời bình luận" : "Bình luận")} trong bài viết {id}.");
         await _context.SaveChangesAsync();
         return Ok(new { id = comment.Id, content, createdAt = comment.CreatedAt, parentCommentId = comment.ParentCommentId });
     }
@@ -266,6 +272,7 @@ public class CommunityHandlers : EndpointHandler
         if (post == null) return NotFound(new { message = "Không tìm thấy bài viết của bạn." });
         if (!User.IsInRole("Admin") && post.AuthorId != userId) return Forbid();
         var mediaUrl = post.MediaUrl;
+        AddActivity(userId, "post.deleted", $"Xóa bài viết {id}.");
         _context.CommunityPosts.Remove(post);
         await _context.SaveChangesAsync();
         if (TryGetCommunityStorageKey(mediaUrl, out var objectKey))
@@ -294,6 +301,7 @@ public class CommunityHandlers : EndpointHandler
             AddNotification(followedId, followerId, "follow", "đã bắt đầu theo dõi bạn.", $"/members/{User.Identity?.Name}");
         }
         else _context.UserFollows.Remove(follow);
+        AddActivity(followerId, follow == null ? "follow.created" : "follow.deleted", $"{(follow == null ? "Theo dõi" : "Bỏ theo dõi")} @{username}.");
         await _context.SaveChangesAsync();
         return Ok(new { following = follow == null });
     }
@@ -306,6 +314,7 @@ public class CommunityHandlers : EndpointHandler
         if (follow != null)
         {
             _context.UserFollows.Remove(follow);
+            AddActivity(followerId, "follow.deleted", $"Bỏ theo dõi @{username}.");
             await _context.SaveChangesAsync();
         }
         return NoContent();
@@ -398,6 +407,19 @@ public class CommunityHandlers : EndpointHandler
     {
         if (recipientId == actorId) return;
         _context.AppNotifications.Add(new AppNotification { UserId = recipientId, ActorId = actorId, Type = type, Message = message, TargetUrl = targetUrl });
+    }
+
+    private void AddActivity(string userId, string activityType, string description)
+    {
+        var agent = HttpContext.Request.Headers.UserAgent.ToString();
+        _context.UserActivityLogs.Add(new UserActivityLog
+        {
+            UserId = userId,
+            ActivityType = activityType,
+            Description = description[..Math.Min(description.Length, 500)],
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = agent[..Math.Min(agent.Length, 512)]
+        });
     }
 
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;

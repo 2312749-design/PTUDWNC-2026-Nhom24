@@ -114,19 +114,23 @@ foreach ($recipe in $recipes) {
   $id = [guid]::NewGuid().ToString(); $categoryId=$categoryIds[$recipe.Category]
   $prep=Minutes $recipe.PrepTime 15; $cook=Minutes $recipe.CookTime 30; $total=[Math]::Max(1,$prep+$cook)
   $servingsMatch=[regex]::Match($recipe.Yield,'\d+'); $servings=if($servingsMatch.Success){[int]$servingsMatch.Value}else{4}
-  $description = "Công thức dữ liệu thật được biên soạn từ Điện Máy Xanh. " + $recipe.Description + " Nguồn: " + $recipe.SourceUrl
+  $description = $recipe.Description
   $instructionTexts=@($recipe.Steps | ForEach-Object {$_.Text})
   $vegetarian = if ($recipe.SourceCategory -eq 'Món chay') { 'true' } else { 'false' }
-  $sql.Add(('INSERT INTO "Recipes" ("Id","Title","Slug","Description","CategoryId","AuthorId","Status","Instructions","Ingredients","ImageUrl","CookingTimeMinutes","Difficulty","IsVegetarian","CreatedAt","IsDeleted","UpdatedAt","CookTimeMinutes","PrepTimeMinutes","Servings","ReviewStatus","ReviewNote","ReviewRequestedAt","ReviewedAt","ReviewedById") VALUES (''{0}'',{1},''dmx-{2}'',{3},''{4}'',''{5}'',1,{6},{7},{8},{9},''Medium'',{10},NOW(),false,NOW(),{11},{12},{13},''Approved'',''Đã nhập và kiểm tra từ nguồn Điện Máy Xanh.'',NOW(),NOW(),''{5}'');' -f $id,(Sql $recipe.Title),$recipe.SourceId,(Sql $description),$categoryId,$authorId,(PgArray $instructionTexts),(PgArray $recipe.Ingredients),(Sql $recipe.ImageUrl),$total,$vegetarian,$cook,([Math]::Max(1,$prep)),([Math]::Max(1,$servings))))
+  $sql.Add(('INSERT INTO "Recipes" ("Id","Title","Slug","Description","CategoryId","AuthorId","Status","Instructions","Ingredients","ImageUrl","CookingTimeMinutes","Difficulty","IsVegetarian","CreatedAt","IsDeleted","UpdatedAt","CookTimeMinutes","PrepTimeMinutes","Servings","ReviewStatus","ReviewNote","ReviewRequestedAt","ReviewedAt","ReviewedById") VALUES (''{0}'',{1},''dmx-{2}'',{3},''{4}'',''{5}'',1,{6},{7},{8},{9},''Medium'',{10},NOW(),false,NOW(),{11},{12},{13},''Approved'',NULL,NOW(),NOW(),''{5}'');' -f $id,(Sql $recipe.Title),$recipe.SourceId,(Sql $description),$categoryId,$authorId,(PgArray $instructionTexts),(PgArray $recipe.Ingredients),(Sql $recipe.ImageUrl),$total,$vegetarian,$cook,([Math]::Max(1,$prep)),([Math]::Max(1,$servings))))
   for($i=0;$i -lt $recipe.Ingredients.Count;$i++){
     $ingredientId=[guid]::NewGuid().ToString(); $name=[string]$recipe.Ingredients[$i]
-    $sql.Add(('INSERT INTO "RecipeIngredients" ("Id","RecipeId","Name","Quantity","Unit","Notes","OrderIndex") VALUES (''{0}'',''{1}'',{2},NULL,NULL,''Nguồn Điện Máy Xanh'',{3});' -f $ingredientId,$id,(Sql $name),($i+1)))
+    $sql.Add(('INSERT INTO "RecipeIngredients" ("Id","RecipeId","Name","Quantity","Unit","Notes","OrderIndex") VALUES (''{0}'',''{1}'',{2},NULL,NULL,NULL,{3});' -f $ingredientId,$id,(Sql $name),($i+1)))
   }
   for($i=0;$i -lt $recipe.Steps.Count;$i++){
     $stepId=[guid]::NewGuid().ToString(); $step=$recipe.Steps[$i]
     $sql.Add(('INSERT INTO "RecipeSteps" ("Id","RecipeId","Title","Description","StepNumber","TimerMinutes","ImageUrl") VALUES (''{0}'',''{1}'',{2},{3},{4},NULL,NULL);' -f $stepId,$id,(Sql ([string]$step.Title)),(Sql ([string]$step.Text)),($i+1)))
   }
 }
+$difficultySql = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\docker\postgres-init\04-classify-recipe-difficulty.sql') -Raw
+$sql.Add($difficultySql)
+$strictVegetarianSql = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\docker\postgres-init\05-strict-vegetarian-catalog.sql') -Raw
+$sql.Add($strictVegetarianSql)
 $sql.Add('COMMIT;')
 $sqlText = $sql -join "`n"
 $sqlText | docker exec -i culinaryblog-db psql -v ON_ERROR_STOP=1 -U postgres -d CulinaryBlogDb

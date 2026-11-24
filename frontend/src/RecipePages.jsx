@@ -513,6 +513,7 @@ export function RecipesPage() {
   const previewUrl = useRef('')
   const [saveNotice, setSaveNotice] = useState('')
   const saveInProgress = useRef(false)
+  const dismissedEditId = useRef(null)
   const savedRecipeId = useRef(null)
   const recipeVersion = useRef(null)
   const uploadedImage = useRef(null)
@@ -545,6 +546,13 @@ export function RecipesPage() {
 
   const resetForm = () => {
     if (saveInProgress.current) return
+    const params = new URLSearchParams(location.search)
+    const editId = params.get('edit')
+    if (editId) {
+      dismissedEditId.current = editId
+      params.delete('edit')
+      navigate({ pathname: location.pathname, search: params.toString() ? `?${params}` : '' }, { replace: true })
+    }
     setForm(recipeToForm({}, categories[0]?.id || ''))
     setEditingId(null)
     savedRecipeId.current = null
@@ -657,6 +665,7 @@ export function RecipesPage() {
 
   const handleEdit = (recipe) => {
     if (saveInProgress.current) return
+    dismissedEditId.current = null
     savedRecipeId.current = null
     recipeVersion.current = null
     uploadedImage.current = null
@@ -670,7 +679,11 @@ export function RecipesPage() {
 
   useEffect(() => {
     const editId = new URLSearchParams(location.search).get('edit')
-    if (!editId || loading || editingId === editId) return
+    if (!editId) {
+      dismissedEditId.current = null
+      return
+    }
+    if (loading || editingId === editId || dismissedEditId.current === editId) return
     const recipe = recipes.find((item) => item.id === editId)
     if (recipe) handleEdit(recipe)
   }, [location.search, loading, recipes, editingId])
@@ -752,7 +765,7 @@ export function RecipesPage() {
   const canManageRecipe = (recipe) => currentUser?.role === 'Admin' || currentUser?.id === recipe.authorId
   const recipeStats = {
     total: recipes.length,
-    hidden: recipes.filter(recipe => recipe.status === 0).length,
+    hidden: recipes.filter(recipe => recipe.status === 0 && recipe.reviewStatus !== 'PendingReview').length,
     pending: recipes.filter(recipe => recipe.reviewStatus === 'PendingReview').length,
     published: recipes.filter(recipe => recipe.status === 1).length,
   }
